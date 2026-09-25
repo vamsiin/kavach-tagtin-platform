@@ -85,15 +85,18 @@ def _register_builtins():
     _b("h2_6", "H2.6", "Signal Foot Tag present", "Signals, stop boards, BSLB etc. must have a linked S tag.",
        {}, [], lambda st, el, tg, tn, p: E.check_h2_6_signal_foot_tags(el, tg))
     _b("h2_7", "H2.7", "Approach tag distance", "Normal (approach) tag distance before the Signal Foot Tag.",
-       {"min_m": 150, "max_m": 250, "starter_exception": True},
+       {"min_m": 150, "max_m": 250, "starter_exception": True, "whole_metres": True},
        [P("min_m", "number", "Minimum (m)", min=0), P("max_m", "number", "Maximum (m)", min=0),
-        P("starter_exception", "bool", "Allow < minimum for Advance/Intermediate Starter")],
+        P("starter_exception", "bool", "Allow < minimum for Advance/Intermediate Starter"),
+        P("whole_metres", "bool", "Distance must be an exact multiple of 1 m", required=False)],
        lambda st, el, tg, tn, p: E.check_h2_7_approach_tag_distance(tg, el, p))
     _b("h2_9", "H2.9", "Gate tag distance from LC gate",
        "G tag distance from its LC gate. Annexure-H text: minimum 600 m; BRD BR-008: 550-850 m.",
-       {"min_m": 600, "max_m": None},
+       {"min_m": 600, "max_m": None, "wl_board_alternative": True, "wl_reach_m": 1000},
        [P("min_m", "number", "Minimum (m)", min=0),
-        P("max_m", "number", "Maximum (m) - blank for no upper limit", required=False, min=0, nullable=True)],
+        P("max_m", "number", "Maximum (m) - blank for no upper limit", required=False, min=0, nullable=True),
+        P("wl_board_alternative", "bool", "Accept a W/L board on the approach instead", required=False),
+        P("wl_reach_m", "number", "W/L board within (m) of the gate", required=False, min=0)],
        lambda st, el, tg, tn, p: E.check_h2_9_gate_tag_distance(tg, el, p))
     _b("h2_11", "H2.11", "Exit tag sets", "Minimum number of exit tag sets and their spacing.",
        {"min_sets": 2, "min_set_gap_m": 10},
@@ -129,6 +132,44 @@ def _register_builtins():
        "Elements, tags and TINs are placed on a line and within its extent; points join two lines.",
        {"tolerance_m": 0}, [P("tolerance_m", "number", "Tolerance beyond the line ends (m)", min=0)],
        lambda st, el, tg, tn, p: E.check_topology(st, el, tg, tn, p), severity="WARN")
+    from . import layout_rules as L
+    _b("h2_8", "H2.8", "TIN boundary marked by a tag",
+       "At each boundary between two TINs on a line, a demarcation tag (T / N / S / G) close to it.",
+       {"tag_types": ["T", "N", "S", "G"], "max_distance_m": 50},
+       [P("tag_types", "tag_types", "Demarcation tag types", options=TAG_TYPE_OPTS),
+        P("max_distance_m", "number", "Tag within (m) of the boundary", min=0)],
+       lambda st, el, tg, tn, p: L.check_h2_8_tin_demarcation(st, tg, tn, p), severity="WARN")
+    _b("h2_17", "H2.17", "TIN colours",
+       "Each TIN one colour, recorded; neighbouring TINs (consecutive on a line, or joined by points) differ.",
+       {"touch_gap_m": 5}, [P("touch_gap_m", "number", "TINs this close (m) count as neighbours", min=0)],
+       lambda st, el, tg, tn, p: L.check_h2_17_tin_colours(st, el, tn, p))
+    _b("h2_20", "H2.20", "Exit tags at sidings / non-KAVACH lines",
+       "Every siding and non-KAVACH line has an exit tag on it or near the points leading to it.",
+       {"max_distance_m": 300}, [P("max_distance_m", "number", "Exit tag within (m) of the points", min=0)],
+       lambda st, el, tg, tn, p: L.check_h2_20_exit_at_sidings(st, el, tg, p))
+    _b("h2_22", "H2.22", "Block TIN extent",
+       "Block TIN extends to the BSLB (double line) or the Advance Starter (single line).",
+       {"tolerance_m": 20}, [P("tolerance_m", "number", "TIN end within (m) of the board / signal", min=0)],
+       lambda st, el, tg, tn, p: L.check_h2_22_block_tin_extent(st, el, tn, p))
+    _b("h2_26", "H2.26", "'Not drawn to scale' note",
+       "A layout not drawn to scale carries the note.", {}, [],
+       lambda st, el, tg, tn, p: L.check_h2_26_not_to_scale(st))
+    _b("tan_dead_stop", "TAN-1", "Dead stop tag from facing points",
+       "New-TAN rule: dead stop (D) tag distance from the facing points.",
+       {"min_m": 25, "max_m": 35},
+       [P("min_m", "number", "Minimum (m)", min=0), P("max_m", "number", "Maximum (m)", min=0)],
+       lambda st, el, tg, tn, p: L.check_tan_dead_stop(tg, el, p))
+    _b("tan_l_tag", "TAN-2", "Adjacent line tag after the last stop signal",
+       "New-TAN rule: adjacent line (L) tag about 100 m after the last stop signal it is linked to.",
+       {"min_m": 90, "max_m": 110},
+       [P("min_m", "number", "Minimum (m)", min=0), P("max_m", "number", "Maximum (m)", min=0)],
+       lambda st, el, tg, tn, p: L.check_tan_adjacent_line_tag(tg, el, p))
+    _b("tan_after_a", "TAN-3", "Normal tags after an adjustment tag",
+       "New-TAN rule: Normal tags within (0.5 x max section speed + 10) m of each adjustment (A) tag.",
+       {"max_speed_kmph": 130, "normal_tags": 2},
+       [P("max_speed_kmph", "number", "Max section speed (km/h)", min=1),
+        P("normal_tags", "int", "Normal tags required", min=1)],
+       lambda st, el, tg, tn, p: L.check_tan_after_adjustment(tg, p))
     _b("fr004_unique", "FR-004", "Tag ref / number unique", "Tag references and numbers unique within the station.",
        {}, [], lambda st, el, tg, tn, p: E.check_brd_fr004_tag_uniqueness(tg))
     _b("fr004_parity", "FR-004", "Tag number parity by direction",
@@ -268,7 +309,7 @@ def validate_params(kind: str, builtin: str | None, params: dict) -> dict:
 # ---------------------------------------------------------------------------
 _ORDER = ["data_units", "h2_1", "h2_2", "h2_5", "h2_6", "h2_7", "h2_9", "h2_11", "h2_12", "h2_13",
           "h2_15", "h2_16", "h2_18", "h2_21", "h2_23", "h2_28", "fr004_unique", "fr004_parity", "br001", "br005",
-          "topology"]
+          "topology", "h2_8", "h2_17", "h2_20", "h2_22", "h2_26", "tan_dead_stop", "tan_l_tag", "tan_after_a"]
 
 
 def _ensure():

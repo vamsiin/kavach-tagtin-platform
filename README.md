@@ -390,6 +390,23 @@ place on startup (`rules/store.py: migrate_rules`), keeping edits, responses and
 - Registers tab: the station's allotment, used / free counts, free ranges, out-of-allotment numbers; the tag
   form offers the next free odd / even number.
 
+**Step 4 — checks the line model enables, and the New-TAN rules** (`rules/layout_rules.py`).
+| Rule | Checks | Default |
+|---|---|---|
+| H2.8 | a T/N/S/G tag within 50 m of each boundary between TINs on a line | WARN ("as per feasibility") |
+| H2.17 | every TIN has a colour, one colour per TIN; neighbouring TINs (consecutive on a line, or joined by points) differ | FAIL |
+| H2.20 | every siding / non-KAVACH line has an exit tag on it or within 300 m of the points leading to it | FAIL |
+| H2.22 | block TIN's station-side end within 20 m of the BSLB (double line) / Advance Starter (single line), side from the adjacent station's "Lower/Higher km" | FAIL (NA when data is missing) |
+| H2.26 | layout not drawn to scale carries the note | FAIL |
+| H2.7 | approach distance an exact multiple of 1 m (added to the existing rule) | FAIL |
+| H2.9 | a W/L board on the approach side is accepted instead of the gate-tag distance | on |
+| TAN-1 | dead stop tag 25–35 m from the facing points | FAIL |
+| TAN-2 | adjacent line tag 90–110 m from the last stop signal it is linked to | FAIL |
+| TAN-3 | 2 Normal tags within 0.5 × max speed + 10 m (130 km/h → 75 m) of each adjustment tag | FAIL |
+
+Not yet automated: H2.14 / TIN repeat distance (needs station geography across the division), H2.19 TINs per
+ToC route, the border-tag RSSI criterion (BR-005).
+
 ## BRD (RTLDVMS v1.0) gap analysis — what's covered, what isn't, and two open decisions
 
 A formal Business Requirements Document was checked against this codebase directly

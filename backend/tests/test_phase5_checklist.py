@@ -155,8 +155,8 @@ def test_seeded_checklist_and_permissions(client, h):
     assert "builtin.h2_9" in keys and "manual.h2_19" in keys
     assert body["can_edit"] is False and body["config_version"] == len(keys)  # one 'seed' change each
     h29 = next(r for r in body["rules"] if r["key"] == "builtin.h2_9")
-    assert h29["params"] == {"min_m": 600, "max_m": None} and h29["is_builtin"]
-    assert {p["name"] for p in h29["param_schema"]} == {"min_m", "max_m"}
+    assert h29["params"] == {"min_m": 600, "max_m": None, "wl_board_alternative": True, "wl_reach_m": 1000} and h29["is_builtin"]
+    assert {p["name"] for p in h29["param_schema"]} == {"min_m", "max_m", "wl_board_alternative", "wl_reach_m"}
     r = client.put(f"/checklist/rules/{h29['id']}", json={"params": {"min_m": 550}, "reason": "x"},
                    headers=h["dana"])
     assert r.status_code == 403
@@ -181,7 +181,7 @@ def test_admin_edit_is_audited_and_changes_verification(client, h):
                       headers=h["admin"]).status_code == 422  # reason mandatory
     r = client.put(f"/checklist/rules/{rid}", json={"params": {"min_m": 550, "max_m": 850},
                    "reason": "BR-008: QFTL policy 550-850 m confirmed"}, headers=h["admin"])
-    assert r.status_code == 200 and r.json()["params"] == {"min_m": 550.0, "max_m": 850.0}
+    assert r.status_code == 200 and r.json()["params"] == {"min_m": 550.0, "max_m": 850.0, "wl_board_alternative": True, "wl_reach_m": 1000}
     v1 = client.get(f"/stations/{sid}/verify", headers=h["dana"]).json()
     assert "H2.9" not in v1["summary"]["clauses_failing"]
     assert v1["checklist_version"] == v0["checklist_version"] + 1
@@ -195,7 +195,7 @@ def test_admin_edit_is_audited_and_changes_verification(client, h):
     assert client.put(f"/checklist/rules/{rid}", json={"params": {"min_m": 550, "max_m": 850}, "reason": "again"},
                       headers=h["admin"]).status_code == 422
     r = client.post(f"/checklist/rules/{rid}/reset", json={"reason": "back to Annexure-H"}, headers=h["admin"])
-    assert r.json()["params"] == {"min_m": 600, "max_m": None}
+    assert r.json()["params"] == {"min_m": 600, "max_m": None, "wl_board_alternative": True, "wl_reach_m": 1000}
 
 
 def test_disable_builtin_reported_and_cannot_delete(client, h):

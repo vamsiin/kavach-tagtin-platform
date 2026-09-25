@@ -60,7 +60,7 @@ def aler(client, h):
         "tag_ref": "R-793", "tag_type": "S", "location_m": 262910, "direction": "Nominal",
         "linked_element_id": e["id"], "source_document_id": sip["id"]}, headers=d)
     client.post(f"/stations/{sid}/tins", json={
-        "tin_no": 171, "section_type": "Station", "start_m": 262910, "end_m": 263152}, headers=d)
+        "tin_no": 171, "section_type": "Station", "start_m": 262910, "end_m": 263152, "color": "Green"}, headers=d)
     return sid
 
 

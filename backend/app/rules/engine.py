@@ -182,6 +182,12 @@ def check_h2_7_approach_tag_distance(tags: list[Tag], elements: list[Element],
         is_starter = (p["starter_exception"] and el
                       and is_starter_signal_eligible_for_h2_7_exception(el.element_type))
 
+        if p.get("whole_metres", True) and abs(gap_m - round(gap_m)) > 1e-6:
+            results.append(CheckResult(
+                "H2.7", "Approach tag distance a whole number of metres", "FAIL",
+                f"{t.tag_ref} is {gap_m:.3f}m before {s_tag.tag_ref} -- H2.7 requires an exact "
+                f"multiple of 1 m", subject_ref=t.tag_ref,
+            ))
         if lo <= gap_m <= hi:
             results.append(CheckResult(
                 "H2.7", title, "PASS",
@@ -232,10 +238,16 @@ def check_h2_9_gate_tag_distance(tags: list[Tag], elements: list[Element],
         gap_m = abs(el.location_m - t.location_m)
         ok = gap_m >= lo and (hi is None or gap_m <= hi)
         rng = f"{lo:g}-{hi:g}m" if hi else f">={lo:g}m"
+        wl = None
+        if not ok and p.get("wl_board_alternative", True):
+            from .layout_rules import gate_tag_wl_alternative
+            wl = gate_tag_wl_alternative(t, el, elements, p.get("wl_reach_m", 1000))
         results.append(CheckResult(
-            "H2.9", title, "PASS" if ok else "FAIL",
+            "H2.9", title, "PASS" if ok or wl else "FAIL",
             f"{t.tag_ref} is {gap_m:.0f}m from LC gate '{el.element_ref}' "
-            + (f"(within {rng})" if ok else f"(outside {rng}, or provide W/L board)"),
+            + (f"(within {rng})" if ok else
+               f"(outside {rng}; W/L board {wl.element_ref} provided on the approach)" if wl else
+               f"(outside {rng}, and no W/L board recorded on the approach)"),
             subject_ref=t.tag_ref,
         ))
     return results
