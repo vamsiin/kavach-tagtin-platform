@@ -330,3 +330,62 @@ def test_migrate_rules_renames_old_clause_numbering():
         assert rules["builtin.h2_12"].title == "Duplicate tag pair spacing"
         assert rules["builtin.h2_13"].params == {"tagset_min_m": 12}
         assert rules["builtin.h2_13"].clause == "H2.13"
+
+
+def test_migrate_repairs_defaults_seeded_before_rename(client, h):
+    """Upgrade interrupted by a reload: new-numbered defaults were seeded beside the old
+    rows, and H2.12 had already lost its tag-set threshold. seed_rules must repair it."""
+    import json
+    from app import models
+    from app.database import SessionLocal
+    from app.rules.store import seed_rules, rule_snapshot, active_rules, _log
+    from app.rules.checklist import default_rules
+    sid = _station(client, h)
+    with SessionLocal() as db:
+        rows = {r.key: r for r in db.query(models.ChecklistRuleORM).all()}
+        db.delete(rows["builtin.h2_13"])
+        db.flush()
+        r23, r15, r12, m16, m14 = (rows[k] for k in ("builtin.h2_23", "builtin.h2_15", "builtin.h2_12",
+                                                        "manual.h2_16", "manual.h2_14"))
+        r23.key, r23.builtin, r23.clause = "builtin.h2_13", "h2_13", "H2.13"
+        r23.params = json.dumps({"tag_min": 1, "tag_max": 1023, "tin_min": 1, "tin_max": 255})
+        r15.key, r15.builtin, r15.clause = "builtin.h2_14", "h2_14", "H2.14"
+        m16.key, m16.clause = "manual.h2_15_h2_16", "H2.15/H2.16"
+        m14.key, m14.clause = "manual.h2_14__25km_radius", "H2.14 (25km radius)"
+        r12.params = json.dumps({"dup_min_m": 3, "dup_max_m": 5, "tagset_min_m": 12})
+        db.flush()
+        old_ids = {k: r.id for k, r in (("h2_23", r23), ("h2_15", r15), ("m16", m16), ("m14", m14))}
+        # the premature seed: defaults under the new keys, added beside the old rows
+        existing = {k for (k,) in db.query(models.ChecklistRuleORM.key).all()}
+        for d in default_rules():
+            if d.key in existing or d.key == "builtin.h2_13":
+                continue
+            row = models.ChecklistRuleORM(key=d.key, kind=d.kind, builtin=d.builtin, clause=d.clause,
+                                          title=d.title, description=d.description, params=json.dumps(d.params),
+                                          severity=d.severity, enabled=True, blocking=False,
+                                          sort_order=d.sort_order, updated_by="system", updated_at="x")
+            db.add(row)
+            db.flush()
+            db.add(models.ChecklistChangeORM(rule_id=row.id, rule_key=row.key, action="seed",
+                                             changed_by="system", changed_at="x"))
+        # the partial migrate: H2.12 lost tagset_min_m, logged with a before snapshot
+        before = rule_snapshot(r12)
+        r12.params = json.dumps({"dup_min_m": 3, "dup_max_m": 5})
+        _log(db, r12, "migrate", before, "partial")
+        db.commit()
+
+    # the broken state must not crash verification
+    assert client.get(f"/stations/{sid}/verify", headers=h["dana"]).status_code == 200
+
+    with SessionLocal() as db:
+        seed_rules(db)
+        rules = {r.key: r for r in active_rules(db)}
+    assert not {"builtin.h2_14", "manual.h2_15_h2_16", "manual.h2_14__25km_radius"} & set(rules)
+    assert rules["builtin.h2_23"].id == old_ids["h2_23"] and rules["builtin.h2_23"].clause == "H2.23"
+    assert rules["builtin.h2_15"].id == old_ids["h2_15"]
+    assert rules["manual.h2_16"].id == old_ids["m16"] and rules["manual.h2_14"].id == old_ids["m14"]
+    assert rules["builtin.h2_13"].params == {"tagset_min_m": 12}
+    assert rules["builtin.h2_13"].builtin == "h2_13" and rules["builtin.h2_13"].clause == "H2.13"
+    assert sorted(r.key for r in default_rules()) == sorted(rules)   # nothing extra, nothing missing
+    v = client.get(f"/stations/{sid}/verify", headers=h["dana"])
+    assert v.status_code == 200

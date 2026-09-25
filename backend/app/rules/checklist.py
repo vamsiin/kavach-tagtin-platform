@@ -284,6 +284,11 @@ def default_rules() -> list[RuleConfig]:
 def execute_rule(rule: RuleConfig, station, elements, tags, tins) -> list:
     from .engine import CheckResult
     _ensure()
+    if rule.kind == "builtin" and rule.builtin not in BUILTINS:
+        # a stored rule this version no longer knows: report it, never crash verification
+        return [CheckResult(rule.clause, rule.title, "WARN",
+                            f"Built-in rule '{rule.builtin}' is not recognised by this version; "
+                            f"ask an administrator to review the checklist.")]
     if rule.kind == "builtin":
         results = BUILTINS[rule.builtin]["fn"](station, elements, tags, tins, rule.params)
     elif rule.kind == "tag_element_distance":
