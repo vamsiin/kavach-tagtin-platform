@@ -455,15 +455,16 @@ def check_brd_fr004_tag_uniqueness(tags: list[Tag]) -> list[CheckResult]:
 
 
 # ---------------------------------------------------------------------------
-# BRD FR-004: "Allocate even numbers for DN direction, odd numbers for UP direction."
+# FR-004 tag number parity by direction.
 #
-# Tag.direction holds "Nominal" / "Reverse". Confirmed by QFTL (Sep 2026): Nominal = DN,
-# Reverse = UP, and numbering follows the BRD (even for DN, odd for UP) -- not the older
-# Aler drawing, which used odd numbers on DN MAIN. Configurable in the checklist.
+# Tag.direction holds "Nominal" / "Reverse". Confirmed by QFTL (25.09.2026): Nominal = DN,
+# Reverse = UP, and DN numbers are ODD, UP numbers EVEN -- as on the Aler drawing
+# (R-775...R-797 on DN MAIN). The BRD FR-004 wording ("even for DN, odd for UP") is
+# superseded by that confirmation. Configurable in the checklist.
 # ---------------------------------------------------------------------------
 DIRECTION_PARITY_MAP = {
-    "Reverse": "odd",   # UP
-    "Nominal": "even",  # DN
+    "Nominal": "odd",   # DN
+    "Reverse": "even",  # UP
 }
 
 

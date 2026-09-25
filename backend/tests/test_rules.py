@@ -405,33 +405,27 @@ def test_fr004_tags_without_numbers_dont_falsely_collide():
 
 
 # ---------------------------------------------------------------------------
-# BRD FR-004 -- odd/even tag number parity by direction
-# (Reverse assumed == UP == odd, Nominal assumed == DN == even -- see
-# DIRECTION_PARITY_MAP's docstring in engine.py for why this mapping was chosen
-# and that it needs domain confirmation.)
+# FR-004 -- odd/even tag number parity by direction
+# (confirmed by QFTL 25.09.2026: Nominal = DN = odd, Reverse = UP = even)
 # ---------------------------------------------------------------------------
-def test_fr004_parity_pass_reverse_odd():
-    tags = [mk_tag(1, "N", 100.0, tag_number=101, direction="Reverse")]
-    results = check_brd_fr004_direction_parity(tags)
-    assert results[0].status == "PASS"
+def test_fr004_parity_pass_nominal_odd():
+    tags = [mk_tag(1, "N", 100.0, tag_number=793, direction="Nominal")]
+    assert check_brd_fr004_direction_parity(tags)[0].status == "PASS"
 
 
-def test_fr004_parity_fail_reverse_even():
-    tags = [mk_tag(1, "N", 100.0, tag_number=102, direction="Reverse")]
-    results = check_brd_fr004_direction_parity(tags)
-    assert results[0].status == "FAIL"
+def test_fr004_parity_fail_nominal_even():
+    tags = [mk_tag(1, "N", 100.0, tag_number=794, direction="Nominal")]
+    assert check_brd_fr004_direction_parity(tags)[0].status == "FAIL"
 
 
-def test_fr004_parity_pass_nominal_even():
-    tags = [mk_tag(1, "N", 100.0, tag_number=102, direction="Nominal")]
-    results = check_brd_fr004_direction_parity(tags)
-    assert results[0].status == "PASS"
+def test_fr004_parity_pass_reverse_even():
+    tags = [mk_tag(1, "N", 100.0, tag_number=774, direction="Reverse")]
+    assert check_brd_fr004_direction_parity(tags)[0].status == "PASS"
 
 
-def test_fr004_parity_fail_nominal_odd():
-    tags = [mk_tag(1, "N", 100.0, tag_number=101, direction="Nominal")]
-    results = check_brd_fr004_direction_parity(tags)
-    assert results[0].status == "FAIL"
+def test_fr004_parity_fail_reverse_odd():
+    tags = [mk_tag(1, "N", 100.0, tag_number=795, direction="Reverse")]
+    assert check_brd_fr004_direction_parity(tags)[0].status == "FAIL"
 
 
 def test_fr004_parity_na_for_unrecognized_direction():

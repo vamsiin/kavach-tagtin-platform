@@ -145,7 +145,7 @@ def test_registers_cannot_be_edited_or_deleted_outside_draft(client):
     # (required before submit since Phase 2) would fail on compliance, not on the
     # locking behaviour this test is about.
     client.post(f"/stations/{sid}/tags", json={"tag_ref": "R-2", "tag_type": "S",
-                "location_m": 99990, "tag_number": 2, "linked_element_id": eid,
+                "location_m": 99990, "tag_number": 1, "linked_element_id": eid,
                 "direction": "Nominal"}, headers=headers)
     r = _submit(client, sid, headers)
     assert r.status_code == 200, r.text

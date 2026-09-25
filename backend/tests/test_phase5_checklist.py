@@ -53,6 +53,11 @@ def test_parity_map_configurable():
     tags = [Tag(id=1, tag_ref="R-793", tag_type="S", location_m=1, tag_number=793, direction="Nominal")]
     rules = ck.default_rules()
     r = next(x for x in rules if x.key == "builtin.fr004_parity")
+    assert r.params == {"parity_map": {"Nominal": "odd", "Reverse": "even"}}   # QFTL: DN odd
+    assert [x.status for x in run_all_checks(ST, [], tags, [], rules=rules).results
+            if x.title.startswith("Tag number parity")] == ["PASS"]
+    r.params = ck.validate_params("builtin", "fr004_parity",
+                                  {"parity_map": {"Nominal": "even", "Reverse": "odd"}})
     assert [x.status for x in run_all_checks(ST, [], tags, [], rules=rules).results
             if x.title.startswith("Tag number parity")] == ["FAIL"]
     r.params = ck.validate_params("builtin", "fr004_parity",
