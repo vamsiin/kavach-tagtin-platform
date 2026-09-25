@@ -5,8 +5,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from app.domain import User
 from app.workflow.engine import (
     attempt_transition, allowed_actions, StationWorkflowState, WorkflowError,
-    DRAFT, SUBMITTED, CHECKED, APPROVED,
-    SUBMIT, CHECK, APPROVE, REQUEST_CHANGES, REOPEN,
+    DRAFT, SUBMITTED, CHECKED, APPROVED, SELF_CHECKED,
+    SUBMIT, CHECK, APPROVE, REQUEST_CHANGES, REOPEN, SELF_CHECK,
 )
 
 NOW = "2026-08-18T12:00:00Z"
@@ -27,12 +27,15 @@ def test_full_happy_path():
 
     state = StationWorkflowState(status=DRAFT)
 
+    state, ev0 = attempt_transition(state, SELF_CHECK, designer, 1, NOW, verification_fail_count=0)
+    assert state.status == SELF_CHECKED and state.self_checked_by == "dana"
+
     state, ev1 = attempt_transition(state, SUBMIT, designer, 1, NOW,
                                      target_username="cara", target_role="checker")
     assert state.status == SUBMITTED
     assert state.submitted_by == "dana"
     assert state.assigned_checker == "cara"
-    assert ev1.from_status == DRAFT and ev1.to_status == SUBMITTED
+    assert ev1.from_status == SELF_CHECKED and ev1.to_status == SUBMITTED
     assert ev1.target_username == "cara"
 
     state, ev2 = attempt_transition(state, CHECK, checker, 1, NOW, verification_fail_count=0)
@@ -45,7 +48,7 @@ def test_full_happy_path():
 
 def test_submit_requires_assigning_a_checker():
     designer = mk_user("dana", "designer")
-    state = StationWorkflowState(status=DRAFT)
+    state = StationWorkflowState(status=SELF_CHECKED, self_checked_by="dana")
     try:
         attempt_transition(state, SUBMIT, designer, 1, NOW)  # no target_username
         assert False, "expected WorkflowError"
@@ -55,7 +58,7 @@ def test_submit_requires_assigning_a_checker():
 
 def test_submit_rejects_assignee_without_checker_role():
     designer = mk_user("dana", "designer")
-    state = StationWorkflowState(status=DRAFT)
+    state = StationWorkflowState(status=SELF_CHECKED, self_checked_by="dana")
     try:
         attempt_transition(state, SUBMIT, designer, 1, NOW,
                             target_username="bob", target_role="designer")
@@ -68,7 +71,7 @@ def test_only_assigned_checker_can_check():
     designer = mk_user("dana", "designer")
     assigned_checker = mk_user("cara", "checker")
     other_checker = mk_user("chris", "checker")
-    state = StationWorkflowState(status=DRAFT)
+    state = StationWorkflowState(status=SELF_CHECKED, self_checked_by="dana")
     state, _ = attempt_transition(state, SUBMIT, designer, 1, NOW,
                                    target_username="cara", target_role="checker")
 
@@ -86,7 +89,7 @@ def test_only_assigned_checker_can_check():
 def test_only_assigned_checker_can_reject_while_submitted():
     designer = mk_user("dana", "designer")
     other_checker = mk_user("chris", "checker")
-    state = StationWorkflowState(status=DRAFT)
+    state = StationWorkflowState(status=SELF_CHECKED, self_checked_by="dana")
     state, _ = attempt_transition(state, SUBMIT, designer, 1, NOW,
                                    target_username="cara", target_role="checker")
     try:
@@ -99,7 +102,7 @@ def test_only_assigned_checker_can_reject_while_submitted():
 def test_admin_can_check_regardless_of_assignment():
     designer = mk_user("dana", "designer")
     admin = mk_user("root", "admin")
-    state = StationWorkflowState(status=DRAFT)
+    state = StationWorkflowState(status=SELF_CHECKED, self_checked_by="dana")
     state, _ = attempt_transition(state, SUBMIT, designer, 1, NOW,
                                    target_username="cara", target_role="checker")
     state, _ = attempt_transition(state, CHECK, admin, 1, NOW, verification_fail_count=0)
@@ -109,7 +112,7 @@ def test_admin_can_check_regardless_of_assignment():
 def test_assignment_clears_on_request_changes():
     designer = mk_user("dana", "designer")
     checker = mk_user("cara", "checker")
-    state = StationWorkflowState(status=DRAFT)
+    state = StationWorkflowState(status=SELF_CHECKED, self_checked_by="dana")
     state, _ = attempt_transition(state, SUBMIT, designer, 1, NOW,
                                    target_username="cara", target_role="checker")
     state, _ = attempt_transition(state, REQUEST_CHANGES, checker, 1, NOW, comment="fix it")
@@ -275,7 +278,7 @@ def test_reopen_requires_admin():
 def test_allowed_actions_for_designer_in_draft():
     designer = mk_user("dana", "designer")
     state = StationWorkflowState(status=DRAFT)
-    assert allowed_actions(state, designer) == [SUBMIT]
+    assert allowed_actions(state, designer) == [SELF_CHECK]
 
 
 def test_allowed_actions_for_checker_in_submitted():

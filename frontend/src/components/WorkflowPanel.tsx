@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import type { Station, WorkflowStatus, User } from "../types";
+import type { Station, WorkflowStatus, User, RailwaySubmission } from "../types";
 import { STATUS_LABELS, ACTION_LABELS } from "../types";
 import { api } from "../api";
 import { useAuth } from "../auth/AuthContext";
@@ -9,10 +9,38 @@ interface Props {
   onStationChanged: (s: Station) => void;
 }
 
+// BRD FR-009 lifecycle, in order. "Rework" is not a separate status: it is a
+// request_changes back to Draft, visible in the history below.
+const LIFECYCLE = ["draft", "self_checked", "submitted", "checked", "approved", "railway_submitted"];
+
+/** Turn "409 Conflict: {json}" from api.request into something readable, and
+ *  surface the failing clauses when a self-check is rejected. */
+function describeError(err: unknown): { text: string; clauses?: string[] } {
+  const raw = String(err).replace(/^Error:\s*/, "");
+  const idx = raw.indexOf("{");
+  if (idx >= 0) {
+    try {
+      const body = JSON.parse(raw.slice(idx));
+      const d = body.detail;
+      if (typeof d === "string") return { text: d };
+      if (d && typeof d === "object" && "message" in d) return { text: d.message, clauses: d.clauses_failing };
+      if (Array.isArray(d)) return { text: d.map((x: { msg?: string }) => x.msg).join("; ") };
+    } catch { /* fall through */ }
+  }
+  return { text: raw };
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function WorkflowPanel({ station, onStationChanged }: Props) {
   const { user } = useAuth();
   const [status, setStatus] = useState<WorkflowStatus | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ text: string; clauses?: string[] } | null>(null);
+  const [showRailwayForm, setShowRailwayForm] = useState(false);
+  const [railway, setRailway] = useState({ reference_no: "", submitted_on: today(), addressed_to: "", remarks: "" });
+  const [submissions, setSubmissions] = useState<RailwaySubmission[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [commentAction, setCommentAction] = useState<string | null>(null);
   const [comment, setComment] = useState("");
@@ -24,8 +52,9 @@ export function WorkflowPanel({ station, onStationChanged }: Props) {
     try {
       const s = await api.getWorkflowStatus(station.id);
       setStatus(s);
+      setSubmissions(await api.listRailwaySubmissions(station.id));
     } catch (err) {
-      setError(String(err));
+      setError(describeError(err));
     }
   }, [station.id]);
 
@@ -37,6 +66,15 @@ export function WorkflowPanel({ station, onStationChanged }: Props) {
     try {
       let updatedStation: Station;
       switch (action) {
+        case "self_check": updatedStation = await api.selfCheckStation(station.id, actionComment); break;
+        case "revise": updatedStation = await api.reviseStation(station.id, actionComment); break;
+        case "railway_submit":
+          await api.railwaySubmit(station.id, {
+            reference_no: railway.reference_no, submitted_on: railway.submitted_on,
+            addressed_to: railway.addressed_to || undefined, remarks: railway.remarks || undefined,
+          });
+          updatedStation = await api.getStation(station.id);
+          break;
         case "submit": updatedStation = await api.submitStation(station.id, assignedChecker, actionComment); break;
         case "check": updatedStation = await api.checkStation(station.id, actionComment); break;
         case "approve": updatedStation = await api.approveStation(station.id, actionComment); break;
@@ -50,8 +88,10 @@ export function WorkflowPanel({ station, onStationChanged }: Props) {
       setComment("");
       setShowAssignForm(false);
       setSelectedChecker("");
+      setShowRailwayForm(false);
+      setRailway({ reference_no: "", submitted_on: today(), addressed_to: "", remarks: "" });
     } catch (err) {
-      setError(String(err));
+      setError(describeError(err));
     } finally {
       setSubmitting(false);
     }
@@ -62,13 +102,18 @@ export function WorkflowPanel({ station, onStationChanged }: Props) {
       setCommentAction(action);
       return;
     }
+    if (action === "railway_submit") {
+      setError(null);
+      setShowRailwayForm(true);
+      return;
+    }
     if (action === "submit") {
       setError(null);
       try {
         setCheckers(await api.listUsersByRole("checker"));
         setShowAssignForm(true);
       } catch (err) {
-        setError(String(err));
+        setError(describeError(err));
       }
       return;
     }
@@ -86,7 +131,21 @@ export function WorkflowPanel({ station, onStationChanged }: Props) {
         </span>
       </div>
 
+      <div className="lifecycle">
+        {LIFECYCLE.map((st, i) => {
+          const cur = LIFECYCLE.indexOf(status.status);
+          const cls = i < cur ? "done" : i === cur ? "current" : "";
+          return (
+            <span key={st} style={{ display: "contents" }}>
+              {i > 0 && <span className="arrow">→</span>}
+              <span className={`step ${cls}`}>{STATUS_LABELS[st]}</span>
+            </span>
+          );
+        })}
+      </div>
+
       <div className="workflow-meta">
+        {status.self_checked_by && <span>Self-checked by: <strong>{status.self_checked_by}</strong></span>}
         {status.submitted_by && <span>Submitted by: <strong>{status.submitted_by}</strong></span>}
         {status.assigned_checker && <span>Assigned checker: <strong>{status.assigned_checker}</strong></span>}
         {status.checked_by && <span>Checked by: <strong>{status.checked_by}</strong></span>}
@@ -132,6 +191,42 @@ export function WorkflowPanel({ station, onStationChanged }: Props) {
         </div>
       )}
 
+      {status.status === "draft" && status.allowed_actions.includes("self_check") && (
+        <p className="muted small">
+          Self-check runs the full Annexure-H verification on the server. It only passes with zero
+          failures, and then locks the registers and inputs. Use "Revise" to unlock them again.
+        </p>
+      )}
+
+      {showRailwayForm && (
+        <div className="comment-modal">
+          <div className="form-grid">
+            <label>Reference / letter no. *
+              <input value={railway.reference_no} onChange={(e) => setRailway({ ...railway, reference_no: e.target.value })} />
+            </label>
+            <label>Date sent *
+              <input type="date" value={railway.submitted_on} onChange={(e) => setRailway({ ...railway, submitted_on: e.target.value })} />
+            </label>
+            <label>Addressed to
+              <input placeholder="e.g. Sr. DSTE / Zone" value={railway.addressed_to} onChange={(e) => setRailway({ ...railway, addressed_to: e.target.value })} />
+            </label>
+          </div>
+          <textarea placeholder="Remarks (optional)" rows={2} value={railway.remarks}
+            onChange={(e) => setRailway({ ...railway, remarks: e.target.value })} />
+          <p className="muted small">
+            This records the approved layout (version {station.layout_version}) as sent to the Railway, and keeps
+            a copy of the registers and input revisions exactly as they are now.
+          </p>
+          <div className="comment-modal-actions">
+            <button onClick={() => runAction("railway_submit")}
+              disabled={submitting || !railway.reference_no.trim() || !railway.submitted_on}>
+              Record submission
+            </button>
+            <button onClick={() => setShowRailwayForm(false)} className="secondary">Cancel</button>
+          </div>
+        </div>
+      )}
+
       {commentAction && (
         <div className="comment-modal">
           <textarea
@@ -151,12 +246,45 @@ export function WorkflowPanel({ station, onStationChanged }: Props) {
         </div>
       )}
 
-      {error && <div className="error">{error}</div>}
+      {error && (
+        <div className="error">
+          {error.text}
+          {error.clauses && error.clauses.length > 0 && (
+            <ul>{error.clauses.map((c) => <li key={c}>Failing clause {c}</li>)}</ul>
+          )}
+        </div>
+      )}
+
+      {submissions.length > 0 && (
+        <>
+          <h4 style={{ marginBottom: "0.25rem" }}>Railway submissions</h4>
+          <table className="register-table">
+            <thead>
+              <tr><th>Reference</th><th>Date sent</th><th>To</th><th>Layout</th><th>Package</th><th>Recorded by</th></tr>
+            </thead>
+            <tbody>
+              {submissions.map((r) => (
+                <tr key={r.id}>
+                  <td>{r.reference_no}{r.remarks && <div className="muted small">{r.remarks}</div>}</td>
+                  <td>{r.submitted_on}</td>
+                  <td>{r.addressed_to ?? "—"}</td>
+                  <td>{r.layout_version}</td>
+                  <td className="small">
+                    {r.layout_snapshot.elements.length} elements · {r.layout_snapshot.tags.length} tags · {r.layout_snapshot.tins.length} TINs
+                    <div className="muted">{(r.input_snapshot ?? []).map((i) => `${i.doc_type} r${i.revision}`).join(", ") || "no inputs"}</div>
+                  </td>
+                  <td>{r.recorded_by}<div className="muted small">{r.recorded_at.slice(0, 16).replace("T", " ")}</div></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
 
       {status.history.length > 0 && (
         <table className="register-table" style={{ marginTop: "0.75rem" }}>
           <thead>
-            <tr><th>When</th><th>Action</th><th>By</th><th>Assigned to</th><th>Result</th><th>Comment</th></tr>
+            <tr><th>When</th><th>Action</th><th>By</th><th>Assigned to</th><th>Result</th><th>Fails</th><th>Comment</th></tr>
           </thead>
           <tbody>
             {status.history.map((ev) => (
@@ -166,6 +294,7 @@ export function WorkflowPanel({ station, onStationChanged }: Props) {
                 <td>{ev.actor_username} <span className="muted small">({ev.actor_role})</span></td>
                 <td>{ev.target_username || "—"}</td>
                 <td>{STATUS_LABELS[ev.to_status] ?? ev.to_status}</td>
+                <td>{ev.verification_fail_count ?? "—"}</td>
                 <td className="small">{ev.comment || "—"}</td>
               </tr>
             ))}

@@ -410,11 +410,30 @@ project's change history, not repeated here:
   `GET /stations/{id}/traceability` returns the matrix plus gaps (missing required
   inputs, untraced tags, rows on superseded revisions). UI: **Traceability** tab.
 
+**Phase 2 — done (FR-009 lifecycle):**
+Draft → **Self-checked** → Submitted → Checked → Approved → **Submitted to Railway**.
+- `POST /stations/{id}/self-check` runs the full Annexure-H verification on the server;
+  only a zero-failure result moves the station to `self_checked` (on failure: 409 with the
+  failing clauses, nothing recorded). Registers and inputs are locked there (draft-only).
+  `POST …/revise` goes back to draft and discards the self-check.
+- **Submit is now only possible from `self_checked`**, and only by the person who
+  self-checked (admin exempt). A designer can no longer submit a layout that fails
+  automated checks. Request-changes (Rework) and admin reopen both require a fresh
+  self-check.
+- `POST …/railway-submit` (approver/admin, from `approved` only): reference no., date sent
+  (YYYY-MM-DD), addressed to, remarks. Writes a `railway_submissions` record atomically with
+  the status change, freezing the registers and input-document revisions as sent. Refused
+  if the layout version is INCOMPLETE or verification now fails. `railway_submitted` is
+  terminal; only an admin reopen leaves it, and the frozen record is kept.
+  `GET …/railway-submissions` lists them.
+- Upgrading: stations already `submitted`/`checked`/`approved` carry on unchanged; stations in
+  `draft` just need a self-check before their next submit.
+
 **Not yet built:** FR-001 does not *parse* the RFID Allocation Chart yet (BR-001
 still enforces range/uniqueness, not "matches the chart"); no submit gate on
 missing inputs (reported as gaps only); FR-006 configurable checklist engine;
 FR-007 / Section 11 report documents (PDF/Word); FR-008 observation tracking;
-FR-009 "Self Check" and "Railway Submission" states; Project Manager /
+Project Manager /
 Configuration Manager roles; Alembic migrations (schema upgrades still go through
 the SQLite-only `ensure_schema_up_to_date`).
 

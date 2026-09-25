@@ -70,16 +70,19 @@ def test_submit_requires_and_records_checker_assignment(client):
     sid = _make_compliant_station(client, designer_headers)
 
     # missing assignment -> 422 (Pydantic validation, field is required)
+    client.post(f"/stations/{sid}/self-check", json={}, headers=designer_headers)
     r = client.post(f"/stations/{sid}/submit", json={"comment": ""}, headers=designer_headers)
     assert r.status_code == 422
 
     # assigning a non-existent user -> 404
+    client.post(f"/stations/{sid}/self-check", json={}, headers=designer_headers)
     r = client.post(f"/stations/{sid}/submit",
                      json={"assigned_checker_username": "nobody", "comment": ""},
                      headers=designer_headers)
     assert r.status_code == 404
 
     # assigning the designer themselves (wrong role) -> 409 from the workflow engine
+    client.post(f"/stations/{sid}/self-check", json={}, headers=designer_headers)
     r = client.post(f"/stations/{sid}/submit",
                      json={"assigned_checker_username": "dana", "comment": ""},
                      headers=designer_headers)
@@ -87,6 +90,7 @@ def test_submit_requires_and_records_checker_assignment(client):
     assert "checker" in r.json()["detail"].lower()
 
     # correct assignment succeeds
+    client.post(f"/stations/{sid}/self-check", json={}, headers=designer_headers)
     r = client.post(f"/stations/{sid}/submit",
                      json={"assigned_checker_username": "cara", "comment": ""},
                      headers=designer_headers)
@@ -104,6 +108,7 @@ def test_unassigned_checker_cannot_act_but_assigned_one_can(client):
     other_checker_headers = {"Authorization": f"Bearer {client.post('/auth/login', json={'username': 'chris', 'password': 'chrispass123'}).json()['access_token']}"}
 
     sid = _make_compliant_station(client, designer_headers)
+    client.post(f"/stations/{sid}/self-check", json={}, headers=designer_headers)
     client.post(f"/stations/{sid}/submit",
                 json={"assigned_checker_username": "cara", "comment": ""}, headers=designer_headers)
 
@@ -122,6 +127,7 @@ def test_email_notification_sent_on_checker_assignment(client):
 
     with patch("app.routers.workflow.notify_checker_assigned") as mock_notify:
         mock_notify.return_value = type("R", (), {"sent": False, "mode": "console-fallback", "error": None})()
+        client.post(f"/stations/{sid}/self-check", json={}, headers=designer_headers)
         r = client.post(f"/stations/{sid}/submit",
                          json={"assigned_checker_username": "cara", "comment": ""},
                          headers=designer_headers)
@@ -140,6 +146,7 @@ def test_full_cycle_emails_designer_and_checker_on_approval(client):
     admin_headers, designer_headers, checker_headers, approver_headers = _bootstrap_full_cast(client)
     sid = _make_compliant_station(client, designer_headers)
 
+    client.post(f"/stations/{sid}/self-check", json={}, headers=designer_headers)
     client.post(f"/stations/{sid}/submit",
                 json={"assigned_checker_username": "cara", "comment": ""}, headers=designer_headers)
 
@@ -165,6 +172,7 @@ def test_full_cycle_emails_designer_and_checker_on_approval(client):
 def test_checker_reject_only_emails_designer_not_checker(client):
     admin_headers, designer_headers, checker_headers, approver_headers = _bootstrap_full_cast(client)
     sid = _make_compliant_station(client, designer_headers)
+    client.post(f"/stations/{sid}/self-check", json={}, headers=designer_headers)
     client.post(f"/stations/{sid}/submit",
                 json={"assigned_checker_username": "cara", "comment": ""}, headers=designer_headers)
 
@@ -183,6 +191,7 @@ def test_checker_reject_only_emails_designer_not_checker(client):
 def test_approver_reject_emails_both_designer_and_checker(client):
     admin_headers, designer_headers, checker_headers, approver_headers = _bootstrap_full_cast(client)
     sid = _make_compliant_station(client, designer_headers)
+    client.post(f"/stations/{sid}/self-check", json={}, headers=designer_headers)
     client.post(f"/stations/{sid}/submit",
                 json={"assigned_checker_username": "cara", "comment": ""}, headers=designer_headers)
     client.post(f"/stations/{sid}/check", json={"comment": ""}, headers=checker_headers)
@@ -205,13 +214,15 @@ def test_assignment_visible_in_workflow_history(client):
     status transitions."""
     admin_headers, designer_headers, checker_headers, approver_headers = _bootstrap_full_cast(client)
     sid = _make_compliant_station(client, designer_headers)
+    client.post(f"/stations/{sid}/self-check", json={}, headers=designer_headers)
     client.post(f"/stations/{sid}/submit",
                 json={"assigned_checker_username": "cara", "comment": "please review"}, headers=designer_headers)
 
     r = client.get(f"/stations/{sid}/workflow", headers=designer_headers)
     history = r.json()["history"]
-    assert len(history) == 1
-    ev = history[0]
+    assert len(history) == 2
+    assert history[0]["action"] == "self_check"
+    ev = history[1]
     assert ev["action"] == "submit"
     assert ev["actor_username"] == "dana"
     assert ev["target_username"] == "cara"

@@ -385,7 +385,7 @@ def traceability(station_id: int, db: Session = Depends(get_db),
         gaps.append(f"{len(outdated)} row(s) trace to a superseded input revision -- re-check "
                     f"against the current revision: {', '.join(outdated[:10])}"
                     f"{' …' if len(outdated) > 10 else ''}")
-    if station.status in ("submitted", "checked", "approved"):
+    if station.status in ("self_checked", "submitted", "checked", "approved", "railway_submitted"):
         last = events[-1] if events else None
         if last is None or not last.input_snapshot:
             gaps.append("Current workflow state has no recorded input snapshot (transition "

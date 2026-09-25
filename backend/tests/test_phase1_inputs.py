@@ -46,7 +46,9 @@ def users(client):
 
 
 def _station(client, headers, sid="100"):
-    r = client.post("/stations", json={"name": "ALER", "kavach_station_id": sid}, headers=headers)
+    r = client.post("/stations", json={"name": "ALER", "kavach_station_id": sid,
+                       "sip_drawing_number": "IPU.1100A", "kavach_version": "2",
+                       "sip_version": "1", "guideline_version": "0"}, headers=headers)
     assert r.status_code == 200, r.text
     return r.json()["id"]
 
@@ -145,6 +147,7 @@ def test_checker_cannot_upload(client, users):
 
 def test_upload_blocked_when_not_draft(client, users):
     sid = _station(client, users["des"])
+    client.post(f"/stations/{sid}/self-check", json={}, headers=users["des"])
     client.post(f"/stations/{sid}/submit", json={"assigned_checker_username": "chk"},
                 headers=users["des"])
     assert _upload(client, users["des"], sid).status_code == 409
@@ -172,6 +175,7 @@ def test_delete_refused_when_tag_traces_to_document(client, users):
 def test_delete_refused_when_document_was_in_a_workflow_snapshot(client, users):
     sid = _station(client, users["des"])
     doc = _upload(client, users["des"], sid).json()
+    client.post(f"/stations/{sid}/self-check", json={}, headers=users["des"])
     client.post(f"/stations/{sid}/submit", json={"assigned_checker_username": "chk"},
                 headers=users["des"])
     client.post(f"/stations/{sid}/request-changes", json={"comment": "fix"}, headers=users["chk"])
@@ -344,6 +348,7 @@ def test_workflow_events_record_input_snapshot(client, users):
     sip = _upload(client, users["des"], sid).json()
     alloc = _upload(client, users["des"], sid, doc_type="RFID_ALLOCATION_CHART",
                     name="alloc.xlsx").json()
+    client.post(f"/stations/{sid}/self-check", json={}, headers=users["des"])
     r = client.post(f"/stations/{sid}/submit", json={"assigned_checker_username": "chk"},
                     headers=users["des"])
     assert r.status_code == 200, r.text

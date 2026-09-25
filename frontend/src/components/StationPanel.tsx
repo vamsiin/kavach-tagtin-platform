@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Trash2, Check, X } from "lucide-react";
 import type { Station } from "../types";
+import { STATUS_LABELS } from "../types";
 import { api } from "../api";
 import { useAuth } from "../auth/AuthContext";
 
@@ -101,7 +102,7 @@ export function StationPanel({ stations, selected, onSelect, onCreated, onDelete
       {selected && (
         <div className="station-meta">
           <span>Layout version: <strong>{selected.layout_version}</strong></span>
-          <span>Status: <strong>{selected.status}</strong></span>
+          <span>Status: <strong>{STATUS_LABELS[selected.status] ?? selected.status}</strong></span>
           <span>SIP: <strong>{selected.sip_drawing_number || "—"}</strong></span>
         </div>
       )}

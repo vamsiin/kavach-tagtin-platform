@@ -1,6 +1,7 @@
 import type {
   Station, Element, Tag, TIN, VerificationReport, ToCCrossValidation,
   User, TokenResponse, WorkflowStatus,
+  RailwaySubmission, RailwaySubmitPayload,
   DocType, InputDocument, DxfImportResult, DxfCalibration, DxfCommitPayload, Traceability,
 } from "./types";
 
@@ -182,6 +183,21 @@ export const api = {
     request<Traceability>(`/stations/${stationId}/traceability`),
 
   // ---- workflow ----
+  getStation: (stationId: number) => request<Station>(`/stations/${stationId}`),
+  selfCheckStation: (stationId: number, comment = "") =>
+    request<Station>(`/stations/${stationId}/self-check`, {
+      method: "POST", body: JSON.stringify({ comment }),
+    }),
+  reviseStation: (stationId: number, comment = "") =>
+    request<Station>(`/stations/${stationId}/revise`, {
+      method: "POST", body: JSON.stringify({ comment }),
+    }),
+  railwaySubmit: (stationId: number, payload: RailwaySubmitPayload) =>
+    request<RailwaySubmission>(`/stations/${stationId}/railway-submit`, {
+      method: "POST", body: JSON.stringify(payload),
+    }),
+  listRailwaySubmissions: (stationId: number) =>
+    request<RailwaySubmission[]>(`/stations/${stationId}/railway-submissions`),
   getWorkflowStatus: (stationId: number) =>
     request<WorkflowStatus>(`/stations/${stationId}/workflow`),
   submitStation: (stationId: number, assignedCheckerUsername: string, comment = "") =>

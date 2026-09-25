@@ -193,18 +193,24 @@ export interface WorkflowStatus {
   submitted_by: string | null;
   checked_by: string | null;
   assigned_checker: string | null;
+  self_checked_by?: string | null;
   allowed_actions: string[];
   history: WorkflowEvent[];
 }
 
 export const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
+  self_checked: "Self-checked",
   submitted: "Submitted for check",
   checked: "Checked",
   approved: "Approved",
+  railway_submitted: "Submitted to Railway",
 };
 
 export const ACTION_LABELS: Record<string, string> = {
+  self_check: "Run self-check",
+  revise: "Revise (back to draft)",
+  railway_submit: "Record Railway submission",
   submit: "Submit for check",
   check: "Mark checked",
   approve: "Approve",
@@ -304,4 +310,28 @@ export interface Traceability {
   workflow: WorkflowEvent[];
   gaps: string[];
   summary: Record<string, number>;
+}
+
+// ---- Phase 2: railway submission ----
+export interface RailwaySubmitPayload {
+  reference_no: string;
+  submitted_on: string;
+  addressed_to?: string;
+  remarks?: string;
+}
+
+export interface RailwaySubmission {
+  id: number;
+  station_id: number;
+  workflow_event_id: number | null;
+  layout_version: string;
+  reference_no: string;
+  submitted_on: string;
+  addressed_to: string | null;
+  remarks: string | null;
+  recorded_by: string;
+  recorded_at: string;
+  verification_fail_count: number | null;
+  layout_snapshot: { elements: unknown[]; tags: unknown[]; tins: unknown[]; station: Record<string, unknown> };
+  input_snapshot: InputSnapshotItem[] | null;
 }

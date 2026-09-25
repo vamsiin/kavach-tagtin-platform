@@ -37,6 +37,8 @@ class StationORM(Base):
     tins = relationship("TINORM", back_populates="station", cascade="all, delete-orphan")
     revisions = relationship("RevisionORM", back_populates="station", cascade="all, delete-orphan")
     documents = relationship("InputDocumentORM", back_populates="station", cascade="all, delete-orphan")
+    railway_submissions = relationship("RailwaySubmissionORM", back_populates="station",
+                                       cascade="all, delete-orphan")
 
     def to_domain(self) -> domain.Station:
         return domain.Station(
@@ -239,3 +241,27 @@ class InputDocumentORM(Base):
     notes = Column(Text, nullable=True)
 
     station = relationship("StationORM", back_populates="documents")
+
+
+class RailwaySubmissionORM(Base):
+    """BRD FR-009 terminal step: the approved layout package as formally sent to the
+    Railway. Freezes what was sent -- layout version, the full register contents,
+    and the input-document revisions -- so later edits (after an admin reopen)
+    can never change the record of what the Railway actually received."""
+    __tablename__ = "railway_submissions"
+
+    id = Column(Integer, primary_key=True)
+    station_id = Column(Integer, ForeignKey("stations.id"), nullable=False, index=True)
+    workflow_event_id = Column(Integer, ForeignKey("workflow_events.id"), nullable=True)
+    layout_version = Column(String, nullable=False)
+    reference_no = Column(String, nullable=False)       # covering letter / package reference
+    submitted_on = Column(String, nullable=False)       # date the package was sent (YYYY-MM-DD)
+    addressed_to = Column(String, nullable=True)        # e.g. "Sr. DSTE / Zone"
+    remarks = Column(Text, nullable=True)
+    recorded_by = Column(String, nullable=False)
+    recorded_at = Column(String, nullable=False)
+    verification_fail_count = Column(Integer, nullable=True)
+    layout_snapshot = Column(Text, nullable=False)      # JSON: elements/tags/tins as sent
+    input_snapshot = Column(Text, nullable=True)        # JSON: input document revisions
+
+    station = relationship("StationORM", back_populates="railway_submissions")

@@ -15,6 +15,14 @@ Two governance rules are load-bearing and deliberately hard-coded, not configura
      being able to rubber-stamp their own work. Use sparingly in practice; this is
      a bootstrap convenience, not a recommendation for how real approvals should work.
 
+BRD FR-009 lifecycle (Phase 2): Draft -> Self Check -> Verification (submitted ->
+checked) -> Rework (request_changes, back to draft) -> Approval -> Railway Submission.
+"Self Check" is a recorded state, not a checkbox: it is only reachable when the
+server-side verification run returns zero failures, registers/inputs are locked
+while in it (they are draft-only), and only the person who self-checked (or an
+admin) may submit. "Revise" returns a self-checked layout to draft for editing.
+"Railway Submission" is terminal; only an admin reopen leaves it.
+
 A third rule governs task assignment: submitting a layout requires naming a specific
 Checker (target_username), and only that Checker (or an admin) can act on it while
 it's SUBMITTED -- any other checker with a login is not allowed to pick it up
@@ -33,17 +41,26 @@ from dataclasses import dataclass
 from ..domain import WorkflowEvent, User
 
 DRAFT = "draft"
-SUBMITTED = "submitted"
+SELF_CHECKED = "self_checked"              # BRD FR-009 "Self Check"
+SUBMITTED = "submitted"                    # BRD "Verification"
 CHECKED = "checked"
-APPROVED = "approved"
+APPROVED = "approved"                      # BRD "Approval"
+RAILWAY_SUBMITTED = "railway_submitted"    # BRD "Railway Submission" (terminal)
 
-STATUSES = [DRAFT, SUBMITTED, CHECKED, APPROVED]
+STATUSES = [DRAFT, SELF_CHECKED, SUBMITTED, CHECKED, APPROVED, RAILWAY_SUBMITTED]
 
+SELF_CHECK = "self_check"
+REVISE = "revise"                  # self_checked -> draft, to edit again
 SUBMIT = "submit"
-REQUEST_CHANGES = "request_changes"
+REQUEST_CHANGES = "request_changes"  # BRD "Rework" (-> draft, comment mandatory)
 CHECK = "check"
 APPROVE = "approve"
+RAILWAY_SUBMIT = "railway_submit"
 REOPEN = "reopen"
+
+# Actions after which the previous submit/check/self-check cycle no longer applies
+# (used when reconstructing state from the event log).
+CYCLE_RESET_ACTIONS = (REQUEST_CHANGES, REVISE, REOPEN)
 
 
 class WorkflowError(Exception):
@@ -59,12 +76,16 @@ class TransitionRule:
 
 
 TRANSITIONS: list[TransitionRule] = [
-    TransitionRule(DRAFT, SUBMIT, SUBMITTED, ("designer", "admin")),
+    TransitionRule(DRAFT, SELF_CHECK, SELF_CHECKED, ("designer", "admin")),
+    TransitionRule(SELF_CHECKED, REVISE, DRAFT, ("designer", "admin")),
+    TransitionRule(SELF_CHECKED, SUBMIT, SUBMITTED, ("designer", "admin")),
     TransitionRule(SUBMITTED, REQUEST_CHANGES, DRAFT, ("checker", "approver", "admin")),
     TransitionRule(SUBMITTED, CHECK, CHECKED, ("checker", "admin")),
     TransitionRule(CHECKED, REQUEST_CHANGES, DRAFT, ("approver", "admin")),
     TransitionRule(CHECKED, APPROVE, APPROVED, ("approver", "admin")),
+    TransitionRule(APPROVED, RAILWAY_SUBMIT, RAILWAY_SUBMITTED, ("approver", "admin")),
     TransitionRule(APPROVED, REOPEN, DRAFT, ("admin",)),
+    TransitionRule(RAILWAY_SUBMITTED, REOPEN, DRAFT, ("admin",)),
 ]
 
 _BY_FROM_ACTION = {(t.from_status, t.action): t for t in TRANSITIONS}
@@ -80,6 +101,7 @@ class StationWorkflowState:
     submitted_by: str | None = None
     checked_by: str | None = None
     assigned_checker: str | None = None
+    self_checked_by: str | None = None
 
 
 def attempt_transition(
@@ -119,7 +141,24 @@ def attempt_transition(
     if not actor.is_active:
         raise WorkflowError(f"User '{actor.username}' is not an active account")
 
+    if action == SELF_CHECK:
+        if verification_fail_count is None:
+            raise WorkflowError(
+                "Self-check requires a server-side verification result -- none was supplied"
+            )
+        if verification_fail_count > 0:
+            raise WorkflowError(
+                f"Self-check failed: {verification_fail_count} automated Annexure-H "
+                f"check(s) are failing. Fix them in the registers and self-check again."
+            )
+
     if action == SUBMIT:
+        if (actor.role != "admin" and state.self_checked_by
+                and actor.username != state.self_checked_by):
+            raise WorkflowError(
+                f"This layout was self-checked by '{state.self_checked_by}' -- only they "
+                f"(or an admin) can submit it. Revise and self-check it yourself first."
+            )
         if not target_username:
             raise WorkflowError(
                 "Submitting for check requires assigning a Checker -- pass "
@@ -172,16 +211,21 @@ def attempt_transition(
         target_username=target_username if action == SUBMIT else None,
     )
 
+    resets = action in CYCLE_RESET_ACTIONS
+
     new_state = StationWorkflowState(
         status=rule.to_status,
         submitted_by=actor.username if action == SUBMIT else (
-            None if action == REQUEST_CHANGES else state.submitted_by
+            None if resets else state.submitted_by
         ),
         checked_by=actor.username if action == CHECK else (
-            None if action == REQUEST_CHANGES else state.checked_by
+            None if resets else state.checked_by
         ),
         assigned_checker=target_username if action == SUBMIT else (
-            None if action in (REQUEST_CHANGES, REOPEN) else state.assigned_checker
+            None if resets else state.assigned_checker
+        ),
+        self_checked_by=actor.username if action == SELF_CHECK else (
+            None if resets else state.self_checked_by
         ),
     )
 

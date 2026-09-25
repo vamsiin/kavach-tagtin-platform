@@ -240,6 +240,7 @@ class WorkflowStatusOut(BaseModel):
     submitted_by: str | None
     checked_by: str | None
     assigned_checker: str | None
+    self_checked_by: str | None = None
     allowed_actions: list[str]
     history: list[WorkflowEventOut]
 
@@ -356,3 +357,70 @@ class TraceabilityOut(BaseModel):
     workflow: list[WorkflowEventOut]
     gaps: list[str]
     summary: dict
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: self-check, railway submission
+# ---------------------------------------------------------------------------
+class SelfCheckFailedOut(BaseModel):
+    message: str
+    fail_count: int
+    clauses_failing: list[str]
+
+
+class RailwaySubmitRequest(BaseModel):
+    reference_no: str = Field(min_length=1, description="Covering letter / package reference number")
+    submitted_on: str = Field(description="Date the package was sent to the Railway, YYYY-MM-DD")
+    addressed_to: str | None = None
+    remarks: str | None = None
+
+    @field_validator("reference_no")
+    @classmethod
+    def _strip_ref(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("reference_no is required")
+        return v
+
+    @field_validator("submitted_on")
+    @classmethod
+    def _iso_date(cls, v: str) -> str:
+        from datetime import date
+        try:
+            return date.fromisoformat(v.strip()).isoformat()
+        except ValueError:
+            raise ValueError("submitted_on must be a date in YYYY-MM-DD format")
+
+
+class RailwaySubmissionOut(BaseModel):
+    id: int
+    station_id: int
+    workflow_event_id: int | None = None
+    layout_version: str
+    reference_no: str
+    submitted_on: str
+    addressed_to: str | None = None
+    remarks: str | None = None
+    recorded_by: str
+    recorded_at: str
+    verification_fail_count: int | None = None
+    layout_snapshot: dict
+    input_snapshot: list[dict] | None = None
+
+    @field_validator("layout_snapshot", mode="before")
+    @classmethod
+    def _parse_layout(cls, v):
+        return json.loads(v) if isinstance(v, str) else v
+
+    @field_validator("input_snapshot", mode="before")
+    @classmethod
+    def _parse_inputs(cls, v):
+        if v is None or isinstance(v, list):
+            return v
+        try:
+            return json.loads(v)
+        except (ValueError, TypeError):
+            return None
+
+    class Config:
+        from_attributes = True
