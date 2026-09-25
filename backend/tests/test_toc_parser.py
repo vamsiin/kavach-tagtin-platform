@@ -45,15 +45,15 @@ def _tags_from_route_chain(route, tolerance_ok=True, corrupt_tag=None) -> list[T
     """Build a synthetic drawn Tag Register that exactly matches a route's ToC chain,
     anchored at an arbitrary base chainage -- used to prove the cross-validator both
     passes a correct layout and catches a corrupted one."""
-    base_km = 262.750
+    base_m = 262750.0  # chainage in metres (km 262.750)
     tags = []
-    entry_km = base_km
-    tags.append(Tag(id=0, tag_ref=route.entry_signal_foot_tag, tag_type="S", location_km=entry_km))
+    entry_m = base_m
+    tags.append(Tag(id=0, tag_ref=route.entry_signal_foot_tag, tag_type="S", location_m=entry_m))
     for i, entry in enumerate(route.tag_chain):
-        km = entry_km + entry.cumulative_m / 1000.0
+        m = entry_m + entry.cumulative_m
         if corrupt_tag == entry.tag_id:
-            km += 0.050  # shift by 50m -- should trip the tolerance check
-        tags.append(Tag(id=i + 1, tag_ref=entry.tag_id, tag_type="N", location_km=km))
+            m += 50  # shift by 50m -- should trip the tolerance check
+        tags.append(Tag(id=i + 1, tag_ref=entry.tag_id, tag_type="N", location_m=m))
     return tags
 
 

@@ -72,25 +72,25 @@ def test_update_element(client):
     admin_headers, headers = _make_admin_and_designer(client)
     sid = client.post("/stations", json={"name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
     eid = client.post(f"/stations/{sid}/elements",
-                       json={"element_ref": "SIG-01", "element_type": "Main Home without Junction Route Indicator", "location_km": 120.2},
+                       json={"element_ref": "SIG-01", "element_type": "Main Home without Junction Route Indicator", "location_m": 120200},
                        headers=headers).json()["id"]
 
     r = client.put(f"/stations/{sid}/elements/{eid}",
-                    json={"element_ref": "SIG-01-RENAMED", "element_type": "Main Home without Junction Route Indicator", "location_km": 121.0},
+                    json={"element_ref": "SIG-01-RENAMED", "element_type": "Main Home without Junction Route Indicator", "location_m": 121000},
                     headers=headers)
     assert r.status_code == 200
     assert r.json()["element_ref"] == "SIG-01-RENAMED"
-    assert r.json()["location_km"] == 121.0
+    assert r.json()["location_m"] == 121000
 
 
 def test_delete_element_unlinks_orphaned_tags_rather_than_leaving_dangling_reference(client):
     admin_headers, headers = _make_admin_and_designer(client)
     sid = client.post("/stations", json={"name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
     eid = client.post(f"/stations/{sid}/elements",
-                       json={"element_ref": "SIG-01", "element_type": "Main Home without Junction Route Indicator", "location_km": 120.2},
+                       json={"element_ref": "SIG-01", "element_type": "Main Home without Junction Route Indicator", "location_m": 120200},
                        headers=headers).json()["id"]
     tid = client.post(f"/stations/{sid}/tags",
-                       json={"tag_ref": "R-100", "tag_type": "S", "location_km": 120.2, "linked_element_id": eid},
+                       json={"tag_ref": "R-100", "tag_type": "S", "location_m": 120200, "linked_element_id": eid},
                        headers=headers).json()["id"]
 
     r = client.delete(f"/stations/{sid}/elements/{eid}", headers=headers)
@@ -106,11 +106,11 @@ def test_update_and_delete_tag(client):
     admin_headers, headers = _make_admin_and_designer(client)
     sid = client.post("/stations", json={"name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
     tid = client.post(f"/stations/{sid}/tags",
-                       json={"tag_ref": "R-100", "tag_type": "N", "location_km": 100.0},
+                       json={"tag_ref": "R-100", "tag_type": "N", "location_m": 100000},
                        headers=headers).json()["id"]
 
     r = client.put(f"/stations/{sid}/tags/{tid}",
-                    json={"tag_ref": "R-100-B", "tag_type": "S", "location_km": 100.5},
+                    json={"tag_ref": "R-100-B", "tag_type": "S", "location_m": 100500},
                     headers=headers)
     assert r.status_code == 200 and r.json()["tag_ref"] == "R-100-B"
 
@@ -123,11 +123,11 @@ def test_update_and_delete_tin(client):
     admin_headers, headers = _make_admin_and_designer(client)
     sid = client.post("/stations", json={"name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
     tinid = client.post(f"/stations/{sid}/tins",
-                         json={"tin_no": 10, "section_type": "Station", "start_km": 1, "end_km": 2, "color": "Green"},
+                         json={"tin_no": 10, "section_type": "Station", "start_m": 1000, "end_m": 2000, "color": "Green"},
                          headers=headers).json()["id"]
 
     r = client.put(f"/stations/{sid}/tins/{tinid}",
-                    json={"tin_no": 10, "section_type": "Station", "start_km": 1, "end_km": 3, "color": "Blue"},
+                    json={"tin_no": 10, "section_type": "Station", "start_m": 1000, "end_m": 3000, "color": "Blue"},
                     headers=headers)
     assert r.status_code == 200 and r.json()["color"] == "Blue"
 
@@ -139,19 +139,19 @@ def test_registers_cannot_be_edited_or_deleted_outside_draft(client):
     admin_headers, headers, checker_headers = _make_admin_designer_checker(client)
     sid = client.post("/stations", json={"name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
     eid = client.post(f"/stations/{sid}/elements",
-                       json={"element_ref": "SIG-01", "element_type": "Stop Board/Buffer Stop", "location_km": 100.0},
+                       json={"element_ref": "SIG-01", "element_type": "Stop Board/Buffer Stop", "location_m": 100000},
                        headers=headers).json()["id"]
     # H2.6: a Stop Board needs a linked Signal Foot tag, otherwise self-check
     # (required before submit since Phase 2) would fail on compliance, not on the
     # locking behaviour this test is about.
     client.post(f"/stations/{sid}/tags", json={"tag_ref": "R-2", "tag_type": "S",
-                "location_km": 99.99, "tag_number": 2, "linked_element_id": eid,
+                "location_m": 99990, "tag_number": 2, "linked_element_id": eid,
                 "direction": "Nominal"}, headers=headers)
     r = _submit(client, sid, headers)
     assert r.status_code == 200, r.text
 
     r = client.put(f"/stations/{sid}/elements/{eid}",
-                    json={"element_ref": "X", "element_type": "Stop Board/Buffer Stop", "location_km": 100.0},
+                    json={"element_ref": "X", "element_type": "Stop Board/Buffer Stop", "location_m": 100000},
                     headers=headers)
     assert r.status_code == 409
 
@@ -243,10 +243,10 @@ def test_deleting_station_cascades_to_its_registers(client):
     admin_headers, headers = _make_admin_and_designer(client)
     sid = client.post("/stations", json={"name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
     client.post(f"/stations/{sid}/elements",
-                json={"element_ref": "SIG-01", "element_type": "Stop Board/Buffer Stop", "location_km": 100.0},
+                json={"element_ref": "SIG-01", "element_type": "Stop Board/Buffer Stop", "location_m": 100000},
                 headers=headers)
     client.post(f"/stations/{sid}/tags",
-                json={"tag_ref": "R-1", "tag_type": "N", "location_km": 100.0}, headers=headers)
+                json={"tag_ref": "R-1", "tag_type": "N", "location_m": 100000}, headers=headers)
 
     client.delete(f"/stations/{sid}", headers=admin_headers)
 
@@ -285,8 +285,8 @@ def test_tag_with_null_boolean_fields_does_not_crash(client):
     db = SessionLocal()
     try:
         db.execute(text(
-            "INSERT INTO tags (station_id, tag_ref, tag_type, location_km) "
-            "VALUES (:sid, 'R-1', 'N', 100.0)"
+            "INSERT INTO tags (station_id, tag_ref, tag_type, location_m) "
+            "VALUES (:sid, 'R-1', 'N', 100000.0)"
         ), {"sid": sid})
         db.commit()
     finally:

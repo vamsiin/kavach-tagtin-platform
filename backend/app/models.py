@@ -76,7 +76,7 @@ class ElementORM(Base):
     station_id = Column(Integer, ForeignKey("stations.id"), nullable=False)
     element_ref = Column(String, nullable=False)
     element_type = Column(String, nullable=False)
-    location_km = Column(Float, nullable=False)
+    location_m = Column(Float, nullable=False)
     direction = Column(String, nullable=True)
     remarks = Column(Text, nullable=True)
     source_document_id = Column(Integer, ForeignKey("input_documents.id"), nullable=True)
@@ -86,7 +86,7 @@ class ElementORM(Base):
     def to_domain(self) -> domain.Element:
         return domain.Element(
             id=self.id, element_ref=self.element_ref, element_type=self.element_type,
-            location_km=self.location_km, direction=self.direction,
+            location_m=self.location_m, direction=self.direction,
             remarks=self.remarks or "",
         )
 
@@ -100,7 +100,7 @@ class TagORM(Base):
     tag_number = Column(Integer, nullable=True)
     tag_type = Column(String, nullable=False)
     direction = Column(String, nullable=True)
-    location_km = Column(Float, nullable=False)
+    location_m = Column(Float, nullable=False)
     tin_no = Column(Integer, nullable=True)
     linked_element_id = Column(Integer, ForeignKey("elements.id"), nullable=True)
     is_duplicate = Column(Boolean, default=False)
@@ -116,7 +116,7 @@ class TagORM(Base):
     def to_domain(self) -> domain.Tag:
         return domain.Tag(
             id=self.id, tag_ref=self.tag_ref, tag_type=self.tag_type,
-            location_km=self.location_km, tag_number=self.tag_number,
+            location_m=self.location_m, tag_number=self.tag_number,
             direction=self.direction, tin_no=self.tin_no,
             linked_element_id=self.linked_element_id, is_duplicate=bool(self.is_duplicate),
             pair_group_id=self.pair_group_id, legend_shape=self.legend_shape,
@@ -133,8 +133,8 @@ class TINORM(Base):
     tin_no = Column(Integer, nullable=False)
     section_type = Column(String, nullable=False)
     color = Column(String, nullable=True)
-    start_km = Column(Float, nullable=False)
-    end_km = Column(Float, nullable=False)
+    start_m = Column(Float, nullable=False)
+    end_m = Column(Float, nullable=False)
     direction = Column(String, nullable=True)
     is_non_kavach_territory = Column(Boolean, default=False)
     remarks = Column(Text, nullable=True)
@@ -145,7 +145,7 @@ class TINORM(Base):
     def to_domain(self) -> domain.TIN:
         return domain.TIN(
             tin_no=self.tin_no, section_type=self.section_type, color=self.color,
-            start_km=self.start_km, end_km=self.end_km, direction=self.direction,
+            start_m=self.start_m, end_m=self.end_m, direction=self.direction,
             is_non_kavach_territory=bool(self.is_non_kavach_territory),
             remarks=self.remarks or "",
         )

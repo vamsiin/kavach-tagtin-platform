@@ -20,15 +20,21 @@ from app.rules.engine import (
 )
 
 
-def mk_element(id, element_type, location_km, ref=None):
+# Test inputs below are written as km chainage for readability (e.g. 120.200) and
+# converted to the platform's unit -- METRES -- here.
+def _m(km):
+    return round(km * 1000, 6)
+
+
+def mk_element(id, element_type, km, ref=None):
     return Element(id=id, element_ref=ref or f"EL-{id}", element_type=element_type,
-                   location_km=location_km)
+                   location_m=_m(km))
 
 
-def mk_tag(id, tag_type, location_km, ref=None, linked_element_id=None,
+def mk_tag(id, tag_type, km, ref=None, linked_element_id=None,
            pair_group_id=None, legend_shape=None, exit_set=None, tag_number=None,
            direction=None, is_border_tag=False):
-    return Tag(id=id, tag_ref=ref or f"R-{id}", tag_type=tag_type, location_km=location_km,
+    return Tag(id=id, tag_ref=ref or f"R-{id}", tag_type=tag_type, location_m=_m(km),
                linked_element_id=linked_element_id, pair_group_id=pair_group_id,
                legend_shape=legend_shape, exit_set=exit_set, tag_number=tag_number,
                direction=direction, is_border_tag=is_border_tag)
@@ -290,7 +296,7 @@ def test_h2_13_tag_number_out_of_range():
 
 
 def test_h2_13_tin_out_of_range():
-    tin = TIN(tin_no=300, section_type="Station", start_km=0, end_km=1)
+    tin = TIN(tin_no=300, section_type="Station", start_m=_m(0), end_m=_m(1))
     results = check_h2_13_numbering_ranges([], [tin])
     assert results[0].status == "FAIL"
 
@@ -320,14 +326,14 @@ def test_h2_14_fail_wrong_shape():
 # H2.18 -- Non-KAVACH white
 # ---------------------------------------------------------------------------
 def test_h2_18_pass_white():
-    tin = TIN(tin_no=50, section_type="Block", start_km=0, end_km=1,
+    tin = TIN(tin_no=50, section_type="Block", start_m=_m(0), end_m=_m(1),
               is_non_kavach_territory=True, color="White")
     results = check_h2_18_non_kavach_white([tin])
     assert results[0].status == "PASS"
 
 
 def test_h2_18_fail_non_white():
-    tin = TIN(tin_no=50, section_type="Block", start_km=0, end_km=1,
+    tin = TIN(tin_no=50, section_type="Block", start_m=_m(0), end_m=_m(1),
               is_non_kavach_territory=True, color="Green")
     results = check_h2_18_non_kavach_white([tin])
     assert results[0].status == "FAIL"
@@ -345,7 +351,7 @@ def test_run_all_checks_smoke():
         mk_tag(1, "S", 120.200, ref="R-100", linked_element_id=1),
         mk_tag(2, "N", 120.000, ref="R-098", linked_element_id=1, direction="UP"),
     ]
-    tins = [TIN(tin_no=10, section_type="Station", start_km=119, end_km=121, color="Green")]
+    tins = [TIN(tin_no=10, section_type="Station", start_m=_m(119), end_m=_m(121), color="Green")]
     report = run_all_checks(station, elements, tags, tins)
     assert report.summary()["total_checks"] > 0
     assert isinstance(report.fail_count, int)

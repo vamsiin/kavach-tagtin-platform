@@ -49,8 +49,8 @@ def cross_validate_route(route: Route, tags_by_ref: dict[str, Tag],
         ))
         return results  # can't meaningfully continue this route's chain check
 
-    entry_km = entry_tag.location_km if entry_tag else None
-    drawn_chain_kms: list[float] = []  # locations of tags actually found, in ToC chain order
+    entry_m = entry_tag.location_m if entry_tag else None
+    drawn_chain_ms: list[float] = []  # locations of tags actually found, in ToC chain order
 
     for entry in route.tag_chain:
         drawn = tags_by_ref.get(entry.tag_id)
@@ -63,8 +63,8 @@ def cross_validate_route(route: Route, tags_by_ref: dict[str, Tag],
             ))
             continue
 
-        if entry_km is not None:
-            actual_delta_m = abs(drawn.location_km - entry_km) * 1000
+        if entry_m is not None:
+            actual_delta_m = abs(drawn.location_m - entry_m)
             diff_m = abs(actual_delta_m - entry.cumulative_m)
             if diff_m <= tolerance_m:
                 results.append(ChainCheckResult(
@@ -81,12 +81,12 @@ def cross_validate_route(route: Route, tags_by_ref: dict[str, Tag],
                     tag_ref=entry.tag_id,
                 ))
 
-        drawn_chain_kms.append(drawn.location_km)
+        drawn_chain_ms.append(drawn.location_m)
 
     # Order check: tags actually found should progress monotonically along the chain
     # in the same direction the chain is travelling (away from the entry tag).
-    if len(drawn_chain_kms) >= 2:
-        deltas = [b - a for a, b in zip(drawn_chain_kms, drawn_chain_kms[1:])]
+    if len(drawn_chain_ms) >= 2:
+        deltas = [b - a for a, b in zip(drawn_chain_ms, drawn_chain_ms[1:])]
         travelling_positive = sum(deltas) >= 0
         out_of_order = any(
             (d < 0 if travelling_positive else d > 0) for d in deltas

@@ -19,7 +19,7 @@ interface RowState {
   kind: "tag" | "element";
   ref: string;
   type: string;
-  location_km: string;
+  location_m: string;
   linked_element_ref: string;
 }
 
@@ -29,7 +29,7 @@ function initialRow(c: DxfCandidate): RowState {
     kind: c.kind === "element" ? "element" : "tag",
     ref: c.text.startsWith("[block:") ? "" : c.text,
     type: "",
-    location_km: c.suggested_location_km != null ? String(c.suggested_location_km) : "",
+    location_m: c.suggested_location_m != null ? String(c.suggested_location_m) : "",
     linked_element_ref: "",
   };
 }
@@ -45,7 +45,7 @@ function num(s: string): number | undefined {
 export function DxfReviewPanel({ stationId, file, documentId, canCommit, existingElements, onClose, onImported, onCommitted }: Props) {
   const [docType, setDocType] = useState("SIP");
   const [versionLabel, setVersionLabel] = useState("");
-  const [cal, setCal] = useState({ ref_x: "", ref_km: "", units_per_km: "" });
+  const [cal, setCal] = useState({ ref_x: "", ref_m: "", units_per_m: "" });
   const [result, setResult] = useState<DxfImportResult | null>(null);
   const [rows, setRows] = useState<RowState[]>([]);
   const [busy, setBusy] = useState(false);
@@ -53,7 +53,7 @@ export function DxfReviewPanel({ stationId, file, documentId, canCommit, existin
   const [message, setMessage] = useState<string | null>(null);
 
   const calibration = (): DxfCalibration => ({
-    ref_x: num(cal.ref_x), ref_km: num(cal.ref_km), units_per_km: num(cal.units_per_km),
+    ref_x: num(cal.ref_x), ref_m: num(cal.ref_m), units_per_m: num(cal.units_per_m),
   });
 
   function applyResult(r: DxfImportResult, keepEdits: boolean) {
@@ -61,8 +61,8 @@ export function DxfReviewPanel({ stationId, file, documentId, canCommit, existin
     setRows((prev) => r.candidates.map((c, i) => {
       const fresh = initialRow(c);
       if (!keepEdits || !prev[i]) return fresh;
-      // re-calibration: keep the reviewer's edits, refresh only the suggested km
-      return { ...prev[i], location_km: fresh.location_km || prev[i].location_km };
+      // re-calibration: keep the reviewer's edits, refresh only the suggested chainage
+      return { ...prev[i], location_m: fresh.location_m || prev[i].location_m };
     }));
   }
 
@@ -105,7 +105,7 @@ export function DxfReviewPanel({ stationId, file, documentId, canCommit, existin
   function rowProblem(r: RowState): string | null {
     if (!r.ref.trim()) return "ref required";
     if (!r.type) return "type required";
-    if (num(r.location_km) === undefined) return "km required";
+    if (num(r.location_m) === undefined) return "chainage required";
     return null;
   }
   const problems = included.map(({ r, i }) => ({ i, p: rowProblem(r) })).filter((x) => x.p);
@@ -116,10 +116,10 @@ export function DxfReviewPanel({ stationId, file, documentId, canCommit, existin
     try {
       const payload = {
         elements: included.filter(({ r }) => r.kind === "element").map(({ r }) => ({
-          element_ref: r.ref.trim(), element_type: r.type, location_km: num(r.location_km)!,
+          element_ref: r.ref.trim(), element_type: r.type, location_m: num(r.location_m)!,
         })),
         tags: included.filter(({ r }) => r.kind === "tag").map(({ r }) => ({
-          tag_ref: r.ref.trim(), tag_type: r.type, location_km: num(r.location_km)!,
+          tag_ref: r.ref.trim(), tag_type: r.type, location_m: num(r.location_m)!,
           linked_element_ref: r.linked_element_ref || null,
         })),
       };
@@ -139,8 +139,8 @@ export function DxfReviewPanel({ stationId, file, documentId, canCommit, existin
       </div>
       <p className="muted small">
         Layer-name heuristics classify text as tag / element. Nothing is saved to the registers until you
-        commit. DXF coordinates aren't chainage — give one reference point and a scale to get suggested km,
-        or type km per row.
+        commit. DXF coordinates aren't chainage — give one reference point and a scale to get suggested chainage (m),
+        or type it per row.
       </p>
 
       <div className="inline-form wrap">
@@ -155,8 +155,8 @@ export function DxfReviewPanel({ stationId, file, documentId, canCommit, existin
           </>
         )}
         <input title="Reference X (drawing units)" placeholder="Reference X (drawing units)" value={cal.ref_x} onChange={(e) => setCal({ ...cal, ref_x: e.target.value })} />
-        <input title="Chainage (km) at the reference X" placeholder="…is at km" value={cal.ref_km} onChange={(e) => setCal({ ...cal, ref_km: e.target.value })} />
-        <input title="Drawing units per km" placeholder="Drawing units per km" value={cal.units_per_km} onChange={(e) => setCal({ ...cal, units_per_km: e.target.value })} />
+        <input title="Chainage (m) at the reference X" placeholder="…is at chainage (m)" value={cal.ref_m} onChange={(e) => setCal({ ...cal, ref_m: e.target.value })} />
+        <input title="Drawing units per metre (e.g. 1 if the drawing is in metres, 1000 if in mm)" placeholder="Drawing units per metre" value={cal.units_per_m} onChange={(e) => setCal({ ...cal, units_per_m: e.target.value })} />
         {file && !result
           ? <button onClick={parseNew} disabled={busy}>{busy ? "Parsing…" : `Upload & parse ${file.name}`}</button>
           : <button className="secondary" onClick={recalibrate} disabled={busy || !result}>Apply calibration</button>}
@@ -171,7 +171,7 @@ export function DxfReviewPanel({ stationId, file, documentId, canCommit, existin
         <>
           <table className="register-table">
             <thead>
-              <tr><th></th><th>DXF text</th><th>Layer</th><th>X</th><th>As</th><th>Ref</th><th>Type</th><th>km</th><th>Linked element</th></tr>
+              <tr><th></th><th>DXF text</th><th>Layer</th><th>X</th><th>As</th><th>Ref</th><th>Type</th><th>Chainage (m)</th><th>Linked element</th></tr>
             </thead>
             <tbody>
               {result.candidates.map((c, i) => {
@@ -199,7 +199,7 @@ export function DxfReviewPanel({ stationId, file, documentId, canCommit, existin
                           : ELEMENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </td>
-                    <td><input value={r.location_km} disabled={!r.include} size={8} onChange={(e) => update(i, { location_km: e.target.value })} /></td>
+                    <td><input value={r.location_m} disabled={!r.include} size={8} onChange={(e) => update(i, { location_m: e.target.value })} /></td>
                     <td>
                       {r.kind === "tag" && (
                         <select value={r.linked_element_ref} disabled={!r.include} onChange={(e) => update(i, { linked_element_ref: e.target.value })}>
@@ -219,7 +219,7 @@ export function DxfReviewPanel({ stationId, file, documentId, canCommit, existin
               <button onClick={commit} disabled={busy || included.length === 0 || problems.length > 0}>
                 Commit {included.length} row(s) to registers
               </button>
-              {problems.length > 0 && <span className="error">{problems.length} selected row(s) incomplete (ref, type and km are required)</span>}
+              {problems.length > 0 && <span className="error">{problems.length} selected row(s) incomplete (ref, type and chainage are required)</span>}
             </div>
           )}
         </>

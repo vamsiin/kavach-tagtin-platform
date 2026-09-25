@@ -42,11 +42,6 @@ ELEMENT_TYPES = [
 
 TAG_TYPES = ["N", "S", "T", "X", "D", "G", "L", "A"]
 
-# Sanity ceiling for chainage values in km. No Indian Railways section chainage comes
-# anywhere near this, so a larger value almost certainly means the location was
-# entered in METRES (e.g. 262910 instead of 262.910) -- which silently makes every
-# distance rule 1000x wrong, since the rules engine converts km -> m by * 1000.
-MAX_CHAINAGE_KM = 5000.0
 
 TAG_TYPE_LABELS = {
     "N": "Normal / Inline section tag",
@@ -160,7 +155,7 @@ class Element:
     id: int
     element_ref: str
     element_type: str
-    location_km: float
+    location_m: float
     direction: str | None = None
     remarks: str = ""
 
@@ -170,7 +165,7 @@ class Tag:
     id: int
     tag_ref: str
     tag_type: str
-    location_km: float
+    location_m: float
     tag_number: int | None = None
     direction: str | None = None
     tin_no: int | None = None
@@ -187,8 +182,8 @@ class Tag:
 class TIN:
     tin_no: int
     section_type: str  # Station / Block
-    start_km: float
-    end_km: float
+    start_m: float
+    end_m: float
     color: str | None = None
     direction: str | None = None
     is_non_kavach_territory: bool = False

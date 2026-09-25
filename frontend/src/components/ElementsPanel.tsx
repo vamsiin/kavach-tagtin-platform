@@ -14,7 +14,7 @@ interface Props {
 const columns: ColumnDef<Element>[] = [
   { key: "element_ref", label: "Ref" },
   { key: "element_type", label: "Type" },
-  { key: "location_km", label: "Location (km)" },
+  { key: "location_m", label: "Location (m)" },
   { key: "direction", label: "Dir" },
   { key: "remarks", label: "Remarks" },
 ];
@@ -46,7 +46,7 @@ function ElementForm({ initial, onSubmit, onCancel, submitting }: {
 }) {
   const [ref, setRef] = useState(initial?.element_ref ?? "");
   const [type, setType] = useState<string>(initial?.element_type ?? ELEMENT_TYPES[0]);
-  const [km, setKm] = useState(initial ? String(initial.location_km) : "");
+  const [loc, setLoc] = useState(initial ? String(initial.location_m) : "");
   const [dir, setDir] = useState(initial?.direction ?? "");
   const [remarks, setRemarks] = useState(initial?.remarks ?? "");
 
@@ -54,7 +54,7 @@ function ElementForm({ initial, onSubmit, onCancel, submitting }: {
     <form className="inline-form" onSubmit={(e) => {
       e.preventDefault();
       onSubmit({
-        element_ref: ref, element_type: type, location_km: parseFloat(km),
+        element_ref: ref, element_type: type, location_m: parseFloat(loc),
         direction: dir || null, remarks: remarks || null,
       });
     }}>
@@ -62,8 +62,8 @@ function ElementForm({ initial, onSubmit, onCancel, submitting }: {
       <select value={type} onChange={(e) => setType(e.target.value)}>
         {ELEMENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
       </select>
-      <input type="number" step="0.001" placeholder="Location (km)" value={km}
-             onChange={(e) => setKm(e.target.value)} required style={{ width: 130 }} />
+      <input type="number" step="0.001" placeholder="Chainage (m)" title="Chainage in metres, e.g. 262910 for km 262.910" value={loc}
+             onChange={(e) => setLoc(e.target.value)} required style={{ width: 130 }} />
       <select value={dir} onChange={(e) => setDir(e.target.value)}>
         <option value="">Dir —</option>
         <option value="UP">UP</option>

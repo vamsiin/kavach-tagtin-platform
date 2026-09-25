@@ -41,10 +41,10 @@ def _make_station_with_tag(client, headers) -> int:
     sid = client.post("/stations", json={"name": "T", "kavach_station_id": "1"},
                        headers=headers).json()["id"]
     client.post(f"/stations/{sid}/tags",
-                json={"tag_ref": "R-775", "tag_type": "S", "location_km": 262.750},
+                json={"tag_ref": "R-775", "tag_type": "S", "location_m": 262750},
                 headers=headers)
     client.post(f"/stations/{sid}/tags",
-                json={"tag_ref": "R-777", "tag_type": "N", "location_km": 263.569},
+                json={"tag_ref": "R-777", "tag_type": "N", "location_m": 263569},
                 headers=headers)
     return sid
 

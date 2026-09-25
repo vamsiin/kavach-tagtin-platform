@@ -79,7 +79,7 @@ export interface Element {
   id: number;
   element_ref: string;
   element_type: string;
-  location_km: number;
+  location_m: number;
   direction: string | null;
   remarks: string | null;
   source_document_id?: number | null;
@@ -89,7 +89,7 @@ export interface Tag {
   id: number;
   tag_ref: string;
   tag_type: string;
-  location_km: number;
+  location_m: number;
   tag_number: number | null;
   direction: string | null;
   tin_no: number | null;
@@ -108,8 +108,8 @@ export interface TIN {
   tin_no: number;
   section_type: string;
   color: string | null;
-  start_km: number;
-  end_km: number;
+  start_m: number;
+  end_m: number;
   direction: string | null;
   is_non_kavach_territory: boolean;
   remarks: string | null;
@@ -259,7 +259,7 @@ export interface DxfCandidate {
   x: number;
   y: number;
   kind: "tag" | "element" | "unclassified";
-  suggested_location_km: number | null;
+  suggested_location_m: number | null;
 }
 
 export interface DxfImportResult {
@@ -271,8 +271,8 @@ export interface DxfImportResult {
 
 export interface DxfCalibration {
   ref_x?: number;
-  ref_km?: number;
-  units_per_km?: number;
+  ref_m?: number;
+  units_per_m?: number;
 }
 
 export interface DxfCommitPayload {
@@ -294,7 +294,7 @@ export interface TraceRow {
   id: number;
   ref: string;
   type: string | null;
-  location_km: number | null;
+  location_m: number | null;
   source: TraceDocRef | null;
   source_outdated: boolean;
   linked_element_ref: string | null;

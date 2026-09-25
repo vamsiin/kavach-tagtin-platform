@@ -186,21 +186,21 @@ def delete_document(station_id: int, doc_id: int, db: Session = Depends(get_db),
 _DXF_DOC_TYPES = (docsvc.SIP, docsvc.ADJACENT_LAYOUT, docsvc.OTHER)
 
 
-def _parse_dxf(doc: models.InputDocumentORM, ref_x: float | None, ref_km: float | None,
-               units_per_km: float | None) -> tuple[list[schemas.DxfCandidateOut], list[str], list[str]]:
+def _parse_dxf(doc: models.InputDocumentORM, ref_x: float | None, ref_m: float | None,
+               units_per_m: float | None) -> tuple[list[schemas.DxfCandidateOut], list[str], list[str]]:
     from ..dxf_import.importer import import_dxf
     if docsvc.file_extension(doc.original_filename) != ".dxf":
         raise HTTPException(422, "This document is not a .dxf file")
     result = import_dxf(str(docsvc.absolute_path(doc)))
-    calibrated = None not in (ref_x, ref_km, units_per_km) and units_per_km != 0
+    calibrated = None not in (ref_x, ref_m, units_per_m) and units_per_m != 0
     warnings = list(result.warnings)
     if not calibrated:
-        warnings.append("No chainage calibration supplied (ref_x, ref_km, units_per_km) -- "
-                        "location_km must be entered for every candidate before commit.")
+        warnings.append("No chainage calibration supplied (ref_x, ref_m, units_per_m) -- "
+                        "location_m (chainage in metres) must be entered for every candidate before commit.")
     cands = [
         schemas.DxfCandidateOut(
             index=i, text=c.text, layer=c.layer, x=c.x, y=c.y, kind=c.kind,
-            suggested_location_km=(round(ref_km + (c.x - ref_x) / units_per_km, 4)
+            suggested_location_m=(round(ref_m + (c.x - ref_x) / units_per_m, 3)
                                    if calibrated else None),
         )
         for i, c in enumerate(result.candidates)
@@ -215,8 +215,8 @@ async def import_dxf_upload(
     doc_type: str = Form(docsvc.SIP),
     version_label: str | None = Form(None),
     notes: str | None = Form(None),
-    ref_x: float | None = Form(None), ref_km: float | None = Form(None),
-    units_per_km: float | None = Form(None),
+    ref_x: float | None = Form(None), ref_m: float | None = Form(None),
+    units_per_m: float | None = Form(None),
     db: Session = Depends(get_db), user: models.UserORM = Depends(get_current_user),
 ):
     """Store the .dxf as an input document revision, then return the importer's
@@ -230,20 +230,20 @@ async def import_dxf_upload(
     _require_uploader(user)
     _require_draft(station)
     doc = await _store_upload(station, file, doc_type, version_label, notes, user, db)
-    cands, warnings, layers = _parse_dxf(doc, ref_x, ref_km, units_per_km)
+    cands, warnings, layers = _parse_dxf(doc, ref_x, ref_m, units_per_m)
     return schemas.DxfImportOut(document=_doc_out(doc, _current_ids(db, station_id)),
                                 candidates=cands, warnings=warnings, layers=layers)
 
 
 @router.get("/{station_id}/documents/{doc_id}/dxf-candidates", response_model=schemas.DxfImportOut)
 def dxf_candidates(station_id: int, doc_id: int,
-                   ref_x: float | None = Query(None), ref_km: float | None = Query(None),
-                   units_per_km: float | None = Query(None),
+                   ref_x: float | None = Query(None), ref_m: float | None = Query(None),
+                   units_per_m: float | None = Query(None),
                    db: Session = Depends(get_db),
                    user: models.UserORM = Depends(get_current_user)):
     """Re-parse an already-stored DXF (e.g. with a different chainage calibration)."""
     doc = _doc_or_404(station_id, doc_id, db)
-    cands, warnings, layers = _parse_dxf(doc, ref_x, ref_km, units_per_km)
+    cands, warnings, layers = _parse_dxf(doc, ref_x, ref_m, units_per_m)
     return schemas.DxfImportOut(document=_doc_out(doc, _current_ids(db, station_id)),
                                 candidates=cands, warnings=warnings, layers=layers)
 
@@ -348,23 +348,23 @@ def traceability(station_id: int, db: Session = Depends(get_db),
     elements = db.query(models.ElementORM).filter_by(station_id=station_id).all()
     el_ref_by_id = {e.id: e.element_ref for e in elements}
     rows: list[schemas.TraceRow] = []
-    for e in sorted(elements, key=lambda x: x.location_km):
+    for e in sorted(elements, key=lambda x: x.location_m):
         src, outdated = ref(e.source_document_id)
         rows.append(schemas.TraceRow(kind="element", id=e.id, ref=e.element_ref,
-                                     type=e.element_type, location_km=e.location_km,
+                                     type=e.element_type, location_m=e.location_m,
                                      source=src, source_outdated=outdated))
     for t in sorted(db.query(models.TagORM).filter_by(station_id=station_id).all(),
-                    key=lambda x: x.location_km):
+                    key=lambda x: x.location_m):
         src, outdated = ref(t.source_document_id)
         rows.append(schemas.TraceRow(kind="tag", id=t.id, ref=t.tag_ref, type=t.tag_type,
-                                     location_km=t.location_km, source=src,
+                                     location_m=t.location_m, source=src,
                                      source_outdated=outdated,
                                      linked_element_ref=el_ref_by_id.get(t.linked_element_id)))
     for n in sorted(db.query(models.TINORM).filter_by(station_id=station_id).all(),
-                    key=lambda x: x.start_km):
+                    key=lambda x: x.start_m):
         src, outdated = ref(n.source_document_id)
         rows.append(schemas.TraceRow(kind="tin", id=n.id, ref=f"TIN {n.tin_no}",
-                                     type=n.section_type, location_km=n.start_km,
+                                     type=n.section_type, location_m=n.start_m,
                                      source=src, source_outdated=outdated))
 
     events = (db.query(models.WorkflowEventORM).filter_by(station_id=station_id)

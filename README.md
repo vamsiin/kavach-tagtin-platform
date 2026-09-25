@@ -401,7 +401,7 @@ project's change history, not repeated here:
 - **FR-002 DXF import is now reachable**: `POST /stations/{id}/import-dxf` stores
   the .dxf as a SIP/Adjacent-Layout revision and returns review candidates;
   `GET …/documents/{doc}/dxf-candidates` re-parses with an optional chainage
-  calibration (`ref_x`, `ref_km`, `units_per_km`); `POST …/dxf-commit` writes the
+  calibration (`ref_x`, `ref_m`, `units_per_m`); `POST …/dxf-commit` writes the
   reviewed rows **all-or-nothing**, stamped with `source_document_id`. Still no
   auto-commit, and the layer heuristics still need real Quadrant DXFs.
 - **FR-011 traceability**: `source_document_id` on Tags/Elements/TINs (editable in
@@ -448,10 +448,14 @@ Draft → **Self-checked** → Submitted → Checked → Approved → **Submitte
   FAIL/WARN row of the verification results for reviewers, prefilled with clause,
   message and the tag/element concerned.
 
-**Chainage unit guard:** `location_km`, `start_km`, `end_km` above 5000 are rejected with
-a hint ("did you mean 262.91?"), because a metre value in a km field makes every distance
-rule 1000× wrong. Existing rows stored that way still load, but verification now reports a
-`DATA-UNITS` FAIL for each, so such a station cannot pass self-check until corrected.
+**Units — chainage in METRES (team decision, Phase 3):** every location is stored and
+entered as chainage in metres (e.g. `262910` = km 262.910). Fields are `location_m`
+(elements, tags) and `start_m` / `end_m` (TINs); the rules engine and ToC cross-validator
+compare them directly with no ×1000 conversion. On startup the database migration renames
+the old `location_km` / `start_km` / `end_km` columns in place, keeping the values (they
+were already metres). Verification includes a `DATA-UNITS` check that WARNs (never blocks)
+when a station's values look like km — all within 50 units of each other and carrying
+decimals.
 
 **Not yet built:** FR-001 does not *parse* the RFID Allocation Chart yet (BR-001
 still enforces range/uniqueness, not "matches the chart"); no submit gate on

@@ -54,14 +54,14 @@ export function TraceabilityPanel({ stationId }: Props) {
           </select>
         </div>
         <table className="register-table">
-          <thead><tr><th>Kind</th><th>Ref</th><th>Type</th><th>km</th><th>Linked element</th><th>Source input</th></tr></thead>
+          <thead><tr><th>Kind</th><th>Ref</th><th>Type</th><th>Chainage (m)</th><th>Linked element</th><th>Source input</th></tr></thead>
           <tbody>
             {rows.map((r) => (
               <tr key={`${r.kind}-${r.id}`} className={!r.source || r.source_outdated ? "row-fail" : ""}>
                 <td>{r.kind}</td>
                 <td>{r.ref}</td>
                 <td>{r.type}</td>
-                <td>{r.location_km?.toFixed(3)}</td>
+                <td>{r.location_m ?? "—"}</td>
                 <td>{r.linked_element_ref ?? "—"}</td>
                 <td>
                   {r.source

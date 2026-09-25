@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from ..domain import (
-    Element, Tag, TIN, Station, TAG_TYPES, MAX_CHAINAGE_KM,
+    Element, Tag, TIN, Station, TAG_TYPES,
     requires_signal_foot_tag, is_starter_signal_eligible_for_h2_7_exception,
 )
 
@@ -103,7 +103,7 @@ def check_h2_5_normal_tag_spacing(tags: list[Tag]) -> list[CheckResult]:
     results = []
     normals = sorted(
         [t for t in tags if t.tag_type == "N"],
-        key=lambda t: (t.direction or "", t.location_km),
+        key=lambda t: (t.direction or "", t.location_m),
     )
     by_dir: dict[str, list[Tag]] = {}
     for t in normals:
@@ -111,7 +111,7 @@ def check_h2_5_normal_tag_spacing(tags: list[Tag]) -> list[CheckResult]:
 
     for direction, group in by_dir.items():
         for prev, curr in zip(group, group[1:]):
-            gap_m = abs(curr.location_km - prev.location_km) * 1000
+            gap_m = abs(curr.location_m - prev.location_m)
             if gap_m > 1000:
                 results.append(CheckResult(
                     "H2.5", "Normal tag spacing <= 1000m", "FAIL",
@@ -164,7 +164,7 @@ def check_h2_7_approach_tag_distance(tags: list[Tag], elements: list[Element]) -
         if not s_tag:
             continue
         el = elements_by_id.get(t.linked_element_id)
-        gap_m = abs(s_tag.location_km - t.location_km) * 1000
+        gap_m = abs(s_tag.location_m - t.location_m)
         is_starter = el and is_starter_signal_eligible_for_h2_7_exception(el.element_type)
 
         if 150 <= gap_m <= 250:
@@ -210,7 +210,7 @@ def check_h2_9_gate_tag_distance(tags: list[Tag], elements: list[Element]) -> li
         el = elements_by_id.get(t.linked_element_id)
         if not el:
             continue
-        gap_m = abs(el.location_km - t.location_km) * 1000
+        gap_m = abs(el.location_m - t.location_m)
         ok = gap_m >= 600
         results.append(CheckResult(
             "H2.9", "Gate tag >= 600m approach to LC gate", "PASS" if ok else "FAIL",
@@ -240,8 +240,8 @@ def check_h2_11_exit_tags(tags: list[Tag]) -> list[CheckResult]:
                 subject_ref=group_id,
             ))
             continue
-        locs = [m.location_km for m in members]
-        gap_m = (max(locs) - min(locs)) * 1000
+        locs = [m.location_m for m in members]
+        gap_m = (max(locs) - min(locs))
         ok = gap_m >= 10
         results.append(CheckResult(
             "H2.11", "Exit tag sets >= 10m apart", "PASS" if ok else "FAIL",
@@ -263,12 +263,12 @@ def check_h2_12_duplicate_and_tagset_spacing(tags: list[Tag]) -> list[CheckResul
         if t.pair_group_id:
             groups.setdefault(t.pair_group_id, []).append(t)
 
-    group_extents = []  # (group_id, min_km, max_km)
+    group_extents = []  # (group_id, min_m, max_m)
     for group_id, members in groups.items():
         if len(members) < 2:
             continue
-        locs = [m.location_km for m in members]
-        gap_m = (max(locs) - min(locs)) * 1000
+        locs = [m.location_m for m in members]
+        gap_m = (max(locs) - min(locs))
         group_extents.append((group_id, min(locs), max(locs)))
 
         is_t_or_a = any(m.tag_type in ("T", "A") for m in members)
@@ -291,7 +291,7 @@ def check_h2_12_duplicate_and_tagset_spacing(tags: list[Tag]) -> list[CheckResul
     # Tag-set to tag-set >= 10m (H2.12, second paragraph)
     group_extents.sort(key=lambda g: g[1])
     for (id1, _, max1), (id2, min2, _) in zip(group_extents, group_extents[1:]):
-        gap_m = (min2 - max1) * 1000
+        gap_m = (min2 - max1)
         if gap_m < 0:
             continue  # overlapping groups -- caught elsewhere / data error
         ok = gap_m >= 10
@@ -339,7 +339,7 @@ def check_h2_14_legend_shape(tags: list[Tag]) -> list[CheckResult]:
     for group_id, members in groups.items():
         if len(members) < 2:
             continue
-        locs = [m.location_km for m in members]
+        locs = [m.location_m for m in members]
         co_located = (max(locs) - min(locs)) == 0
         expected_shape = "Rectangle" if co_located else "Triangle"
         shapes = {m.legend_shape for m in members if m.legend_shape}
@@ -475,10 +475,10 @@ def check_brd_br005_border_tag_present(tags: list[Tag]) -> list[CheckResult]:
     results = []
     border_tags = [t for t in tags if t.is_border_tag]
     for t in border_tags:
-        ok = t.location_km is not None
+        ok = t.location_m is not None
         results.append(CheckResult(
             "BR-005", "Border tag has absolute location recorded", "PASS" if ok else "FAIL",
-            f"{t.tag_ref}: location_km={t.location_km}",
+            f"{t.tag_ref}: location_m={t.location_m}",
             subject_ref=t.tag_ref,
         ))
     return results
@@ -487,24 +487,29 @@ def check_brd_br005_border_tag_present(tags: list[Tag]) -> list[CheckResult]:
 # ---------------------------------------------------------------------------
 # Full run
 # ---------------------------------------------------------------------------
-# DATA-UNITS: every distance rule multiplies location_km by 1000. A value entered
-# in metres (262910 instead of 262.910) makes all of them meaningless without any of
-# them visibly failing, so flag it explicitly -- this runs FIRST so it's the first
-# thing a Checker sees.
+# DATA-UNITS: all locations are chainage in METRES (e.g. 262910 = km 262.910), and
+# every distance rule compares them directly. A station whose values look like km
+# (262.910) makes every distance rule 1000x too small without any of them visibly
+# failing -- so warn. It's a WARN, not a FAIL: a genuine metre chainage near km 0 can
+# be small, so this is a prompt to look, not a proof.
 def check_data_units(elements: list[Element], tags: list[Tag], tins: list[TIN]) -> list[CheckResult]:
-    out: list[CheckResult] = []
-    rows = ([(e.element_ref, e.location_km) for e in elements]
-            + [(t.tag_ref, t.location_km) for t in tags]
-            + [(f"TIN {n.tin_no} start", n.start_km) for n in tins]
-            + [(f"TIN {n.tin_no} end", n.end_km) for n in tins])
-    for ref, km in rows:
-        if km is not None and abs(km) > MAX_CHAINAGE_KM:
-            out.append(CheckResult(
-                "DATA-UNITS", "Chainage entered in km", "FAIL",
-                f"{ref}: location {km:g} is not a plausible km value (> {MAX_CHAINAGE_KM:g}) -- "
-                f"looks like metres; enter {km / 1000:g} instead. All distance checks for "
-                f"this station are unreliable until fixed.", subject_ref=ref))
-    return out
+    vals = ([e.location_m for e in elements] + [t.location_m for t in tags]
+            + [n.start_m for n in tins] + [n.end_m for n in tins])
+    vals = [v for v in vals if v is not None]
+    if len(vals) < 2:
+        return []
+    span = max(vals) - min(vals)
+    fractional = sum(1 for v in vals if abs(v - round(v)) > 1e-9)
+    # A real station layout spans hundreds of metres or more; one that spans < 50
+    # "metres" while carrying decimal parts is almost certainly entered in km.
+    if span < 50 and fractional >= max(1, len(vals) // 2):
+        return [CheckResult(
+            "DATA-UNITS", "Chainage entered in metres", "WARN",
+            f"All locations fall within {span:g} units of each other and have decimal parts "
+            f"(e.g. {vals[0]:g}) -- this looks like km. Locations must be chainage in METRES "
+            f"(e.g. {vals[0] * 1000:g}); distance checks are unreliable until corrected.")]
+    return [CheckResult("DATA-UNITS", "Chainage entered in metres", "PASS",
+                        f"Locations span {span:g} m")]
 
 
 def run_all_checks(station: Station, elements: list[Element], tags: list[Tag],

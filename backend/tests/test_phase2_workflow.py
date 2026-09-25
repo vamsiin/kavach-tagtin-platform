@@ -151,7 +151,7 @@ def test_self_checked_locks_registers_and_revise_unlocks(client, h):
     assert wf["history"][0]["verification_fail_count"] == 0
     assert wf["history"][0]["comment"] == "all clear"
 
-    tag = {"tag_ref": "R-1", "tag_type": "N", "location_km": 1.0}
+    tag = {"tag_ref": "R-1", "tag_type": "N", "location_m": 1000}
     assert client.post(f"/stations/{sid}/tags", json=tag, headers=h["dana"]).status_code == 409
     up = client.post(f"/stations/{sid}/documents", files={"file": ("s.pdf", io.BytesIO(b"x"))},
                      data={"doc_type": "SIP"}, headers=h["dana"])
@@ -217,7 +217,7 @@ def test_railway_submission_snapshot_is_frozen_after_reopen(client, h):
     assert client.post(f"/stations/{sid}/reopen", json={"comment": "railway remarks"},
                        headers=h["admin"]).json()["status"] == "draft"
     client.post(f"/stations/{sid}/tags", json={"tag_ref": "R-9", "tag_type": "N",
-                "location_km": 5.0}, headers=h["dana"])
+                "location_m": 5000}, headers=h["dana"])
     rec = client.get(f"/stations/{sid}/railway-submissions", headers=h["dana"]).json()[0]
     assert rec["layout_snapshot"]["tags"] == []
 

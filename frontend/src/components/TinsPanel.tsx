@@ -14,8 +14,8 @@ const columns: ColumnDef<TIN>[] = [
   { key: "tin_no", label: "TIN No" },
   { key: "section_type", label: "Section" },
   { key: "color", label: "Color" },
-  { key: "start_km", label: "Start (km)" },
-  { key: "end_km", label: "End (km)" },
+  { key: "start_m", label: "Start (m)" },
+  { key: "end_m", label: "End (m)" },
   { key: "is_non_kavach_territory", label: "Non-KAVACH", render: (t) => t.is_non_kavach_territory ? "Yes" : "No" },
 ];
 
@@ -47,8 +47,8 @@ function TinForm({ initial, onSubmit, onCancel, submitting }: {
   const [tinNo, setTinNo] = useState(initial ? String(initial.tin_no) : "");
   const [sectionType, setSectionType] = useState(initial?.section_type ?? "Station");
   const [color, setColor] = useState(initial?.color ?? "");
-  const [startKm, setStartKm] = useState(initial ? String(initial.start_km) : "");
-  const [endKm, setEndKm] = useState(initial ? String(initial.end_km) : "");
+  const [startM, setStartM] = useState(initial ? String(initial.start_m) : "");
+  const [endM, setEndM] = useState(initial ? String(initial.end_m) : "");
   const [nonKavach, setNonKavach] = useState(initial?.is_non_kavach_territory ?? false);
 
   return (
@@ -56,7 +56,7 @@ function TinForm({ initial, onSubmit, onCancel, submitting }: {
       e.preventDefault();
       onSubmit({
         tin_no: parseInt(tinNo), section_type: sectionType, color: color || null,
-        start_km: parseFloat(startKm), end_km: parseFloat(endKm),
+        start_m: parseFloat(startM), end_m: parseFloat(endM),
         is_non_kavach_territory: nonKavach,
       });
     }}>
@@ -66,8 +66,8 @@ function TinForm({ initial, onSubmit, onCancel, submitting }: {
         <option value="Block">Block</option>
       </select>
       <input placeholder="Color" value={color} onChange={(e) => setColor(e.target.value)} style={{ width: 100 }} />
-      <input type="number" step="0.001" placeholder="Start (km)" value={startKm} onChange={(e) => setStartKm(e.target.value)} required style={{ width: 110 }} />
-      <input type="number" step="0.001" placeholder="End (km)" value={endKm} onChange={(e) => setEndKm(e.target.value)} required style={{ width: 110 }} />
+      <input type="number" step="0.001" placeholder="Start (m)" value={startM} onChange={(e) => setStartM(e.target.value)} required style={{ width: 110 }} />
+      <input type="number" step="0.001" placeholder="End (m)" value={endM} onChange={(e) => setEndM(e.target.value)} required style={{ width: 110 }} />
       <label className="checkbox-label">
         <input type="checkbox" checked={nonKavach} onChange={(e) => setNonKavach(e.target.checked)} />
         Non-KAVACH territory

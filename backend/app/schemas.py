@@ -1,15 +1,8 @@
 import json
 
 from pydantic import BaseModel, Field, field_validator
-from .domain import ELEMENT_TYPES, TAG_TYPES, MAX_CHAINAGE_KM
+from .domain import ELEMENT_TYPES, TAG_TYPES
 
-
-def _check_km(v, field_name: str):
-    if v is not None and abs(v) > MAX_CHAINAGE_KM:
-        raise ValueError(
-            f"{field_name}={v:g} is not a plausible km value (max {MAX_CHAINAGE_KM:g}). "
-            f"Locations are in km -- did you mean {v / 1000:g}?")
-    return v
 
 
 class StationCreate(BaseModel):
@@ -37,28 +30,17 @@ class StationOut(StationCreate):
 class ElementCreate(BaseModel):
     element_ref: str
     element_type: str = Field(description=f"One of: {', '.join(ELEMENT_TYPES)}")
-    location_km: float
+    location_m: float
     direction: str | None = None
     remarks: str | None = None
     source_document_id: int | None = Field(
         default=None, description="Input document (SIP/DXF etc.) this row was derived from -- FR-011")
 
-    @field_validator("location_km")
-    @classmethod
-    def _km(cls, v):
-        return _check_km(v, "location_km")
 
 
 class ElementOut(ElementCreate):
     id: int
 
-    # Output must never fail on legacy rows that predate the km guard (e.g. values
-    # stored in metres) -- override the input validator with a pass-through so they
-    # can still be listed, fixed, and flagged by the DATA-UNITS verification check.
-    @field_validator("location_km")
-    @classmethod
-    def _km(cls, v, info=None):
-        return v
 
     class Config:
         from_attributes = True
@@ -67,7 +49,7 @@ class ElementOut(ElementCreate):
 class TagCreate(BaseModel):
     tag_ref: str
     tag_type: str = Field(description=f"One of: {', '.join(TAG_TYPES)}")
-    location_km: float
+    location_m: float
     tag_number: int | None = None
     direction: str | None = None
     tin_no: int | None = None
@@ -81,10 +63,6 @@ class TagCreate(BaseModel):
     source_document_id: int | None = Field(
         default=None, description="Input document (SIP/DXF/Allocation Chart) this tag was derived from -- FR-011/BR-001")
 
-    @field_validator("location_km")
-    @classmethod
-    def _km(cls, v):
-        return _check_km(v, "location_km")
 
     @field_validator("is_duplicate", "is_border_tag", mode="before")
     @classmethod
@@ -106,13 +84,6 @@ class TagCreate(BaseModel):
 class TagOut(TagCreate):
     id: int
 
-    # Output must never fail on legacy rows that predate the km guard (e.g. values
-    # stored in metres) -- override the input validator with a pass-through so they
-    # can still be listed, fixed, and flagged by the DATA-UNITS verification check.
-    @field_validator("location_km")
-    @classmethod
-    def _km(cls, v, info=None):
-        return v
 
     class Config:
         from_attributes = True
@@ -122,29 +93,18 @@ class TINCreate(BaseModel):
     tin_no: int
     section_type: str  # Station | Block
     color: str | None = None
-    start_km: float
-    end_km: float
+    start_m: float
+    end_m: float
     direction: str | None = None
     is_non_kavach_territory: bool = False
     remarks: str | None = None
     source_document_id: int | None = None
 
-    @field_validator("start_km", "end_km")
-    @classmethod
-    def _km(cls, v, info):
-        return _check_km(v, info.field_name)
 
 
 class TINOut(TINCreate):
     id: int
 
-    # Output must never fail on legacy rows that predate the km guard (e.g. values
-    # stored in metres) -- override the input validator with a pass-through so they
-    # can still be listed, fixed, and flagged by the DATA-UNITS verification check.
-    @field_validator("start_km", "end_km")
-    @classmethod
-    def _km(cls, v, info=None):
-        return v
 
     class Config:
         from_attributes = True
@@ -345,7 +305,7 @@ class DxfCandidateOut(BaseModel):
     x: float
     y: float
     kind: str
-    suggested_location_km: float | None = None
+    suggested_location_m: float | None = None
 
 
 class DxfImportOut(BaseModel):
@@ -388,7 +348,7 @@ class TraceRow(BaseModel):
     id: int
     ref: str
     type: str | None = None
-    location_km: float | None = None
+    location_m: float | None = None
     source: TraceDocRef | None = None
     source_outdated: bool = False
     linked_element_ref: str | None = None

@@ -166,7 +166,7 @@ def test_delete_refused_when_tag_traces_to_document(client, users):
     sid = _station(client, users["des"])
     doc = _upload(client, users["des"], sid).json()
     r = client.post(f"/stations/{sid}/tags", json={"tag_ref": "R-1", "tag_type": "N",
-                    "location_km": 1.0, "source_document_id": doc["id"]}, headers=users["des"])
+                    "location_m": 1000, "source_document_id": doc["id"]}, headers=users["des"])
     assert r.status_code == 200
     r = client.delete(f"/stations/{sid}/documents/{doc['id']}", headers=users["des"])
     assert r.status_code == 409 and "trace" in r.json()["detail"]
@@ -198,7 +198,7 @@ def test_source_document_must_belong_to_same_station(client, users):
     s2 = _station(client, users["des"], "2")
     doc = _upload(client, users["des"], s1).json()
     r = client.post(f"/stations/{s2}/tags", json={"tag_ref": "R-1", "tag_type": "N",
-                    "location_km": 1.0, "source_document_id": doc["id"]}, headers=users["des"])
+                    "location_m": 1000, "source_document_id": doc["id"]}, headers=users["des"])
     assert r.status_code == 422
 
 
@@ -207,15 +207,15 @@ def test_put_without_source_field_preserves_link(client, users):
     sid = _station(client, users["des"])
     doc = _upload(client, users["des"], sid).json()
     tag = client.post(f"/stations/{sid}/tags", json={"tag_ref": "R-1", "tag_type": "N",
-                      "location_km": 1.0, "source_document_id": doc["id"]},
+                      "location_m": 1000, "source_document_id": doc["id"]},
                       headers=users["des"]).json()
     r = client.put(f"/stations/{sid}/tags/{tag['id']}", json={"tag_ref": "R-1", "tag_type": "N",
-                   "location_km": 1.5}, headers=users["des"])
+                   "location_m": 1500}, headers=users["des"])
     assert r.status_code == 200
-    assert r.json()["source_document_id"] == doc["id"] and r.json()["location_km"] == 1.5
+    assert r.json()["source_document_id"] == doc["id"] and r.json()["location_m"] == 1500
     # explicit null does unlink
     r = client.put(f"/stations/{sid}/tags/{tag['id']}", json={"tag_ref": "R-1", "tag_type": "N",
-                   "location_km": 1.5, "source_document_id": None}, headers=users["des"])
+                   "location_m": 1500, "source_document_id": None}, headers=users["des"])
     assert r.json()["source_document_id"] is None
 
 
@@ -245,17 +245,17 @@ def test_import_dxf_returns_candidates_without_touching_registers(client, users)
 
 def test_import_dxf_chainage_calibration(client, users):
     sid = _station(client, users["des"])
-    # x=1000 drawing units == km 262.000 ; 1000 units per km
-    r = _import(client, users["des"], sid, ref_x="1000", ref_km="262.0", units_per_km="1000")
+    # x=1000 drawing units == chainage 262000 m ; 1 drawing unit per metre
+    r = _import(client, users["des"], sid, ref_x="1000", ref_m="262000", units_per_m="1")
     texts = {c["text"]: c for c in r.json()["candidates"]}
-    assert texts["S1"]["suggested_location_km"] == 262.0
-    assert texts["R-775"]["suggested_location_km"] == 262.25
+    assert texts["S1"]["suggested_location_m"] == 262000
+    assert texts["R-775"]["suggested_location_m"] == 262250
     # re-parse stored doc with a different calibration
     doc_id = r.json()["document"]["id"]
     r2 = client.get(f"/stations/{sid}/documents/{doc_id}/dxf-candidates",
-                    params={"ref_x": 0, "ref_km": 0, "units_per_km": 500}, headers=users["chk"])
+                    params={"ref_x": 0, "ref_m": 0, "units_per_m": 0.5}, headers=users["chk"])
     texts2 = {c["text"]: c for c in r2.json()["candidates"]}
-    assert texts2["R-775"]["suggested_location_km"] == 2.5
+    assert texts2["R-775"]["suggested_location_m"] == 2500
 
 
 def test_import_dxf_rejects_non_dxf(client, users):
@@ -270,8 +270,8 @@ def test_dxf_commit_creates_traced_rows_and_links_by_ref(client, users):
     sid = _station(client, users["des"])
     doc_id = _import(client, users["des"], sid).json()["document"]["id"]
     r = client.post(f"/stations/{sid}/documents/{doc_id}/dxf-commit", json={
-        "elements": [{"element_ref": "S1", "element_type": "Mainline Starter", "location_km": 262.0}],
-        "tags": [{"tag_ref": "R-775", "tag_type": "S", "location_km": 262.25, "tag_number": 775,
+        "elements": [{"element_ref": "S1", "element_type": "Mainline Starter", "location_m": 262000}],
+        "tags": [{"tag_ref": "R-775", "tag_type": "S", "location_m": 262250, "tag_number": 775,
                   "linked_element_ref": "S1"}],
     }, headers=users["des"])
     assert r.status_code == 200, r.text
@@ -286,10 +286,10 @@ def test_dxf_commit_is_all_or_nothing(client, users):
     sid = _station(client, users["des"])
     doc_id = _import(client, users["des"], sid).json()["document"]["id"]
     r = client.post(f"/stations/{sid}/documents/{doc_id}/dxf-commit", json={
-        "elements": [{"element_ref": "S1", "element_type": "Mainline Starter", "location_km": 1}],
-        "tags": [{"tag_ref": "R-1", "tag_type": "S", "location_km": 1},
-                 {"tag_ref": "R-2", "tag_type": "BOGUS", "location_km": 2},
-                 {"tag_ref": "R-3", "tag_type": "N", "location_km": 3, "linked_element_ref": "NOPE"}],
+        "elements": [{"element_ref": "S1", "element_type": "Mainline Starter", "location_m": 1000}],
+        "tags": [{"tag_ref": "R-1", "tag_type": "S", "location_m": 1000},
+                 {"tag_ref": "R-2", "tag_type": "BOGUS", "location_m": 2000},
+                 {"tag_ref": "R-3", "tag_type": "N", "location_m": 3000, "linked_element_ref": "NOPE"}],
     }, headers=users["des"])
     assert r.status_code == 422
     errs = r.json()["detail"]["errors"]
@@ -301,17 +301,17 @@ def test_dxf_commit_is_all_or_nothing(client, users):
 def test_dxf_commit_rejects_duplicate_refs(client, users):
     sid = _station(client, users["des"])
     client.post(f"/stations/{sid}/tags", json={"tag_ref": "R-775", "tag_type": "S",
-                "location_km": 1.0}, headers=users["des"])
+                "location_m": 1000}, headers=users["des"])
     doc_id = _import(client, users["des"], sid).json()["document"]["id"]
     r = client.post(f"/stations/{sid}/documents/{doc_id}/dxf-commit", json={
-        "tags": [{"tag_ref": "R-775", "tag_type": "S", "location_km": 1}]}, headers=users["des"])
+        "tags": [{"tag_ref": "R-775", "tag_type": "S", "location_m": 1000}]}, headers=users["des"])
     assert r.status_code == 422
 
 
 def test_dxf_commit_requires_designer_and_draft(client, users):
     sid = _station(client, users["des"])
     doc_id = _import(client, users["des"], sid).json()["document"]["id"]
-    body = {"tags": [{"tag_ref": "R-1", "tag_type": "S", "location_km": 1}]}
+    body = {"tags": [{"tag_ref": "R-1", "tag_type": "S", "location_m": 1000}]}
     assert client.post(f"/stations/{sid}/documents/{doc_id}/dxf-commit", json=body,
                        headers=users["chk"]).status_code == 403
 
@@ -325,9 +325,9 @@ def test_traceability_matrix_end_to_end(client, users):
     _upload(client, users["des"], sid, doc_type="SITE_SURVEY", name="survey.xlsx")
     # no allocation chart yet
     t = client.post(f"/stations/{sid}/tags", json={"tag_ref": "R-1", "tag_type": "N",
-                    "location_km": 1.0, "source_document_id": sip["id"]}, headers=users["des"])
+                    "location_m": 1000, "source_document_id": sip["id"]}, headers=users["des"])
     client.post(f"/stations/{sid}/tags", json={"tag_ref": "R-2", "tag_type": "N",
-                "location_km": 2.0}, headers=users["des"])
+                "location_m": 2000}, headers=users["des"])
 
     tr = client.get(f"/stations/{sid}/traceability", headers=users["chk"]).json()
     assert tr["summary"]["tags"] == 2 and tr["summary"]["tags_traced"] == 1

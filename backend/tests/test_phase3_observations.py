@@ -115,7 +115,7 @@ def _act(client, h, sid, oid, action, who, comment=""):
 def test_raise_numbering_subject_by_ref_and_thread(client, h):
     sid = _station(client, h)
     client.post(f"/stations/{sid}/tags", json={"tag_ref": "R-795", "tag_type": "N",
-                "location_km": 263.152}, headers=h["dana"])
+                "location_m": 263152}, headers=h["dana"])
     r1 = _raise(client, h, sid, subject_kind="tag", subject_ref="R-795", clause="H2.6",
                 category="annexure-h")
     assert r1.status_code == 200, r1.text
@@ -145,7 +145,7 @@ def test_raise_validation_and_permissions(client, h):
 def test_observation_survives_deletion_of_its_tag(client, h):
     sid = _station(client, h)
     tid = client.post(f"/stations/{sid}/tags", json={"tag_ref": "R-1", "tag_type": "N",
-                      "location_km": 1.0}, headers=h["dana"]).json()["id"]
+                      "location_m": 1000}, headers=h["dana"]).json()["id"]
     oid = _raise(client, h, sid, subject_kind="tag", subject_id=tid).json()["id"]
     assert client.delete(f"/stations/{sid}/tags/{tid}", headers=h["dana"]).status_code == 204
     o = client.get(f"/stations/{sid}/observations", headers=h["dana"]).json()["observations"][0]
@@ -245,31 +245,37 @@ def test_station_delete_cascades_observations(client, h):
 
 
 # ---------------------------------------------------------------------------
-# km / metres guard
+# Units: chainage in METRES, warn-only guard for km-looking values
 # ---------------------------------------------------------------------------
-def test_metres_entered_as_km_rejected_with_hint(client, h):
+def test_metre_chainages_are_accepted_and_pass_unit_check(client, h):
+    """Real Aler values (metres) must be accepted as-is and not flagged."""
     sid = _station(client, h)
-    r = client.post(f"/stations/{sid}/tags", json={"tag_ref": "R-1", "tag_type": "N",
-                    "location_km": 262910}, headers=h["dana"])
-    assert r.status_code == 422 and "262.91" in r.text
-    r = client.post(f"/stations/{sid}/tins", json={"tin_no": 1, "section_type": "Station",
-                    "start_km": 262.9, "end_km": 263152}, headers=h["dana"])
-    assert r.status_code == 422 and "end_km" in r.text
-
-
-def test_legacy_metre_rows_still_list_and_fail_verification(client, h):
-    """Rows stored before the guard (like the real Aler station) must still load,
-    and verification must flag them so they can't pass self-check."""
-    sid = _station(client, h)
-    from app.database import SessionLocal
-    from app import models
-    db = SessionLocal()
-    db.add(models.TagORM(station_id=sid, tag_ref="R-793", tag_type="S", location_km=262910))
-    db.commit()
-    db.close()
-    r = client.get(f"/stations/{sid}/tags", headers=h["dana"])
-    assert r.status_code == 200 and r.json()[0]["location_km"] == 262910
+    for ref, m in (("R-793", 262910), ("R-795", 263152)):
+        r = client.post(f"/stations/{sid}/tags", json={"tag_ref": ref, "tag_type": "N",
+                        "location_m": m}, headers=h["dana"])
+        assert r.status_code == 200 and r.json()["location_m"] == m
     rep = client.get(f"/stations/{sid}/verify", headers=h["dana"]).json()
     units = [x for x in rep["results"] if x["clause"] == "DATA-UNITS"]
-    assert units and units[0]["status"] == "FAIL" and "262.91" in units[0]["message"]
-    assert client.post(f"/stations/{sid}/self-check", json={}, headers=h["dana"]).status_code == 409
+    assert units[0]["status"] == "PASS"
+
+
+def test_km_looking_values_warn_but_do_not_block(client, h):
+    sid = _station(client, h)
+    for ref, v in (("R-793", 262.910), ("R-795", 263.152)):
+        client.post(f"/stations/{sid}/tags", json={"tag_ref": ref, "tag_type": "N",
+                    "location_m": v}, headers=h["dana"])
+    rep = client.get(f"/stations/{sid}/verify", headers=h["dana"]).json()
+    units = [x for x in rep["results"] if x["clause"] == "DATA-UNITS"]
+    assert units[0]["status"] == "WARN" and "262910" in units[0]["message"]
+    assert rep["summary"]["fail_count"] == 0
+    # WARN doesn't block self-check
+    assert client.post(f"/stations/{sid}/self-check", json={}, headers=h["dana"]).status_code == 200
+
+
+def test_small_integer_chainage_near_zero_is_not_flagged(client, h):
+    sid = _station(client, h)
+    for ref, v in (("R-1", 10), ("R-2", 30)):
+        client.post(f"/stations/{sid}/tags", json={"tag_ref": ref, "tag_type": "N",
+                    "location_m": v}, headers=h["dana"])
+    rep = client.get(f"/stations/{sid}/verify", headers=h["dana"]).json()
+    assert [x["status"] for x in rep["results"] if x["clause"] == "DATA-UNITS"] == ["PASS"]
