@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Station, Element, Tag, TIN } from "./types";
+import type { Station, Element, Tag, TIN, ObservationDraft, ObservationSummary, CheckResult } from "./types";
 import { api } from "./api";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { LoginScreen } from "./components/LoginScreen";
@@ -13,6 +13,7 @@ import { WorkflowPanel } from "./components/WorkflowPanel";
 import { UsersPanel } from "./components/UsersPanel";
 import { InputsPanel } from "./components/InputsPanel";
 import { TraceabilityPanel } from "./components/TraceabilityPanel";
+import { ObservationsPanel } from "./components/ObservationsPanel";
 import "./styles.css";
 
 export default function App() {
@@ -53,7 +54,9 @@ function MainContent() {
   const [elements, setElements] = useState<Element[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [tins, setTins] = useState<TIN[]>([]);
-  const [tab, setTab] = useState<"inputs" | "registers" | "verify" | "trace" | "workflow" | "users">("registers");
+  const [tab, setTab] = useState<"inputs" | "registers" | "verify" | "observations" | "trace" | "workflow" | "users">("registers")
+  const [obsDraft, setObsDraft] = useState<ObservationDraft | null>(null);
+  const [obsSummary, setObsSummary] = useState<ObservationSummary | null>(null);
 
   useEffect(() => {
     api.listStations().then(setStations).catch(console.error);
@@ -64,7 +67,23 @@ function MainContent() {
     api.listElements(selected.id).then(setElements).catch(console.error);
     api.listTags(selected.id).then(setTags).catch(console.error);
     api.listTins(selected.id).then(setTins).catch(console.error);
+    api.listObservations(selected.id).then((r) => setObsSummary(r.summary)).catch(console.error);
   }, [selected]);
+
+  const isReviewer = !!user && ["checker", "approver", "admin"].includes(user.role);
+  function raiseFromCheck(r: CheckResult) {
+    const tag = tags.find((t) => t.tag_ref === r.subject_ref);
+    const el = elements.find((e) => e.element_ref === r.subject_ref);
+    setObsDraft({
+      description: `${r.clause} ${r.title}: ${r.message}`,
+      severity: r.status === "FAIL" ? "major" : "minor",
+      category: r.clause.startsWith("H2") ? "annexure-h" : r.clause === "DATA-UNITS" ? "data" : "other",
+      clause: r.clause,
+      subject_kind: tag ? "tag" : el ? "element" : "station",
+      subject_id: tag?.id ?? el?.id ?? null,
+    });
+    setTab("observations");
+  }
 
   async function reloadElements() {
     if (selected) setElements(await api.listElements(selected.id));
@@ -110,6 +129,10 @@ function MainContent() {
             <button className={tab === "verify" ? "active" : ""} onClick={() => setTab("verify")}>
               Verification
             </button>
+            <button className={tab === "observations" ? "active" : ""} onClick={() => setTab("observations")}>
+              Observations{obsSummary && obsSummary.unresolved + obsSummary.unverified > 0
+                ? <span className="tab-count">{obsSummary.unresolved + obsSummary.unverified}</span> : null}
+            </button>
             <button className={tab === "trace" ? "active" : ""} onClick={() => setTab("trace")}>
               Traceability
             </button>
@@ -130,6 +153,12 @@ function MainContent() {
 
           {tab === "trace" && <TraceabilityPanel stationId={selected.id} />}
 
+          {tab === "observations" && (
+            <ObservationsPanel stationId={selected.id} stationStatus={selected.status}
+              tags={tags} elements={elements} tins={tins}
+              draft={obsDraft} onDraftConsumed={() => setObsDraft(null)} onSummary={setObsSummary} />
+          )}
+
           {tab === "registers" && (
             <>
               <ElementsPanel elements={elements} readOnly={readOnly}
@@ -149,7 +178,8 @@ function MainContent() {
 
           {tab === "verify" && (
             <>
-              <VerificationPanel stationId={selected.id} />
+              <VerificationPanel stationId={selected.id}
+                onRaiseObservation={isReviewer && selected.status !== "railway_submitted" ? raiseFromCheck : undefined} />
               <TocPanel stationId={selected.id} />
             </>
           )}

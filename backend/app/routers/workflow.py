@@ -51,6 +51,21 @@ def _load_workflow_state(station: models.StationORM, db: Session) -> StationWork
     )
 
 
+def _observation_gate(station_id: int, action: str, db: Session) -> None:
+    """BRD FR-008 gates -- see app/observations/rules.py for the policy."""
+    from .observations import observation_summary
+    if action not in (SELF_CHECK, SUBMIT, CHECK, APPROVE, RAILWAY_SUBMIT):
+        return
+    s = observation_summary(db, station_id)
+    if s["unresolved"]:
+        raise HTTPException(409, f"{s['unresolved']} review observation(s) are still open -- "
+                                 f"resolve them (Observations tab) before '{action}'.")
+    if action in (CHECK, APPROVE, RAILWAY_SUBMIT) and s["unverified"]:
+        raise HTTPException(409, f"{s['unverified']} resolved observation(s) have not been "
+                                 f"verified and closed by a reviewer -- close or reopen them "
+                                 f"before '{action}'.")
+
+
 def _run_verification(station_id: int, db: Session):
     """Fresh server-side Annexure-H run -- workflow gates never trust a
     client-supplied result."""
@@ -85,6 +100,7 @@ def _do_transition(
         raise HTTPException(404, "Station not found")
 
     state = _load_workflow_state(station, db)
+    _observation_gate(station_id, action, db)
     actor = user.to_domain()
     now_iso = datetime.now(timezone.utc).isoformat()
 

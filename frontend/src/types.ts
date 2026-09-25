@@ -335,3 +335,66 @@ export interface RailwaySubmission {
   layout_snapshot: { elements: unknown[]; tags: unknown[]; tins: unknown[]; station: Record<string, unknown> };
   input_snapshot: InputSnapshotItem[] | null;
 }
+
+// ---- Phase 3: observations (FR-008) ----
+export const OBS_SEVERITIES = ["major", "minor", "info"] as const;
+export const OBS_CATEGORIES = ["annexure-h", "toc", "drafting", "data", "inputs", "other"] as const;
+export const OBS_STATUS_LABELS: Record<string, string> = {
+  open: "Open", resolved: "Resolved – awaiting verification", closed: "Closed",
+  reopened: "Reopened", withdrawn: "Withdrawn",
+};
+
+export interface ObservationComment {
+  id: number;
+  action: string;
+  from_status: string | null;
+  to_status: string | null;
+  author: string;
+  author_role: string;
+  text: string | null;
+  created_at: string;
+}
+
+export interface Observation {
+  id: number;
+  station_id: number;
+  obs_no: number;
+  label: string;
+  description: string;
+  severity: string;
+  category: string | null;
+  clause: string | null;
+  subject_kind: string;
+  subject_id: number | null;
+  subject_ref: string | null;
+  subject_exists: boolean;
+  status: string;
+  raised_by: string;
+  raised_by_role: string;
+  raised_at: string;
+  raised_at_status: string | null;
+  layout_version: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  closed_by: string | null;
+  closed_at: string | null;
+  comments: ObservationComment[];
+  allowed_actions: string[];
+}
+
+export interface ObservationSummary {
+  total: number;
+  by_status: Record<string, number>;
+  unresolved: number;
+  unverified: number;
+}
+
+export interface ObservationDraft {
+  description?: string;
+  severity?: string;
+  category?: string;
+  clause?: string;
+  subject_kind?: string;
+  subject_id?: number | null;
+  subject_ref?: string | null;
+}

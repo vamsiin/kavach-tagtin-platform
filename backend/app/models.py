@@ -39,6 +39,8 @@ class StationORM(Base):
     documents = relationship("InputDocumentORM", back_populates="station", cascade="all, delete-orphan")
     railway_submissions = relationship("RailwaySubmissionORM", back_populates="station",
                                        cascade="all, delete-orphan")
+    observations = relationship("ObservationORM", back_populates="station",
+                                cascade="all, delete-orphan")
 
     def to_domain(self) -> domain.Station:
         return domain.Station(
@@ -265,3 +267,65 @@ class RailwaySubmissionORM(Base):
     input_snapshot = Column(Text, nullable=True)        # JSON: input document revisions
 
     station = relationship("StationORM", back_populates="railway_submissions")
+
+
+class ObservationORM(Base):
+    """BRD FR-008: a review observation raised against a station's layout -- one
+    tracked, individually resolvable item, as opposed to the single free-text comment
+    a workflow transition carries.
+
+    Lifecycle (see app/observations/rules.py):
+        open / reopened --resolve (designer)--> resolved --close (reviewer)--> closed
+        resolved / closed --reopen (reviewer)--> reopened
+        open / reopened / resolved --withdraw (raiser/admin)--> withdrawn
+
+    The subject (tag / element / TIN / document / station) is stored as a kind + id +
+    a text snapshot of its ref, deliberately WITHOUT a foreign key: the designer may
+    delete or rename the tag as the fix, and the observation must survive that.
+    """
+    __tablename__ = "observations"
+
+    id = Column(Integer, primary_key=True)
+    station_id = Column(Integer, ForeignKey("stations.id"), nullable=False, index=True)
+    obs_no = Column(Integer, nullable=False)            # per-station sequence -> "OBS-003"
+    description = Column(Text, nullable=False)
+    severity = Column(String, nullable=False)           # major | minor | info
+    category = Column(String, nullable=True)            # annexure-h | toc | drafting | data | inputs | other
+    clause = Column(String, nullable=True)              # e.g. "H2.5"
+    subject_kind = Column(String, nullable=False, default="station")
+    subject_id = Column(Integer, nullable=True)
+    subject_ref = Column(String, nullable=True)
+    status = Column(String, nullable=False, default="open")
+    raised_by = Column(String, nullable=False)
+    raised_by_role = Column(String, nullable=False)
+    raised_at = Column(String, nullable=False)
+    raised_at_status = Column(String, nullable=True)    # station status when raised
+    layout_version = Column(String, nullable=True)      # layout X.Y.Z when raised
+    resolved_by = Column(String, nullable=True)
+    resolved_at = Column(String, nullable=True)
+    closed_by = Column(String, nullable=True)
+    closed_at = Column(String, nullable=True)
+
+    station = relationship("StationORM", back_populates="observations")
+    comments = relationship("ObservationCommentORM", back_populates="observation",
+                            cascade="all, delete-orphan",
+                            order_by="ObservationCommentORM.id")
+
+
+class ObservationCommentORM(Base):
+    """Append-only thread on an observation. Every lifecycle action writes one of
+    these (action = raise/resolve/close/reopen/withdraw), plain replies have
+    action = 'comment' -- so the thread IS the observation's audit trail."""
+    __tablename__ = "observation_comments"
+
+    id = Column(Integer, primary_key=True)
+    observation_id = Column(Integer, ForeignKey("observations.id"), nullable=False, index=True)
+    action = Column(String, nullable=False)
+    from_status = Column(String, nullable=True)
+    to_status = Column(String, nullable=True)
+    author = Column(String, nullable=False)
+    author_role = Column(String, nullable=False)
+    text = Column(Text, nullable=True)
+    created_at = Column(String, nullable=False)
+
+    observation = relationship("ObservationORM", back_populates="comments")

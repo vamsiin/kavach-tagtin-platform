@@ -2,6 +2,7 @@ import type {
   Station, Element, Tag, TIN, VerificationReport, ToCCrossValidation,
   User, TokenResponse, WorkflowStatus,
   RailwaySubmission, RailwaySubmitPayload,
+  Observation, ObservationSummary, ObservationDraft,
   DocType, InputDocument, DxfImportResult, DxfCalibration, DxfCommitPayload, Traceability,
 } from "./types";
 
@@ -181,6 +182,20 @@ export const api = {
   // ---- traceability (FR-011) ----
   getTraceability: (stationId: number) =>
     request<Traceability>(`/stations/${stationId}/traceability`),
+
+  // ---- observations (FR-008) ----
+  listObservations: (stationId: number) =>
+    request<{ observations: Observation[]; summary: ObservationSummary }>(`/stations/${stationId}/observations`),
+  raiseObservation: (stationId: number, payload: ObservationDraft) =>
+    request<Observation>(`/stations/${stationId}/observations`, {
+      method: "POST", body: JSON.stringify(payload),
+    }),
+  observationAction: (stationId: number, obsId: number,
+                      action: "resolve" | "close" | "reopen" | "withdraw" | "comment", comment: string) =>
+    request<Observation>(
+      `/stations/${stationId}/observations/${obsId}/${action === "comment" ? "comments" : action}`,
+      { method: "POST", body: JSON.stringify({ comment }) },
+    ),
 
   // ---- workflow ----
   getStation: (stationId: number) => request<Station>(`/stations/${stationId}`),

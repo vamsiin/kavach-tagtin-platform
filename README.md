@@ -429,6 +429,30 @@ Draft → **Self-checked** → Submitted → Checked → Approved → **Submitte
 - Upgrading: stations already `submitted`/`checked`/`approved` carry on unchanged; stations in
   `draft` just need a self-check before their next submit.
 
+**Phase 3 — done (FR-008 observations):**
+- `observations` + `observation_comments` tables; lifecycle in `app/observations/rules.py`,
+  API in `app/routers/observations.py`. Each observation is numbered per station
+  (OBS-001…), has severity (major / minor / info), optional category and clause, and a
+  subject (whole layout, a tag, element or TIN; stored without a foreign key so it
+  survives the tag being deleted as the fix). Records the layout version and station
+  status at the time it was raised.
+- Lifecycle: open/reopened → **resolve** (designer/admin, note required) → resolved →
+  **close** (checker/approver/admin, not the resolver) → closed; **reopen** from
+  resolved/closed (reviewer, reason required); **withdraw** (raiser/admin); comments by
+  anyone. Every action is appended to the observation's thread (its audit trail).
+- Workflow gates (info severity never blocks): self-check and submit are blocked while
+  any observation is open/reopened; check, approve and Railway submission are also
+  blocked while any is resolved but not yet closed. Nothing can be raised or changed
+  after Railway submission until an admin reopens the station.
+- UI: **Observations** tab (with a count badge), and a "Raise observation" link on every
+  FAIL/WARN row of the verification results for reviewers, prefilled with clause,
+  message and the tag/element concerned.
+
+**Chainage unit guard:** `location_km`, `start_km`, `end_km` above 5000 are rejected with
+a hint ("did you mean 262.91?"), because a metre value in a km field makes every distance
+rule 1000× wrong. Existing rows stored that way still load, but verification now reports a
+`DATA-UNITS` FAIL for each, so such a station cannot pass self-check until corrected.
+
 **Not yet built:** FR-001 does not *parse* the RFID Allocation Chart yet (BR-001
 still enforces range/uniqueness, not "matches the chart"); no submit gate on
 missing inputs (reported as gaps only); FR-006 configurable checklist engine;

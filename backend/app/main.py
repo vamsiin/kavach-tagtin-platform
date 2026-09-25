@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .database import Base, engine, ensure_schema_up_to_date
 from . import models  # noqa: F401  -- ensures models are registered before create_all
-from .routers import stations, verify, auth, workflow, documents
+from .routers import stations, verify, auth, workflow, documents, observations
 
 
 @asynccontextmanager
@@ -50,6 +50,7 @@ app.include_router(auth.router)
 app.include_router(workflow.router)
 app.include_router(documents.router)
 app.include_router(documents.meta_router)
+app.include_router(observations.router)
 
 
 @app.get("/health")

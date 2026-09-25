@@ -1,12 +1,14 @@
 import { useState } from "react";
-import type { VerificationReport } from "../types";
+import type { VerificationReport, CheckResult } from "../types";
 import { api } from "../api";
 
 interface Props {
   stationId: number;
+  // When provided (reviewers only), FAIL/WARN rows get a "Raise observation" link.
+  onRaiseObservation?: (r: CheckResult) => void;
 }
 
-export function VerificationPanel({ stationId }: Props) {
+export function VerificationPanel({ stationId, onRaiseObservation }: Props) {
   const [report, setReport] = useState<VerificationReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [showManual, setShowManual] = useState(false);
@@ -40,7 +42,7 @@ export function VerificationPanel({ stationId }: Props) {
 
           <table className="register-table">
             <thead>
-              <tr><th>Clause</th><th>Check</th><th>Status</th><th>Detail</th></tr>
+              <tr><th>Clause</th><th>Check</th><th>Status</th><th>Detail</th>{onRaiseObservation && <th></th>}</tr>
             </thead>
             <tbody>
               {report.results.map((r, i) => (
@@ -49,6 +51,13 @@ export function VerificationPanel({ stationId }: Props) {
                   <td>{r.title}</td>
                   <td><span className={`badge ${r.status.toLowerCase()}`}>{r.status}</span></td>
                   <td>{r.message}</td>
+                  {onRaiseObservation && (
+                    <td>
+                      {(r.status === "FAIL" || r.status === "WARN") && (
+                        <button className="link-btn" onClick={() => onRaiseObservation(r)}>Raise observation</button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
               {report.results.length === 0 && (

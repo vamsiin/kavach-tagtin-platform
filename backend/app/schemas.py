@@ -1,7 +1,15 @@
 import json
 
 from pydantic import BaseModel, Field, field_validator
-from .domain import ELEMENT_TYPES, TAG_TYPES
+from .domain import ELEMENT_TYPES, TAG_TYPES, MAX_CHAINAGE_KM
+
+
+def _check_km(v, field_name: str):
+    if v is not None and abs(v) > MAX_CHAINAGE_KM:
+        raise ValueError(
+            f"{field_name}={v:g} is not a plausible km value (max {MAX_CHAINAGE_KM:g}). "
+            f"Locations are in km -- did you mean {v / 1000:g}?")
+    return v
 
 
 class StationCreate(BaseModel):
@@ -35,9 +43,22 @@ class ElementCreate(BaseModel):
     source_document_id: int | None = Field(
         default=None, description="Input document (SIP/DXF etc.) this row was derived from -- FR-011")
 
+    @field_validator("location_km")
+    @classmethod
+    def _km(cls, v):
+        return _check_km(v, "location_km")
+
 
 class ElementOut(ElementCreate):
     id: int
+
+    # Output must never fail on legacy rows that predate the km guard (e.g. values
+    # stored in metres) -- override the input validator with a pass-through so they
+    # can still be listed, fixed, and flagged by the DATA-UNITS verification check.
+    @field_validator("location_km")
+    @classmethod
+    def _km(cls, v, info=None):
+        return v
 
     class Config:
         from_attributes = True
@@ -60,6 +81,11 @@ class TagCreate(BaseModel):
     source_document_id: int | None = Field(
         default=None, description="Input document (SIP/DXF/Allocation Chart) this tag was derived from -- FR-011/BR-001")
 
+    @field_validator("location_km")
+    @classmethod
+    def _km(cls, v):
+        return _check_km(v, "location_km")
+
     @field_validator("is_duplicate", "is_border_tag", mode="before")
     @classmethod
     def _coerce_none_bool_to_false(cls, v):
@@ -80,6 +106,14 @@ class TagCreate(BaseModel):
 class TagOut(TagCreate):
     id: int
 
+    # Output must never fail on legacy rows that predate the km guard (e.g. values
+    # stored in metres) -- override the input validator with a pass-through so they
+    # can still be listed, fixed, and flagged by the DATA-UNITS verification check.
+    @field_validator("location_km")
+    @classmethod
+    def _km(cls, v, info=None):
+        return v
+
     class Config:
         from_attributes = True
 
@@ -95,9 +129,22 @@ class TINCreate(BaseModel):
     remarks: str | None = None
     source_document_id: int | None = None
 
+    @field_validator("start_km", "end_km")
+    @classmethod
+    def _km(cls, v, info):
+        return _check_km(v, info.field_name)
+
 
 class TINOut(TINCreate):
     id: int
+
+    # Output must never fail on legacy rows that predate the km guard (e.g. values
+    # stored in metres) -- override the input validator with a pass-through so they
+    # can still be listed, fixed, and flagged by the DATA-UNITS verification check.
+    @field_validator("start_km", "end_km")
+    @classmethod
+    def _km(cls, v, info=None):
+        return v
 
     class Config:
         from_attributes = True
@@ -424,3 +471,71 @@ class RailwaySubmissionOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: observations (FR-008)
+# ---------------------------------------------------------------------------
+class ObservationCreate(BaseModel):
+    description: str = Field(min_length=1)
+    severity: str = "major"
+    category: str | None = None
+    clause: str | None = None
+    subject_kind: str = "station"
+    subject_id: int | None = None
+    # Alternative to subject_id: identify the tag/element by its ref (e.g. from a
+    # verification result row, which carries subject_ref but not an id).
+    subject_ref: str | None = None
+
+
+class ObservationActionRequest(BaseModel):
+    comment: str = ""
+
+
+class ObservationCommentOut(BaseModel):
+    id: int
+    action: str
+    from_status: str | None = None
+    to_status: str | None = None
+    author: str
+    author_role: str
+    text: str | None = None
+    created_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class ObservationOut(BaseModel):
+    id: int
+    station_id: int
+    obs_no: int
+    label: str = ""
+    description: str
+    severity: str
+    category: str | None = None
+    clause: str | None = None
+    subject_kind: str
+    subject_id: int | None = None
+    subject_ref: str | None = None
+    subject_exists: bool = True
+    status: str
+    raised_by: str
+    raised_by_role: str
+    raised_at: str
+    raised_at_status: str | None = None
+    layout_version: str | None = None
+    resolved_by: str | None = None
+    resolved_at: str | None = None
+    closed_by: str | None = None
+    closed_at: str | None = None
+    comments: list[ObservationCommentOut] = []
+    allowed_actions: list[str] = []
+
+    class Config:
+        from_attributes = True
+
+
+class ObservationListOut(BaseModel):
+    observations: list[ObservationOut]
+    summary: dict

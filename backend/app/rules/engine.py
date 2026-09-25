@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from ..domain import (
-    Element, Tag, TIN, Station, TAG_TYPES,
+    Element, Tag, TIN, Station, TAG_TYPES, MAX_CHAINAGE_KM,
     requires_signal_foot_tag, is_starter_signal_eligible_for_h2_7_exception,
 )
 
@@ -487,9 +487,30 @@ def check_brd_br005_border_tag_present(tags: list[Tag]) -> list[CheckResult]:
 # ---------------------------------------------------------------------------
 # Full run
 # ---------------------------------------------------------------------------
+# DATA-UNITS: every distance rule multiplies location_km by 1000. A value entered
+# in metres (262910 instead of 262.910) makes all of them meaningless without any of
+# them visibly failing, so flag it explicitly -- this runs FIRST so it's the first
+# thing a Checker sees.
+def check_data_units(elements: list[Element], tags: list[Tag], tins: list[TIN]) -> list[CheckResult]:
+    out: list[CheckResult] = []
+    rows = ([(e.element_ref, e.location_km) for e in elements]
+            + [(t.tag_ref, t.location_km) for t in tags]
+            + [(f"TIN {n.tin_no} start", n.start_km) for n in tins]
+            + [(f"TIN {n.tin_no} end", n.end_km) for n in tins])
+    for ref, km in rows:
+        if km is not None and abs(km) > MAX_CHAINAGE_KM:
+            out.append(CheckResult(
+                "DATA-UNITS", "Chainage entered in km", "FAIL",
+                f"{ref}: location {km:g} is not a plausible km value (> {MAX_CHAINAGE_KM:g}) -- "
+                f"looks like metres; enter {km / 1000:g} instead. All distance checks for "
+                f"this station are unreliable until fixed.", subject_ref=ref))
+    return out
+
+
 def run_all_checks(station: Station, elements: list[Element], tags: list[Tag],
                     tins: list[TIN]) -> VerificationReport:
     report = VerificationReport()
+    report.add(*check_data_units(elements, tags, tins))
     report.add(*check_h2_1_version_control(station))
     report.add(*check_h2_2_identifiers(station))
     report.add(*check_h2_5_normal_tag_spacing(tags))
