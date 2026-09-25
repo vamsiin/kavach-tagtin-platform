@@ -536,6 +536,12 @@ def check_h2_16_border_locations(station: Station) -> list[CheckResult]:
                             "with the absolute location of the border line")]
     out = []
     for a in station.adjacent:
+        if a.borders:
+            where = "; ".join(f"{b.line_label} {b.border_m:g} m"
+                              + (f" ({b.border_tag_ref})" if b.border_tag_ref else "") for b in a.borders)
+            out.append(CheckResult("H2.16", title, "PASS", f"Border with {a.name} ({a.side}): {where}",
+                                   subject_ref=a.name))
+            continue
         ok = a.border_m is not None
         out.append(CheckResult("H2.16", title, "PASS" if ok else "FAIL",
                                f"Border with {a.name} ({a.side}): "

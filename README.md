@@ -368,7 +368,8 @@ place on startup (`rules/store.py: migrate_rules`), keeping edits, responses and
 - *Station centre line* (`stations.centre_line_m`) — rule **H2.28** (FAIL if missing, or if it
   lies outside every line).
 - *Adjacent stations* (`adjacent_stations`): name, KAVACH ID, side, border line location,
-  distance, single/double line — rule **H2.16** (FAIL if none recorded or a border location is
+  distance, single/double line, and the border location **per line** with its border tag (e.g. DN line 265.278 S7D,
+  UP line 266.417 S30D) — rule **H2.16** (FAIL if none recorded or a border location is
   missing). Can also be sent with `POST /stations` as `adjacent_stations`.
 - **DATA-TOPOLOGY** (WARN by default): everything placed on a line and within its extent;
   points join two different lines.

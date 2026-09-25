@@ -108,6 +108,8 @@ def delete_track(station_id: int, track_id: int, db: Session = Depends(get_db),
     for model in (models.ElementORM, models.TagORM, models.TINORM):
         db.query(model).filter_by(station_id=station_id, track_id=track_id).update({"track_id": None})
     db.query(models.ElementORM).filter_by(station_id=station_id, to_track_id=track_id).update({"to_track_id": None})
+    for b in db.query(models.StationBorderORM).filter_by(track_id=track_id).all():
+        b.track_id = None
     db.delete(tr)
     db.commit()
     return None
@@ -116,7 +118,8 @@ def delete_track(station_id: int, track_id: int, db: Session = Depends(get_db),
 # ---------------------------------------------------------------------------
 # Adjacent stations and border lines (H2.16, H2.22)
 # ---------------------------------------------------------------------------
-def _validate_adjacent(payload: schemas.AdjacentStationCreate):
+def _validate_adjacent(payload: schemas.AdjacentStationCreate, station_id: int | None = None,
+                       db: Session | None = None):
     if not payload.name.strip():
         raise HTTPException(422, "Adjacent station name is required")
     if not payload.side.strip():
@@ -125,6 +128,21 @@ def _validate_adjacent(payload: schemas.AdjacentStationCreate):
         raise HTTPException(422, f"line_config must be one of {LINE_CONFIGS}")
     if payload.distance_m is not None and payload.distance_m < 0:
         raise HTTPException(422, "Distance cannot be negative")
+    labels = [b.line_label.strip().lower() for b in payload.borders]
+    if any(not x for x in labels):
+        raise HTTPException(422, "Each border needs the line it is on (e.g. 'DN line')")
+    if len(set(labels)) != len(labels):
+        raise HTTPException(422, "Only one border per line for each adjacent station")
+    for b in payload.borders:
+        if b.track_id is not None and (db is None or not db.query(models.TrackORM)
+                                       .filter_by(id=b.track_id, station_id=station_id).first()):
+            raise HTTPException(422, f"track_id {b.track_id} is not a line of this station")
+
+
+def _border_rows(payload: schemas.AdjacentStationCreate) -> list[models.StationBorderORM]:
+    return [models.StationBorderORM(line_label=b.line_label.strip(), border_m=b.border_m,
+                                    border_tag_ref=(b.border_tag_ref or "").strip() or None,
+                                    track_id=b.track_id) for b in payload.borders]
 
 
 @router.get("/{station_id}/adjacent-stations", response_model=list[schemas.AdjacentStationOut])
@@ -137,8 +155,9 @@ def list_adjacent(station_id: int, db: Session = Depends(get_db),
 def add_adjacent(station_id: int, payload: schemas.AdjacentStationCreate, db: Session = Depends(get_db),
                  user: models.UserORM = Depends(get_current_user)):
     _editable_station(station_id, db, user)
-    _validate_adjacent(payload)
-    row = models.AdjacentStationORM(station_id=station_id, **payload.model_dump())
+    _validate_adjacent(payload, station_id, db)
+    row = models.AdjacentStationORM(station_id=station_id, **payload.model_dump(exclude={"borders"}))
+    row.borders = _border_rows(payload)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -157,9 +176,11 @@ def update_adjacent(station_id: int, adj_id: int, payload: schemas.AdjacentStati
                     db: Session = Depends(get_db), user: models.UserORM = Depends(get_current_user)):
     _editable_station(station_id, db, user)
     row = _get_adjacent_or_404(station_id, adj_id, db)
-    _validate_adjacent(payload)
-    for k, v in payload.model_dump().items():
+    _validate_adjacent(payload, station_id, db)
+    for k, v in payload.model_dump(exclude={"borders"}).items():
         setattr(row, k, v)
+    if "borders" in payload.model_fields_set:   # replace the per-line borders only when sent
+        row.borders = _border_rows(payload)
     db.commit()
     db.refresh(row)
     return row

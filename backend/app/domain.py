@@ -154,6 +154,17 @@ class Track:
 
 
 @dataclass
+class StationBorder:
+    """Border line location on one line (H2.16). On a double line the border with a
+    neighbour usually lies at a different chainage on each line, each marked by its
+    own border tag."""
+    line_label: str                  # as on the layout, e.g. "DN line", "UP line"
+    border_m: float
+    border_tag_ref: str = ""
+    track_id: int | None = None
+
+
+@dataclass
 class AdjacentStation:
     """A neighbouring station on one side of this one: where the border between the
     two lies (H2.16) and whether the section between them is single or double line
@@ -166,6 +177,7 @@ class AdjacentStation:
     distance_m: float | None = None  # centre line to centre line, as on the layout
     line_config: str | None = None   # one of LINE_CONFIGS
     remarks: str = ""
+    borders: list[StationBorder] = field(default_factory=list)   # per-line borders
 
 
 @dataclass

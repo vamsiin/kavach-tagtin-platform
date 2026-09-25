@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AdjacentStation, Station, Track } from "../types";
+import type { AdjacentStation, Station, StationBorder, Track } from "../types";
 import { LINE_CONFIGS, TRACK_TYPES } from "../types";
 import { api } from "../api";
 import { RegisterTable, type ColumnDef } from "./RegisterTable";
@@ -51,7 +51,11 @@ export function LinesPanel({ station, tracks, adjacent, readOnly, lockReason, on
     { key: "kavach_station_id", label: "KAVACH ID", render: (a) => a.kavach_station_id ?? "—" },
     { key: "side", label: "Side" },
     { key: "border_m", label: "Border line (m)",
-      render: (a) => a.border_m == null ? <span className="badge fail">not recorded</span> : `${a.border_m} (${km(a.border_m)})` },
+      render: (a) => a.borders?.length
+        ? <>{a.borders.map((b, i) => (
+            <div key={i}><strong>{b.line_label}</strong>: {b.border_m} ({km(b.border_m)}){b.border_tag_ref ? ` · ${b.border_tag_ref}` : ""}</div>
+          ))}</>
+        : a.border_m == null ? <span className="badge fail">not recorded</span> : `${a.border_m} (${km(a.border_m)})` },
     { key: "distance_m", label: "Distance (m)", render: (a) => a.distance_m ?? "—" },
     { key: "line_config", label: "Section", render: (a) => a.line_config ?? "—" },
     { key: "remarks", label: "Remarks" },
@@ -100,9 +104,9 @@ export function LinesPanel({ station, tracks, adjacent, readOnly, lockReason, on
         onAdd={async (p) => { await api.addAdjacent(station.id, p); await onAdjacentChanged(); }}
         onUpdate={async (id, p) => { await api.updateAdjacent(station.id, id, p); await onAdjacentChanged(); }}
         onDelete={async (id) => { await api.deleteAdjacent(station.id, id); await onAdjacentChanged(); }}
-        renderForm={(submit, submitting) => <AdjacentForm onSubmit={submit} submitting={submitting} />}
+        renderForm={(submit, submitting) => <AdjacentForm tracks={tracks} onSubmit={submit} submitting={submitting} />}
         renderEditForm={(row, submit, cancel, submitting) => (
-          <AdjacentForm initial={row} onSubmit={submit} onCancel={cancel} submitting={submitting} />
+          <AdjacentForm tracks={tracks} initial={row} onSubmit={submit} onCancel={cancel} submitting={submitting} />
         )}
       />
     </>
@@ -149,39 +153,79 @@ function TrackForm({ initial, onSubmit, onCancel, submitting }: {
   );
 }
 
-function AdjacentForm({ initial, onSubmit, onCancel, submitting }: {
-  initial?: AdjacentStation; onSubmit: (p: Partial<AdjacentStation>) => void; onCancel?: () => void; submitting: boolean;
+type BorderDraft = { line_label: string; border_m: string; border_tag_ref: string; track_id: string };
+const toDraft = (b: StationBorder): BorderDraft => ({ line_label: b.line_label, border_m: String(b.border_m),
+  border_tag_ref: b.border_tag_ref ?? "", track_id: b.track_id != null ? String(b.track_id) : "" });
+
+function AdjacentForm({ tracks, initial, onSubmit, onCancel, submitting }: {
+  tracks: Track[]; initial?: AdjacentStation; onSubmit: (p: Partial<AdjacentStation>) => void;
+  onCancel?: () => void; submitting: boolean;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [kid, setKid] = useState(initial?.kavach_station_id ?? "");
-  const [side, setSide] = useState(initial?.side ?? "Nominal");
-  const [border, setBorder] = useState(initial?.border_m != null ? String(initial.border_m) : "");
+  const [side, setSide] = useState(initial?.side ?? "Lower km");
   const [dist, setDist] = useState(initial?.distance_m != null ? String(initial.distance_m) : "");
   const [cfg, setCfg] = useState(initial?.line_config ?? "");
   const [remarks, setRemarks] = useState(initial?.remarks ?? "");
+  // Border per line (H2.16). A station with one border for all lines just uses one row.
+  const [borders, setBorders] = useState<BorderDraft[]>(
+    initial?.borders?.length ? initial.borders.map(toDraft)
+      : initial?.border_m != null ? [{ line_label: "All lines", border_m: String(initial.border_m), border_tag_ref: "", track_id: "" }]
+      : [{ line_label: "DN line", border_m: "", border_tag_ref: "", track_id: "" }]);
+  const setB = (i: number, patch: Partial<BorderDraft>) =>
+    setBorders(borders.map((b, j) => (j === i ? { ...b, ...patch } : b)));
+  const sides = ["Lower km", "Higher km", "Nominal", "Reverse"];
+
   return (
-    <form className="inline-form wrap" onSubmit={(e) => {
+    <form onSubmit={(e) => {
       e.preventDefault();
-      onSubmit({ name, kavach_station_id: kid || null, side, border_m: num(border), distance_m: num(dist),
-        line_config: cfg || null, remarks: remarks || null });
+      const rows = borders.filter((b) => b.border_m.trim() !== "");
+      onSubmit({ name, kavach_station_id: kid || null, side, border_m: null, distance_m: num(dist),
+        line_config: cfg || null, remarks: remarks || null,
+        borders: rows.map((b) => ({ line_label: b.line_label.trim() || "All lines", border_m: parseFloat(b.border_m),
+          border_tag_ref: b.border_tag_ref.trim() || null, track_id: b.track_id ? parseInt(b.track_id) : null })) });
     }}>
-      <input placeholder="Station name" value={name} onChange={(e) => setName(e.target.value)} required />
-      <input placeholder="KAVACH ID" value={kid} onChange={(e) => setKid(e.target.value)} style={{ width: 100 }} />
-      <select value={side} onChange={(e) => setSide(e.target.value)} title="Direction towards the adjacent station">
-        <option value="Nominal">Nominal side</option>
-        <option value="Reverse">Reverse side</option>
-      </select>
-      <input type="number" step="0.001" placeholder="Border line (m)" value={border} style={{ width: 140 }}
-        onChange={(e) => setBorder(e.target.value)} title="Absolute location of the station border line (H2.16)" />
-      <input type="number" step="0.001" placeholder="Distance (m)" value={dist} style={{ width: 120 }}
-        onChange={(e) => setDist(e.target.value)} title="Centre line to centre line, as written on the layout" />
-      <select value={cfg} onChange={(e) => setCfg(e.target.value)} title="Section between the stations (H2.22)">
-        <option value="">Section —</option>
-        {LINE_CONFIGS.map((c) => <option key={c} value={c}>{c} line</option>)}
-      </select>
-      <input placeholder="Remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} />
-      <button type="submit" disabled={submitting}>{submitting ? "Saving…" : initial ? "Save" : "Add"}</button>
-      {onCancel && <button type="button" className="secondary" onClick={onCancel}>Cancel</button>}
+      <div className="inline-form wrap">
+        <input placeholder="Station name (e.g. Aler-PBP-IB)" value={name} onChange={(e) => setName(e.target.value)} required />
+        <input placeholder="KAVACH ID" value={kid} onChange={(e) => setKid(e.target.value)} style={{ width: 100 }} />
+        <select value={side} onChange={(e) => setSide(e.target.value)} title="Which side of this station the neighbour is on">
+          {[...new Set([side, ...sides])].map((s) => <option key={s} value={s}>{s} side</option>)}
+        </select>
+        <input type="number" step="0.001" placeholder="Distance (m)" value={dist} style={{ width: 120 }}
+          onChange={(e) => setDist(e.target.value)} title="Centre line to centre line, as written on the layout" />
+        <select value={cfg} onChange={(e) => setCfg(e.target.value)} title="Section between the stations (H2.22)">
+          <option value="">Section —</option>
+          {LINE_CONFIGS.map((c) => <option key={c} value={c}>{c} line</option>)}
+        </select>
+        <input placeholder="Remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+      </div>
+      <div className="muted small">Border line location on each line (H2.16), with its border tag:</div>
+      {borders.map((b, i) => (
+        <div key={i} className="inline-form wrap">
+          <input placeholder="Line (e.g. DN line)" value={b.line_label} style={{ width: 130 }}
+            onChange={(e) => setB(i, { line_label: e.target.value })} />
+          <input type="number" step="0.001" placeholder="Border (m), e.g. 265278" value={b.border_m} style={{ width: 170 }}
+            onChange={(e) => setB(i, { border_m: e.target.value })} />
+          <span className="muted small" style={{ minWidth: 80 }}>{km(num(b.border_m))}</span>
+          <input placeholder="Border tag (e.g. S7D)" value={b.border_tag_ref} style={{ width: 140 }}
+            onChange={(e) => setB(i, { border_tag_ref: e.target.value })} />
+          {tracks.length > 0 && (
+            <select value={b.track_id} onChange={(e) => setB(i, { track_id: e.target.value })} title="Optional: link to a recorded line">
+              <option value="">Linked line —</option>
+              {tracks.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          )}
+          <button type="button" className="link-btn danger" onClick={() => setBorders(borders.filter((_, j) => j !== i))}>Remove</button>
+        </div>
+      ))}
+      <div className="inline-form">
+        <button type="button" className="secondary"
+          onClick={() => setBorders([...borders, { line_label: borders.length === 1 ? "UP line" : "", border_m: "", border_tag_ref: "", track_id: "" }])}>
+          + Border on another line
+        </button>
+        <button type="submit" disabled={submitting}>{submitting ? "Saving…" : initial ? "Save" : "Add"}</button>
+        {onCancel && <button type="button" className="secondary" onClick={onCancel}>Cancel</button>}
+      </div>
     </form>
   );
 }

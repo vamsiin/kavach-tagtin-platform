@@ -214,12 +214,31 @@ class AdjacentStationORM(Base):
     remarks = Column(Text, nullable=True)
 
     station = relationship("StationORM", back_populates="adjacent_stations")
+    borders = relationship("StationBorderORM", back_populates="adjacent", cascade="all, delete-orphan",
+                           order_by="StationBorderORM.id")
 
     def to_domain(self) -> domain.AdjacentStation:
         return domain.AdjacentStation(
             id=self.id, name=self.name, side=self.side, kavach_station_id=self.kavach_station_id or "",
             border_m=self.border_m, distance_m=self.distance_m, line_config=self.line_config,
-            remarks=self.remarks or "")
+            remarks=self.remarks or "",
+            borders=[domain.StationBorder(line_label=b.line_label, border_m=b.border_m,
+                                          border_tag_ref=b.border_tag_ref or "", track_id=b.track_id)
+                     for b in self.borders])
+
+
+class StationBorderORM(Base):
+    """Border line location with a neighbouring station on one line (H2.16)."""
+    __tablename__ = "station_borders"
+
+    id = Column(Integer, primary_key=True)
+    adjacent_station_id = Column(Integer, ForeignKey("adjacent_stations.id"), nullable=False)
+    line_label = Column(String, nullable=False)
+    track_id = Column(Integer, ForeignKey("tracks.id"), nullable=True)
+    border_m = Column(Float, nullable=False)
+    border_tag_ref = Column(String, nullable=True)
+
+    adjacent = relationship("AdjacentStationORM", back_populates="borders")
 
 
 class RevisionORM(Base):

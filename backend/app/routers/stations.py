@@ -26,10 +26,15 @@ def create_station(payload: schemas.StationCreateRequest, db: Session = Depends(
     if existing:
         raise HTTPException(400, f"Station with KAVACH ID {payload.kavach_station_id} already exists")
     from .tracks import _validate_adjacent
+    from .tracks import _border_rows
     for a in payload.adjacent_stations:
+        if any(b.track_id is not None for b in a.borders):
+            raise HTTPException(422, "Add the station's lines first, then link borders to them")
         _validate_adjacent(a)
     station = models.StationORM(created_by=user.username, **payload.model_dump(exclude={"adjacent_stations"}))
-    station.adjacent_stations = [models.AdjacentStationORM(**a.model_dump()) for a in payload.adjacent_stations]
+    station.adjacent_stations = [models.AdjacentStationORM(**a.model_dump(exclude={"borders"}),
+                                                           borders=_border_rows(a))
+                                 for a in payload.adjacent_stations]
     db.add(station)
     db.commit()
     db.refresh(station)

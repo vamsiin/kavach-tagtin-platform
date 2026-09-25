@@ -308,3 +308,65 @@ def test_layout_report_and_baseline_diff_show_lines(client, h):
         snap = json.loads(db.get(models.BaselineORM, b.json()["id"]).layout_snapshot)
     assert [t["name"] for t in snap["tracks"]] == ["DN MAIN", "UP MAIN"]
     assert snap["adjacent_stations"][0]["border_m"] == 264100
+
+
+def test_h2_16_per_line_borders_rule():
+    from app.domain import StationBorder
+    adj = [AdjacentStation(id=1, name="Aler-PBP-IB", side="Higher km", borders=[
+               StationBorder("DN line", 265278, "S7D"), StationBorder("UP line", 266417, "S30D")]),
+           AdjacentStation(id=2, name="Aler-WP-IB", side="Lower km", borders=[
+               StationBorder("DN line", 259740, "S1D"), StationBorder("UP line", 258024, "S24D")])]
+    r = check_h2_16_border_locations(st(adjacent=adj))
+    assert [x.status for x in r] == ["PASS", "PASS"]
+    assert "DN line 265278 m (S7D); UP line 266417 m (S30D)" in r[0].message
+
+
+def test_per_line_borders_api(client, h):
+    """The Aler case: two neighbours, each with a different border on the DN and UP lines."""
+    sid = _station(client, h, centre_line_m=262750)
+    dn = _track(client, h, sid, "DN MAIN", 255000, 270000)
+    r = client.post(f"/stations/{sid}/adjacent-stations", json={
+        "name": "Aler-WP-IB", "side": "Lower km", "borders": [
+            {"line_label": "DN line", "border_m": 259740, "border_tag_ref": "S1D", "track_id": dn},
+            {"line_label": "UP line", "border_m": 258024, "border_tag_ref": "S24D"}]}, headers=h["dana"])
+    assert r.status_code == 200, r.text
+    wp = r.json()
+    assert [(b["line_label"], b["border_m"], b["border_tag_ref"], b["track_id"]) for b in wp["borders"]] == \
+        [("DN line", 259740, "S1D", dn), ("UP line", 258024, "S24D", None)]
+    # one border per line; a line from another station is refused
+    assert client.post(f"/stations/{sid}/adjacent-stations", json={"name": "X", "side": "Higher km", "borders": [
+        {"line_label": "DN line", "border_m": 1}, {"line_label": "dn line ", "border_m": 2}]},
+        headers=h["dana"]).status_code == 422
+    assert client.post(f"/stations/{sid}/adjacent-stations", json={"name": "X", "side": "Higher km", "borders": [
+        {"line_label": "DN line", "border_m": 1, "track_id": 9999}]}, headers=h["dana"]).status_code == 422
+    client.post(f"/stations/{sid}/adjacent-stations", json={
+        "name": "Aler-PBP-IB", "side": "Higher km", "borders": [
+            {"line_label": "DN line", "border_m": 265278, "border_tag_ref": "S7D"},
+            {"line_label": "UP line", "border_m": 266417, "border_tag_ref": "S30D"}]}, headers=h["dana"])
+    v = _verify(client, h, sid)
+    assert "H2.16" not in v["summary"]["clauses_failing"]
+    msgs = [x["message"] for x in v["results"] if x["clause"] == "H2.16"]
+    assert any("S24D" in m and "258024" in m for m in msgs)
+
+    # PUT without `borders` keeps them; with `borders` replaces them
+    base = {"name": "Aler-WP-IB", "side": "Lower km", "distance_m": 8000}
+    r = client.put(f"/stations/{sid}/adjacent-stations/{wp['id']}", json=base, headers=h["dana"])
+    assert len(r.json()["borders"]) == 2 and r.json()["distance_m"] == 8000
+    r = client.put(f"/stations/{sid}/adjacent-stations/{wp['id']}", json={**base, "borders": [
+        {"line_label": "DN line", "border_m": 259741, "border_tag_ref": "S1D"}]}, headers=h["dana"])
+    assert [b["border_m"] for b in r.json()["borders"]] == [259741]
+
+    # deleting the line keeps the border, unlinked
+    client.put(f"/stations/{sid}/adjacent-stations/{wp['id']}", json={**base, "borders": [
+        {"line_label": "DN line", "border_m": 259740, "border_tag_ref": "S1D", "track_id": dn}]}, headers=h["dana"])
+    client.delete(f"/stations/{sid}/tracks/{dn}", headers=h["dana"])
+    b = client.get(f"/stations/{sid}/adjacent-stations", headers=h["dana"]).json()[0]["borders"][0]
+    assert b["track_id"] is None and b["border_m"] == 259740
+
+    from app.database import SessionLocal
+    from app import models
+    from app.routers.reports import build_report
+    with SessionLocal() as db:
+        text = build_report(db, db.get(models.StationORM, sid),
+                            db.query(models.UserORM).filter_by(username="dana").first(), "layout").plain_text()
+    assert "DN line: 259740 (S1D)" in text and "UP line: 266417 (S30D)" in text

@@ -376,7 +376,12 @@ def _layout_snapshot(station: models.StationORM, db: Session) -> str:
                     "layout_version": station.layout_version,
                     "centre_line_m": station.centre_line_m},
         "tracks": rows(models.TrackORM, cols(models.TrackORM)),
-        "adjacent_stations": rows(models.AdjacentStationORM, cols(models.AdjacentStationORM)),
+        "adjacent_stations": [
+            {**a, "borders": [{"line": b.line_label, "border_m": b.border_m, "tag": b.border_tag_ref,
+                               "track": track_names.get(b.track_id)}
+                              for b in db.query(models.StationBorderORM)
+                              .filter_by(adjacent_station_id=a["id"]).order_by(models.StationBorderORM.id)]}
+            for a in rows(models.AdjacentStationORM, cols(models.AdjacentStationORM))],
         "elements": with_line(rows(models.ElementORM, cols(models.ElementORM))),
         "tags": with_line(rows(models.TagORM, cols(models.TagORM))),
         "tins": with_line(rows(models.TINORM, cols(models.TINORM))),

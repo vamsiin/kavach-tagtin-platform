@@ -147,18 +147,35 @@ class TrackOut(TrackCreate):
         from_attributes = True
 
 
+class StationBorderIn(BaseModel):
+    line_label: str
+    border_m: float
+    border_tag_ref: str | None = None
+    track_id: int | None = None
+
+
+class StationBorderOut(StationBorderIn):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
 class AdjacentStationCreate(BaseModel):
     name: str
     side: str
     kavach_station_id: str | None = None
-    border_m: float | None = None
+    border_m: float | None = Field(default=None, description="Single border location; use `borders` "
+                                   "when it differs by line")
     distance_m: float | None = None
     line_config: str | None = None
     remarks: str | None = None
+    borders: list[StationBorderIn] = Field(default_factory=list, description="Border location per line (H2.16)")
 
 
 class AdjacentStationOut(AdjacentStationCreate):
     id: int
+    borders: list[StationBorderOut] = Field(default_factory=list)
 
     class Config:
         from_attributes = True

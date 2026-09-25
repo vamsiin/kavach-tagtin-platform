@@ -204,7 +204,9 @@ def build_layout(ctx: Ctx) -> Report:
                 empty_text="No lines recorded."),
           Table(["Adjacent station", "KAVACH ID", "Side", "Border line (m) (H2.16)", "Distance (m)", "Section"],
                 [[a.name, a.kavach_station_id or "-", a.side,
-                  _fmt_m(a.border_m) if a.border_m is not None else "Not recorded",
+                  "; ".join(f"{b.line_label}: {_fmt_m(b.border_m)}" + (f" ({b.border_tag_ref})" if b.border_tag_ref else "")
+                            for b in a.borders) if a.borders else
+                  (_fmt_m(a.border_m) if a.border_m is not None else "Not recorded"),
                   _fmt_m(a.distance_m) if a.distance_m is not None else "-", a.line_config or "-"]
                  for a in st.adjacent_stations],
                 empty_text="No adjacent stations recorded."))

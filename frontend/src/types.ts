@@ -74,8 +74,17 @@ export interface Track {
   source_document_id?: number | null;
 }
 
+export interface StationBorder {
+  id?: number;
+  line_label: string;
+  border_m: number;
+  border_tag_ref: string | null;
+  track_id: number | null;
+}
+
 export interface AdjacentStation {
   id: number;
+  borders: StationBorder[];
   name: string;
   side: string;
   kavach_station_id: string | null;
