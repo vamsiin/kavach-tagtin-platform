@@ -127,7 +127,7 @@ def delete_user(
 
 @router.get("/users/by-role/{role}", response_model=list[schemas.UserOut])
 def list_users_by_role(
-    role: str, db: Session = Depends(get_db),
+    role: str, workspace_id: int | None = None, db: Session = Depends(get_db),
     _user: models.UserORM = Depends(get_current_user),
 ):
     """Unlike GET /auth/users (admin-only, full user management), this is available
@@ -137,7 +137,11 @@ def list_users_by_role(
     (not public), and only returns active users."""
     if role not in ROLES:
         raise HTTPException(422, f"role must be one of {ROLES}")
-    return db.query(models.UserORM).filter_by(role=role, is_active=True).all()
+    users = db.query(models.UserORM).filter_by(role=role, is_active=True).all()
+    if workspace_id is not None:   # only people who can see that workspace (e.g. checker picker)
+        from ..workspaces.service import can_access
+        users = [u for u in users if can_access(db, u, workspace_id)]
+    return users
 
 
 @router.get("/me", response_model=schemas.UserOut)

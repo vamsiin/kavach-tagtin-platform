@@ -20,10 +20,14 @@ class StationCreate(BaseModel):
 class StationCreateRequest(StationCreate):
     """Create payload: may also carry the neighbouring stations (H2.16 border lines)."""
     adjacent_stations: list["AdjacentStationCreate"] = Field(default_factory=list)
+    workspace_id: int | None = Field(default=None, description="Railway zone workspace; defaults to the "
+                                     "user's only workspace")
 
 
 class StationOut(StationCreate):
     id: int
+    workspace_id: int | None = None
+    workspace_code: str | None = None
     status: str
     layout_version: str
     created_by: str | None = None
@@ -214,6 +218,8 @@ class AllotmentChartCreate(BaseModel):
     remarks: str | None = None
     rows: list[AllotmentRowIn]
     supersede_current: bool = Field(default=True, description="Make this the current chart for its division")
+    workspace_id: int | None = Field(default=None, description="Railway zone workspace; defaults to the "
+                                     "user's only workspace")
 
 
 class AllotmentChartOut(BaseModel):
@@ -231,6 +237,8 @@ class AllotmentChartOut(BaseModel):
     created_at: str
     superseded_by_id: int | None = None
     row_count: int = 0
+    workspace_id: int | None = None
+    workspace_code: str | None = None
 
 
 class AllotmentChartDetail(AllotmentChartOut):
@@ -272,6 +280,39 @@ class StationAllotmentOut(BaseModel):
     adjacent: list[AdjacentAllotment] = Field(default_factory=list)
     tags: AllotmentUsage | None = None
     tins: AllotmentUsage | None = None
+
+
+class WorkspaceIn(BaseModel):
+    code: str
+    name: str
+    dn_direction: str = Field(default="Nominal", description="KAVACH direction of the SIP's Down movements")
+    open_to_all: bool = False
+    remarks: str | None = None
+
+
+class WorkspaceOut(WorkspaceIn):
+    id: int
+    created_by: str | None = None
+    created_at: str | None = None
+    members: list[str] = Field(default_factory=list)
+    station_count: int = 0
+    override_count: int = 0
+
+
+class WorkspaceMembersUpdate(BaseModel):
+    usernames: list[str]
+
+
+class MoveStationRequest(BaseModel):
+    workspace_id: int
+    reason: str = Field(min_length=1)
+
+
+class RuleOverrideIn(BaseModel):
+    params: dict | None = None
+    severity: str | None = None
+    enabled: bool | None = None
+    reason: str = Field(min_length=1)
 
 
 class CheckResultOut(BaseModel):
@@ -767,6 +808,8 @@ class ChecklistRuleOut(BaseModel):
     updated_by: str | None = None
     updated_at: str | None = None
     param_schema: list[dict] = []
+    override: dict | None = None     # this workspace's override (GET /checklist?workspace_id=)
+    effective: dict | None = None    # {params, severity, enabled} as applied in that workspace
 
     @field_validator("params", mode="before")
     @classmethod
@@ -871,6 +914,7 @@ class ManualResponseIn(BaseModel):
 class DashboardRow(BaseModel):
     id: int
     name: str
+    workspace_code: str | None = None
     kavach_station_id: str
     status: str
     layout_version: str

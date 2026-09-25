@@ -23,6 +23,8 @@ import { ManualChecklistPanel } from "./components/ManualChecklistPanel";
 import { DashboardPanel } from "./components/DashboardPanel";
 import { AssignmentPanel } from "./components/AssignmentPanel";
 import { ConfigurationPanel } from "./components/ConfigurationPanel";
+import { WorkspacesPanel } from "./components/WorkspacesPanel";
+import { WorkspaceProvider, WorkspaceSwitcher, useWorkspace } from "./workspace/WorkspaceContext";
 import "./styles.css";
 
 export default function App() {
@@ -40,6 +42,7 @@ function Shell() {
   if (!user) return <LoginScreen />;
 
   return (
+    <WorkspaceProvider>
     <div className="app">
       <header className="app-header">
         <div>
@@ -47,17 +50,20 @@ function Shell() {
           <span className="muted">Design &amp; verification against RDSO/SPN/196/2020 Annexure-H</span>
         </div>
         <div className="user-badge">
+          <WorkspaceSwitcher />
           <span>{user.full_name} <span className="muted">({user.role_label ?? user.role})</span></span>
           <button onClick={logout} className="secondary">Log out</button>
         </div>
       </header>
       <MainContent />
     </div>
+    </WorkspaceProvider>
   );
 }
 
 function MainContent() {
   const { user } = useAuth();
+  const { currentId, byId } = useWorkspace();
   const [stations, setStations] = useState<Station[]>([]);
   const [selected, setSelected] = useState<Station | null>(null);
   const [elements, setElements] = useState<Element[]>([]);
@@ -66,13 +72,16 @@ function MainContent() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [adjacent, setAdjacent] = useState<AdjacentStation[]>([]);
   const [allotment, setAllotment] = useState<StationAllotment | null>(null);
-  const [tab, setTab] = useState<"inputs" | "registers" | "verify" | "observations" | "trace" | "reports" | "workflow" | "config" | "checklist" | "allotment" | "users">("registers")
+  const [tab, setTab] = useState<"inputs" | "registers" | "verify" | "observations" | "trace" | "reports" | "workflow" | "config" | "checklist" | "allotment" | "workspaces" | "users">("registers")
   const [obsDraft, setObsDraft] = useState<ObservationDraft | null>(null);
   const [obsSummary, setObsSummary] = useState<ObservationSummary | null>(null);
 
   useEffect(() => {
-    api.listStations().then(setStations).catch(console.error);
-  }, []);
+    api.listStations(currentId).then((list) => {
+      setStations(list);
+      setSelected((sel) => (sel && !list.some((x) => x.id === sel.id) ? null : sel));
+    }).catch(console.error);
+  }, [currentId]);
 
   useEffect(() => {
     if (!selected) return;
@@ -190,6 +199,9 @@ function MainContent() {
             <button className={tab === "allotment" ? "active" : ""} onClick={() => setTab("allotment")}>
               Allotment
             </button>
+            <button className={tab === "workspaces" ? "active" : ""} onClick={() => setTab("workspaces")}>
+              Workspaces
+            </button>
             {can("users.manage") && (
               <button className={tab === "users" ? "active" : ""} onClick={() => setTab("users")}>
                 Users
@@ -219,11 +231,13 @@ function MainContent() {
                 onAdjacentChanged={async () => { setAdjacent(await api.listAdjacent(selected.id)); await reloadAllotment(); }}
                 onStationChanged={handleStationChanged} />
               <StationAllotmentPanel data={allotment} />
-              <ElementsPanel elements={elements} tracks={tracks} readOnly={readOnly} lockReason={lockReason}
+              <ElementsPanel elements={elements} tracks={tracks}
+                dnDirection={byId(selected.workspace_id)?.dn_direction} readOnly={readOnly} lockReason={lockReason}
                 onAdd={async (p) => { await api.addElement(selected.id, p); await reloadElements(); }}
                 onUpdate={async (id, p) => { await api.updateElement(selected.id, id, p); await reloadElements(); }}
                 onDelete={async (id) => { await api.deleteElement(selected.id, id); await reloadElements(); await reloadTags(); }} />
               <TagsPanel tags={tags} elements={elements} tracks={tracks}
+                dnDirection={byId(selected.workspace_id)?.dn_direction}
                 nextFree={allotment?.tags ? { odd: allotment.tags.next_free_odd, even: allotment.tags.next_free_even } : undefined}
                 readOnly={readOnly} lockReason={lockReason}
                 onAdd={async (p) => { await api.addTag(selected.id, p); await reloadTags(); }}
@@ -256,6 +270,8 @@ function MainContent() {
           {tab === "checklist" && <ChecklistPanel />}
 
           {tab === "allotment" && <AllotmentChartsPanel />}
+
+          {tab === "workspaces" && <WorkspacesPanel />}
 
           {tab === "config" && <ConfigurationPanel station={selected} onStationChanged={handleStationChanged} />}
 

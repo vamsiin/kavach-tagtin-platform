@@ -23,6 +23,7 @@ from ..auth.deps import get_current_user
 from ..auth.permissions import require
 from ..database import get_db
 from ..documents.service import file_extension, max_upload_bytes, safe_basename, upload_dir
+from ..workspaces.service import accessible_ids, can_access, resolve_for_create
 
 router = APIRouter(tags=["allotment"])
 
@@ -88,16 +89,17 @@ def _chart_out(c: models.AllotmentChartORM) -> schemas.AllotmentChartOut:
         id=c.id, title=c.title, division=c.division, reference_no=c.reference_no, issued_on=c.issued_on,
         issued_by=c.issued_by, remarks=c.remarks, is_current=bool(c.is_current),
         source_filename=c.source_filename, source_sha256=c.source_sha256, created_by=c.created_by,
-        created_at=c.created_at, superseded_by_id=c.superseded_by_id, row_count=len(c.rows))
+        created_at=c.created_at, superseded_by_id=c.superseded_by_id, row_count=len(c.rows),
+        workspace_id=c.workspace_id, workspace_code=c.workspace.code if c.workspace is not None else None)
 
 
 def _row_in(r: models.AllotmentRowORM) -> schemas.AllotmentRowIn:
     return schemas.AllotmentRowIn(**{f: getattr(r, f) for f in schemas.AllotmentRowIn.model_fields})
 
 
-def _get_chart(chart_id: int, db: Session) -> models.AllotmentChartORM:
+def _get_chart(chart_id: int, db: Session, user=None) -> models.AllotmentChartORM:
     c = db.get(models.AllotmentChartORM, chart_id)
-    if not c:
+    if not c or (user is not None and not can_access(db, user, c.workspace_id)):
         raise HTTPException(404, "Allotment chart not found")
     return c
 
@@ -106,13 +108,18 @@ def _get_chart(chart_id: int, db: Session) -> models.AllotmentChartORM:
 # Charts
 # ---------------------------------------------------------------------------
 @router.get("/allotment-charts", response_model=list[schemas.AllotmentChartOut])
-def list_charts(db: Session = Depends(get_db), user: models.UserORM = Depends(get_current_user)):
-    return [_chart_out(c) for c in db.query(models.AllotmentChartORM).order_by(models.AllotmentChartORM.id.desc())]
+def list_charts(workspace_id: int | None = None, db: Session = Depends(get_db),
+                user: models.UserORM = Depends(get_current_user)):
+    visible = accessible_ids(db, user)
+    q = db.query(models.AllotmentChartORM).order_by(models.AllotmentChartORM.id.desc())
+    if workspace_id is not None:
+        q = q.filter(models.AllotmentChartORM.workspace_id == workspace_id)
+    return [_chart_out(c) for c in q if visible is None or c.workspace_id is None or c.workspace_id in visible]
 
 
 @router.get("/allotment-charts/{chart_id}", response_model=schemas.AllotmentChartDetail)
 def get_chart(chart_id: int, db: Session = Depends(get_db), user: models.UserORM = Depends(get_current_user)):
-    c = _get_chart(chart_id, db)
+    c = _get_chart(chart_id, db, user)
     rows, _, warnings = _check_rows([_row_in(r) for r in c.rows])
     for out, r in zip(rows, c.rows):
         out.id = r.id
@@ -131,6 +138,7 @@ def create_chart(payload: schemas.AllotmentChartCreate, db: Session = Depends(ge
     if errors:
         raise HTTPException(422, {"message": "The chart has errors", "errors": errors})
     c = models.AllotmentChartORM(
+        workspace_id=resolve_for_create(db, user, payload.workspace_id),
         title=payload.title.strip(), division=payload.division.strip(), reference_no=payload.reference_no,
         issued_on=payload.issued_on, issued_by=payload.issued_by, remarks=payload.remarks,
         is_current=payload.supersede_current, created_by=user.username, created_at=_now())
@@ -147,7 +155,7 @@ def create_chart(payload: schemas.AllotmentChartCreate, db: Session = Depends(ge
 def _supersede(db: Session, c: models.AllotmentChartORM) -> None:
     for old in (db.query(models.AllotmentChartORM)
                 .filter(models.AllotmentChartORM.id != c.id, models.AllotmentChartORM.is_current.is_(True))):
-        if old.division.strip().lower() == c.division.strip().lower():
+        if old.workspace_id == c.workspace_id and old.division.strip().lower() == c.division.strip().lower():
             old.is_current = False
             old.superseded_by_id = c.id
 
@@ -156,7 +164,7 @@ def _supersede(db: Session, c: models.AllotmentChartORM) -> None:
 def make_current(chart_id: int, db: Session = Depends(get_db), user: models.UserORM = Depends(get_current_user)):
     """Roll back to an earlier chart, e.g. if a revision was loaded by mistake."""
     require(user, "allotment.manage", "Changing the current allotment chart")
-    c = _get_chart(chart_id, db)
+    c = _get_chart(chart_id, db, user)
     c.is_current, c.superseded_by_id = True, None
     _supersede(db, c)
     db.commit()
@@ -169,7 +177,7 @@ async def attach_file(chart_id: int, file: UploadFile = File(...), db: Session =
                       user: models.UserORM = Depends(get_current_user)):
     """Keep the issued chart (usually the signed RDSO letter) with the transcribed rows."""
     require(user, "allotment.manage", "Attaching an allotment chart file")
-    c = _get_chart(chart_id, db)
+    c = _get_chart(chart_id, db, user)
     name = safe_basename(file.filename)
     ext = file_extension(name)
     if ext not in CHART_EXT:
@@ -192,7 +200,7 @@ async def attach_file(chart_id: int, file: UploadFile = File(...), db: Session =
 
 @router.get("/allotment-charts/{chart_id}/file")
 def download_file(chart_id: int, db: Session = Depends(get_db), user: models.UserORM = Depends(get_current_user)):
-    c = _get_chart(chart_id, db)
+    c = _get_chart(chart_id, db, user)
     if not c.source_path:
         raise HTTPException(404, "No file attached to this chart")
     p = (upload_dir() / c.source_path).resolve()
@@ -301,7 +309,7 @@ def station_allotment(station_id: int, db: Session = Depends(get_db),
     st = db.get(models.StationORM, station_id)
     if not st:
         raise HTTPException(404, "Station not found")
-    rows = current_rows(db)
+    rows = current_rows(db, st.workspace_id)
     if not rows:
         return schemas.StationAllotmentOut()
     own = find_row(rows, st.kavach_station_id, st.name)

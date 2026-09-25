@@ -1,5 +1,6 @@
 import type {
   Station, Element, Tag, TIN, Track, AdjacentStation,
+  Workspace,
   AllotmentChart, AllotmentChartDetail, AllotmentParse, AllotmentRow, StationAllotment, VerificationReport, ToCCrossValidation,
   User, TokenResponse, WorkflowStatus,
   RailwaySubmission, RailwaySubmitPayload,
@@ -75,7 +76,8 @@ export const api = {
     }),
   me: () => request<User>("/auth/me"),
   listUsers: () => request<User[]>("/auth/users"),
-  listUsersByRole: (role: string) => request<User[]>(`/auth/users/by-role/${role}`),
+  listUsersByRole: (role: string, workspaceId?: number | null) =>
+    request<User[]>(`/auth/users/by-role/${role}${workspaceId != null ? `?workspace_id=${workspaceId}` : ""}`),
   createUser: (payload: { username: string; full_name: string; email?: string; role: string; password: string }) =>
     request<User>("/auth/users", { method: "POST", body: JSON.stringify(payload) }),
   updateUser: (username: string, payload: { full_name: string; email?: string; role: string; is_active: boolean }) =>
@@ -96,18 +98,21 @@ export const api = {
     }),
 
   // ---- stations / registers ----
-  listStations: () => request<Station[]>("/stations"),
+  listStations: (workspaceId?: number | null) =>
+    request<Station[]>(`/stations${workspaceId != null ? `?workspace_id=${workspaceId}` : ""}`),
   createStation: (payload: Partial<Station>) =>
     request<Station>("/stations", { method: "POST", body: JSON.stringify(payload) }),
   deleteStation: (stationId: number) =>
     request<void>(`/stations/${stationId}`, { method: "DELETE" }),
 
   // ---- RFID Tag / TIN allotment charts (BR-001) ----
-  listAllotmentCharts: () => request<AllotmentChart[]>("/allotment-charts"),
+  listAllotmentCharts: (workspaceId?: number | null) =>
+    request<AllotmentChart[]>(`/allotment-charts${workspaceId != null ? `?workspace_id=${workspaceId}` : ""}`),
   getAllotmentChart: (id: number) => request<AllotmentChartDetail>(`/allotment-charts/${id}`),
   createAllotmentChart: (payload: {
     title: string; division: string; reference_no?: string | null; issued_on?: string | null;
     issued_by?: string | null; remarks?: string | null; rows: AllotmentRow[]; supersede_current?: boolean;
+    workspace_id?: number | null;
   }) => request<AllotmentChartDetail>("/allotment-charts", { method: "POST", body: JSON.stringify(payload) }),
   parseAllotmentChart: (file: File) => {
     const form = new FormData();
@@ -273,7 +278,8 @@ export const api = {
     request<void>(`/stations/${stationId}/revisions/${revId}`, { method: "DELETE" }),
 
   // ---- checklist (FR-006) ----
-  getChecklist: () => request<Checklist>("/checklist"),
+  getChecklist: (workspaceId?: number | null) =>
+    request<Checklist>(`/checklist${workspaceId != null ? `?workspace_id=${workspaceId}` : ""}`),
   checklistChanges: () => request<ChecklistChange[]>("/checklist/changes"),
   createRule: (payload: Record<string, unknown>) =>
     request<ChecklistRule>("/checklist/rules", { method: "POST", body: JSON.stringify(payload) }),
@@ -292,7 +298,24 @@ export const api = {
     }),
 
   // ---- Phase 6: dashboard, assignment, configuration management ----
-  dashboard: () => request<Dashboard>("/dashboard"),
+  dashboard: (workspaceId?: number | null) =>
+    request<Dashboard>(`/dashboard${workspaceId != null ? `?workspace_id=${workspaceId}` : ""}`),
+
+  // ---- workspaces (railway zones) ----
+  listWorkspaces: () => request<Workspace[]>("/workspaces"),
+  workspaceUsers: () => request<User[]>("/workspaces/users"),
+  createWorkspace: (p: { code: string; name: string; dn_direction: string; open_to_all?: boolean; remarks?: string | null }) =>
+    request<Workspace>("/workspaces", { method: "POST", body: JSON.stringify(p) }),
+  updateWorkspace: (id: number, p: { code: string; name: string; dn_direction: string; open_to_all?: boolean; remarks?: string | null }) =>
+    request<Workspace>(`/workspaces/${id}`, { method: "PUT", body: JSON.stringify(p) }),
+  setWorkspaceMembers: (id: number, usernames: string[]) =>
+    request<Workspace>(`/workspaces/${id}/members`, { method: "PUT", body: JSON.stringify({ usernames }) }),
+  moveStation: (stationId: number, workspace_id: number, reason: string) =>
+    request<Station>(`/stations/${stationId}/move-workspace`, { method: "POST", body: JSON.stringify({ workspace_id, reason }) }),
+  setRuleOverride: (wsId: number, ruleId: number, p: { params?: Record<string, unknown>; severity?: string; enabled?: boolean; reason: string }) =>
+    request<unknown>(`/workspaces/${wsId}/overrides/${ruleId}`, { method: "PUT", body: JSON.stringify(p) }),
+  clearRuleOverride: (wsId: number, ruleId: number, reason: string) =>
+    request<unknown>(`/workspaces/${wsId}/overrides/${ruleId}`, { method: "DELETE", body: JSON.stringify({ reason }) }),
   assignDesigner: (stationId: number, designer_username: string | null, comment = "") =>
     request<Station>(`/stations/${stationId}/assign-designer`, {
       method: "PUT", body: JSON.stringify({ designer_username, comment }),

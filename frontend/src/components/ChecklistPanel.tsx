@@ -2,6 +2,8 @@ import { Fragment, useEffect, useState } from "react";
 import type { Checklist, ChecklistChange, ChecklistRule } from "../types";
 import { api } from "../api";
 import { ParamEditor, paramSummary } from "./ParamEditor";
+import { useCan } from "../auth/AuthContext";
+import { useWorkspace } from "../workspace/WorkspaceContext";
 
 const KIND_LABELS: Record<string, string> = {
   builtin: "Built-in check",
@@ -37,12 +39,15 @@ export function ChecklistPanel() {
   const [showLog, setShowLog] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { currentId, current } = useWorkspace();
+  const canZone = useCan()("workspace.manage") && !!current;
+  const [zoneEdit, setZoneEdit] = useState<{ id: number; enabled: boolean; severity: string; params: Record<string, unknown> } | null>(null);
 
   async function reload() {
-    setData(await api.getChecklist());
+    setData(await api.getChecklist(currentId));
     setChanges(await api.checklistChanges());
   }
-  useEffect(() => { reload().catch((e) => setError(errText(e))); }, []);
+  useEffect(() => { reload().catch((e) => setError(errText(e))); }, [currentId]);
 
   if (!data) return <div className="panel"><p className="muted">Loading checklist…</p>{error && <div className="error">{error}</div>}</div>;
   const edit = data.can_edit;
@@ -87,6 +92,22 @@ export function ChecklistPanel() {
 
   const addKind = (adding?.kind as string) ?? "manual";
 
+  async function saveZone(r: ChecklistRule) {
+    if (!zoneEdit || !current) return;
+    // Only what differs from the standard checklist is overridden, so later changes to
+    // the standard still flow through for everything else.
+    const p: { params?: Record<string, unknown>; severity?: string; enabled?: boolean; reason: string } = { reason };
+    if (JSON.stringify(zoneEdit.params) !== JSON.stringify(r.params)) p.params = zoneEdit.params;
+    if (zoneEdit.severity !== r.severity) p.severity = zoneEdit.severity;
+    if (zoneEdit.enabled !== r.enabled) p.enabled = zoneEdit.enabled;
+    if (!("params" in p) && !("severity" in p) && !("enabled" in p)) {
+      setError("Same as the standard checklist -- nothing to override. Use Clear to remove an override.");
+      return;
+    }
+    const ok = await run(() => api.setRuleOverride(current.id, r.id, p));
+    if (ok) setZoneEdit(null);
+  }
+
   return (
     <>
       <div className="panel">
@@ -95,7 +116,9 @@ export function ChecklistPanel() {
           {edit && !adding && <button onClick={() => setAdding({ kind: "manual", clause: "", title: "", description: "", severity: "FAIL", params: {}, blocking: false })}>Add rule</button>}
         </div>
         <p className="muted small">
-          Applies to every station. Automated rules run on every verification, self-check and check.
+          The standard checklist applies to every workspace; a workspace can override a rule's settings
+          {current ? <> (showing <strong>{current.code}</strong>: its overrides are marked)</> : <> (choose a workspace, top right, to see its overrides)</>}.
+          Automated rules run on every verification, self-check and check.
           Manual items are confirmed by a reviewer during review. WARN-severity rules are reported
           but never block. {edit ? "" : "Only an admin can change this configuration."}
         </p>
@@ -141,7 +164,8 @@ export function ChecklistPanel() {
 
         <table className="register-table checklist-table">
           <thead>
-            <tr><th></th><th>On</th><th>Clause</th><th>Rule</th><th>Type</th><th>Severity</th><th>Parameters</th><th></th></tr>
+            <tr><th></th><th>On</th><th>Clause</th><th>Rule</th><th>Type</th><th>Severity</th><th>Parameters</th>
+              {current && <th>In {current.code}</th>}<th></th></tr>
           </thead>
           <tbody>
             {data.rules.map((r, i) => (
@@ -164,14 +188,55 @@ export function ChecklistPanel() {
                     </select>
                   </td>
                   <td className="small">{paramSummary(r.param_schema, r.params) || "—"}</td>
+                  {current && (
+                    <td className="small">
+                      {r.override ? (
+                        <>
+                          <span className="badge warn" title={`${r.override.reason ?? ""} — ${r.override.updated_by ?? ""}`}>{current.code} override</span>
+                          <div>{r.effective?.enabled ? "on" : "off"} · {r.effective?.severity}</div>
+                          {r.override.params && <div>{paramSummary(r.param_schema, r.effective?.params ?? {})}</div>}
+                          <div className="muted">{r.override.reason}</div>
+                        </>
+                      ) : <span className="muted">standard</span>}
+                      {canZone && r.kind !== "manual" && (
+                        <div>
+                          <button className="link-btn" onClick={() => setZoneEdit(zoneEdit?.id === r.id ? null : {
+                            id: r.id, enabled: r.effective?.enabled ?? r.enabled, severity: r.effective?.severity ?? r.severity,
+                            params: { ...(r.effective?.params ?? r.params) } })}>{zoneEdit?.id === r.id ? "Close" : "Override…"}</button>
+                          {r.override && <button className="link-btn danger" disabled={busy || noReason}
+                            onClick={() => run(() => api.clearRuleOverride(current.id, r.id, reason))}>Clear</button>}
+                        </div>
+                      )}
+                    </td>
+                  )}
                   <td className="row-actions">
                     {edit && <button className="link-btn" onClick={() => { setEditing(editing === r.id ? null : r.id); setDraft({ ...r, params: { ...r.params } }); }}>{editing === r.id ? "Close" : "Edit"}</button>}
                     {edit && r.is_builtin && <button className="link-btn" disabled={busy || noReason} onClick={() => run(() => api.resetRule(r.id, reason))}>Reset</button>}
                     {edit && !r.is_builtin && <button className="link-btn danger" disabled={busy || noReason} onClick={() => run(() => api.deleteRule(r.id, reason))}>Delete</button>}
                   </td>
                 </tr>
+                {zoneEdit?.id === r.id && current && (
+                  <tr className="row-editing"><td colSpan={9}>
+                    <div className="muted small">Override for <strong>{current.code}</strong> only. Settings equal to the standard aren't stored.</div>
+                    <div className="form-grid">
+                      <label className="checkbox-label"><input type="checkbox" checked={zoneEdit.enabled}
+                        onChange={(e) => setZoneEdit({ ...zoneEdit, enabled: e.target.checked })} /> Enabled in {current.code}</label>
+                      <label>Severity
+                        <select value={zoneEdit.severity} onChange={(e) => setZoneEdit({ ...zoneEdit, severity: e.target.value })}>
+                          <option value="FAIL">FAIL</option><option value="WARN">WARN</option>
+                        </select>
+                      </label>
+                    </div>
+                    <ParamEditor schema={r.param_schema} value={zoneEdit.params} onChange={(p) => setZoneEdit({ ...zoneEdit, params: p })} />
+                    <div className="comment-modal-actions">
+                      <button disabled={busy || noReason} onClick={() => saveZone(r)}>Save {current.code} override</button>
+                      <button className="secondary" onClick={() => setZoneEdit(null)}>Cancel</button>
+                      {noReason && <span className="muted small">Enter a reason above first.</span>}
+                    </div>
+                  </td></tr>
+                )}
                 {editing === r.id && draft && (
-                  <tr className="row-editing"><td colSpan={8}>
+                  <tr className="row-editing"><td colSpan={current ? 9 : 8}>
                     <div className="form-grid">
                       <label>Clause<input value={draft.clause ?? ""} onChange={(e) => setDraft({ ...draft, clause: e.target.value })} /></label>
                       <label>Title<input value={draft.title ?? ""} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /></label>

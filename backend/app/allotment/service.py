@@ -8,10 +8,13 @@ from .. import domain, models
 from .ranges import TAG_MAX, TIN_MAX, RangeError, id_key, name_key, parse_ranges
 
 
-def current_rows(db: Session) -> list[models.AllotmentRowORM]:
-    return (db.query(models.AllotmentRowORM).join(models.AllotmentChartORM)
-            .filter(models.AllotmentChartORM.is_current.is_(True))
-            .order_by(models.AllotmentChartORM.id.desc(), models.AllotmentRowORM.id).all())
+def current_rows(db: Session, workspace_id: int | None = None) -> list[models.AllotmentRowORM]:
+    """Rows of the current charts in a workspace (charts are per zone)."""
+    q = (db.query(models.AllotmentRowORM).join(models.AllotmentChartORM)
+         .filter(models.AllotmentChartORM.is_current.is_(True)))
+    if workspace_id is not None:
+        q = q.filter(models.AllotmentChartORM.workspace_id == workspace_id)
+    return q.order_by(models.AllotmentChartORM.id.desc(), models.AllotmentRowORM.id).all()
 
 
 def find_row(rows, kavach_id, name) -> models.AllotmentRowORM | None:
@@ -47,7 +50,7 @@ def chart_ref(c: models.AllotmentChartORM) -> str:
 
 
 def station_allotment(db: Session, st: models.StationORM) -> domain.StationAllotment | None:
-    rows = current_rows(db)
+    rows = current_rows(db, st.workspace_id)
     if not rows:
         return None
     own = find_row(rows, st.kavach_station_id, st.name)

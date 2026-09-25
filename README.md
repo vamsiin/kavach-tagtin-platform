@@ -407,6 +407,20 @@ place on startup (`rules/store.py: migrate_rules`), keeping edits, responses and
 Not yet automated: H2.14 / TIN repeat distance (needs station geography across the division), H2.19 TINs per
 ToC route, the border-tag RSSI criterion (BR-005).
 
+**Workspaces (railway zones).**
+- A workspace (SCR, ECR, … up to the 18 zones) holds its stations and allotment charts. The Configuration
+  Manager / admin creates workspaces, sets members and moves stations (logged); others see only the workspaces
+  they belong to (every `/stations/{id}/…` route is guarded). Handing a station to a checker or designer who
+  isn't a member is refused.
+- `dn_direction`: the KAVACH direction of the zone's SIP "Down" movements -- Nominal in SCR; Reverse in ECR
+  (SIP Up = Nominal). Odd/even numbering follows the KAVACH direction everywhere (Nominal odd, Reverse even).
+  Rule **DIR-CONV** (WARN): a tag linked to a signal runs in that signal's direction under the zone convention.
+- One standard checklist; a zone can override a rule's params / severity / enabled
+  (`PUT /workspaces/{id}/overrides/{rule_id}`, logged with the zone code). Verification, reports, dashboard and
+  baselines use the station's zone.
+- Upgrade: existing data goes into an `SCR` workspace with every existing user as a member. A brand-new install
+  gets an open `DEFAULT` workspace with its first station.
+
 ## BRD (RTLDVMS v1.0) gap analysis — what's covered, what isn't, and two open decisions
 
 A formal Business Requirements Document was checked against this codebase directly

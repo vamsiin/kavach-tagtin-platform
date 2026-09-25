@@ -15,6 +15,54 @@ from .database import Base
 from . import domain
 
 
+class WorkspaceORM(Base):
+    """A railway zone (SCR, ECR, ...). Stations, allotment charts and checklist
+    overrides belong to one workspace; users see only the workspaces they are members
+    of (admins and Configuration Managers see all). `dn_direction` records the zone's
+    convention: which KAVACH direction the SIP's "Down" movements are (Nominal in SCR;
+    Reverse in ECR, where SIP Up = Nominal)."""
+    __tablename__ = "workspaces"
+
+    id = Column(Integer, primary_key=True)
+    code = Column(String, unique=True, nullable=False)
+    name = Column(String, nullable=False)
+    dn_direction = Column(String, nullable=False, default="Nominal")
+    open_to_all = Column(Boolean, default=False)     # every user is a member (e.g. training)
+    remarks = Column(Text, nullable=True)
+    created_by = Column(String, nullable=True)
+    created_at = Column(String, nullable=True)
+
+    members = relationship("WorkspaceMemberORM", back_populates="workspace", cascade="all, delete-orphan")
+
+
+class WorkspaceMemberORM(Base):
+    __tablename__ = "workspace_members"
+
+    id = Column(Integer, primary_key=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False)
+    username = Column(String, nullable=False)
+    added_by = Column(String, nullable=True)
+    added_at = Column(String, nullable=True)
+
+    workspace = relationship("WorkspaceORM", back_populates="members")
+
+
+class WorkspaceRuleOverrideORM(Base):
+    """A zone's override of one checklist rule. Only the fields set here differ from
+    the standard checklist; every change is logged in checklist_changes."""
+    __tablename__ = "workspace_rule_overrides"
+
+    id = Column(Integer, primary_key=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False)
+    rule_id = Column(Integer, ForeignKey("checklist_rules.id"), nullable=False)
+    params = Column(Text, nullable=True)       # JSON, full params when overridden
+    severity = Column(String, nullable=True)
+    enabled = Column(Boolean, nullable=True)
+    reason = Column(Text, nullable=True)
+    updated_by = Column(String, nullable=True)
+    updated_at = Column(String, nullable=True)
+
+
 class StationORM(Base):
     __tablename__ = "stations"
 
@@ -32,6 +80,7 @@ class StationORM(Base):
     assigned_checker = Column(String, nullable=True)  # username of the checker this was submitted to
     assigned_designer = Column(String, nullable=True)  # set by a Project Manager (Phase 6); None = any designer
     centre_line_m = Column(Float, nullable=True)       # station centre line absolute location (H2.4 / H2.28)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     elements = relationship("ElementORM", back_populates="station", cascade="all, delete-orphan")
@@ -49,6 +98,7 @@ class StationORM(Base):
                                        cascade="all, delete-orphan")
     changes = relationship("StationChangeORM", back_populates="station", cascade="all, delete-orphan")
     baselines = relationship("BaselineORM", back_populates="station", cascade="all, delete-orphan")
+    workspace = relationship("WorkspaceORM")
     tracks = relationship("TrackORM", back_populates="station", cascade="all, delete-orphan",
                           order_by="TrackORM.sort_order, TrackORM.id")
     adjacent_stations = relationship("AdjacentStationORM", back_populates="station",
@@ -68,6 +118,8 @@ class StationORM(Base):
             tracks=[t.to_domain() for t in self.tracks],
             adjacent=[a.to_domain() for a in self.adjacent_stations],
             allotment=self._allotment(),
+            dn_direction=self.workspace.dn_direction if self.workspace is not None else "Nominal",
+            workspace_code=self.workspace.code if self.workspace is not None else "",
         )
 
     def _allotment(self):
@@ -75,6 +127,10 @@ class StationORM(Base):
         from .allotment.service import station_allotment
         db = object_session(self)
         return station_allotment(db, self) if db is not None else None
+
+    @property
+    def workspace_code(self) -> str | None:
+        return self.workspace.code if self.workspace is not None else None
 
     @property
     def layout_version(self) -> str:
@@ -268,9 +324,11 @@ class AllotmentChartORM(Base):
     created_by = Column(String, nullable=False)
     created_at = Column(String, nullable=False)
     superseded_by_id = Column(Integer, ForeignKey("allotment_charts.id"), nullable=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
 
     rows = relationship("AllotmentRowORM", back_populates="chart", cascade="all, delete-orphan",
                         order_by="AllotmentRowORM.id")
+    workspace = relationship("WorkspaceORM")
 
 
 class AllotmentRowORM(Base):
@@ -535,7 +593,8 @@ class ChecklistChangeORM(Base):
     id = Column(Integer, primary_key=True)
     rule_id = Column(Integer, nullable=True)
     rule_key = Column(String, nullable=True)
-    action = Column(String, nullable=False)     # seed | create | update | delete | reorder | reset
+    action = Column(String, nullable=False)     # seed | create | update | delete | reorder | reset | override | override_clear | migrate
+    workspace_id = Column(Integer, nullable=True)   # set for zone overrides
     before = Column(Text, nullable=True)        # JSON
     after = Column(Text, nullable=True)         # JSON
     reason = Column(Text, nullable=True)

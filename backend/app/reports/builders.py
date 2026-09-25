@@ -104,7 +104,7 @@ def load_ctx(db: Session, station: models.StationORM, user: models.UserORM) -> C
         railway=q(models.RailwaySubmissionORM, models.RailwaySubmissionORM.id),
         revisions=q(models.RevisionORM, models.RevisionORM.id),
         user=user, now=datetime.now(timezone.utc).isoformat(),
-        rules=store.active_rules(db), manual=store.manual_items(db, sid),
+        rules=store.active_rules(db, station.workspace_id), manual=store.manual_items(db, sid),
         checklist_version=store.config_version(db),
         changes=q(models.StationChangeORM, models.StationChangeORM.id),
         baselines=q(models.BaselineORM, models.BaselineORM.id),
@@ -156,6 +156,8 @@ def _station_kv(ctx: Ctx) -> KeyValues:
     st = ctx.station
     return KeyValues([
         ("Station name", st.name), ("KAVACH station ID", st.kavach_station_id),
+        ("Workspace (zone)", f"{st.workspace.code} - {st.workspace.name} (SIP Down = {st.workspace.dn_direction})"
+         if st.workspace is not None else "-"),
         ("SIP drawing no.", st.sip_drawing_number or "-"),
         ("Versions (KAVACH / SIP / Guideline)",
          f"{st.kavach_version or '-'} / {st.sip_version or '-'} / {st.guideline_version or '-'}"),

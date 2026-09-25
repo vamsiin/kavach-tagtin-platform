@@ -54,9 +54,10 @@ def _out(r: models.ChecklistRuleORM) -> schemas.ChecklistRuleOut:
     return o
 
 
-def _log(db, rule, action, before, after, reason, user):
+def _log(db, rule, action, before, after, reason, user, workspace_id=None):
     db.add(models.ChecklistChangeORM(
         rule_id=rule.id if rule else None, rule_key=rule.key if rule else None, action=action,
+        workspace_id=workspace_id,
         before=json.dumps(before) if before is not None else None,
         after=json.dumps(after) if after is not None else None,
         reason=reason.strip(), changed_by=user.username, changed_at=store.now()))
@@ -73,10 +74,24 @@ def _validate_common(severity, kind):
 # Rule management
 # ---------------------------------------------------------------------------
 @router.get("/checklist", response_model=schemas.ChecklistOut)
-def get_checklist(db: Session = Depends(get_db), user: models.UserORM = Depends(get_current_user)):
+def get_checklist(workspace_id: int | None = None, db: Session = Depends(get_db),
+                  user: models.UserORM = Depends(get_current_user)):
+    """The standard checklist; with ?workspace_id= each rule also carries that zone's
+    override (if any) and the values that actually apply there."""
     rows = (db.query(models.ChecklistRuleORM).filter(models.ChecklistRuleORM.deleted.isnot(True))
             .order_by(models.ChecklistRuleORM.sort_order, models.ChecklistRuleORM.id).all())
-    return schemas.ChecklistOut(config_version=store.config_version(db), rules=[_out(r) for r in rows],
+    outs = [_out(r) for r in rows]
+    if workspace_id is not None:
+        ov = store.overrides_for(db, workspace_id)
+        for o, r in zip(outs, rows):
+            x = ov.get(r.id)
+            eff = store.apply_override(store.to_config(r), x)
+            o.effective = {"params": eff.params, "severity": eff.severity, "enabled": eff.enabled}
+            if x is not None:
+                o.override = {"params": json.loads(x.params) if x.params is not None else None,
+                              "severity": x.severity, "enabled": x.enabled, "reason": x.reason,
+                              "updated_by": x.updated_by, "updated_at": x.updated_at}
+    return schemas.ChecklistOut(config_version=store.config_version(db), rules=outs,
                                 kinds={k: v for k, v in ck.KIND_SCHEMAS.items()}, can_edit=can_edit(user))
 
 
@@ -201,7 +216,7 @@ def reorder(payload: schemas.ChecklistReorder, db: Session = Depends(get_db),
         raise HTTPException(422, "Order unchanged")
     _log(db, None, "reorder", before, after, payload.reason, user)
     db.commit()
-    return get_checklist(db, user)
+    return get_checklist(None, db, user)
 
 
 @router.get("/checklist/changes", response_model=list[schemas.ChecklistChangeOut])

@@ -4,6 +4,7 @@ import type { Station } from "../types";
 import { STATUS_LABELS } from "../types";
 import { api } from "../api";
 import { useAuth, useCan } from "../auth/AuthContext";
+import { useWorkspace } from "../workspace/WorkspaceContext";
 
 interface Props {
   stations: Station[];
@@ -16,6 +17,7 @@ interface Props {
 export function StationPanel({ stations, selected, onSelect, onCreated, onDeleted }: Props) {
   const { user } = useAuth();
   const can = useCan();
+  const { currentId, current, workspaces } = useWorkspace();
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [kavachId, setKavachId] = useState("");
@@ -34,7 +36,7 @@ export function StationPanel({ stations, selected, onSelect, onCreated, onDelete
       const station = await api.createStation({
         name, kavach_station_id: kavachId, sip_drawing_number: sipDrawing || null,
         kavach_version: kavachVer || null, sip_version: sipVer || null,
-        guideline_version: guidelineVer || null,
+        guideline_version: guidelineVer || null, workspace_id: currentId,
       });
       onCreated(station);
       setShowForm(false);
@@ -110,8 +112,12 @@ export function StationPanel({ stations, selected, onSelect, onCreated, onDelete
         </div>
       )}
 
+      {showForm && workspaces.length > 1 && !current && (
+        <div className="error small">Choose a workspace (top right) before creating a station.</div>
+      )}
       {showForm && (
         <form className="inline-form" onSubmit={handleCreate}>
+          {current && <span className="badge na" title={current.name}>{current.code}</span>}
           <input placeholder="Station name" value={name} onChange={(e) => setName(e.target.value)} required />
           <input placeholder="KAVACH station ID" value={kavachId} onChange={(e) => setKavachId(e.target.value)} required />
           <input placeholder="SIP drawing no." value={sipDrawing} onChange={(e) => setSipDrawing(e.target.value)} />

@@ -37,7 +37,8 @@ def verify_station(station_id: int, db: Session = Depends(get_db),
     lists what this endpoint deliberately does NOT check, and why -- see rules/engine.py."""
     from ..rules import store
     station, elements, tags, tins = _load_domain_layout(station_id, db)
-    rules = store.active_rules(db)
+    st_orm = db.get(models.StationORM, station_id)
+    rules = store.active_rules(db, st_orm.workspace_id if st_orm else None)
     report = run_all_checks(station, elements, tags, tins, rules=rules)
     manual = {r.clause: r.description or r.title for r in rules if r.kind == "manual" and r.enabled}
     return schemas.VerificationReportOut(

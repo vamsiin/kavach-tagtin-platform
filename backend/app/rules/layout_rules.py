@@ -303,6 +303,44 @@ def check_tan_after_adjustment(tags: list[Tag], p: dict | None = None) -> list[C
     return out
 
 
+# ---------------------------------------------------------------------------
+# Zone direction convention: SIP Up/Down vs KAVACH Nominal/Reverse
+# ---------------------------------------------------------------------------
+def sip_to_kavach(sip_direction: str | None, dn_direction: str) -> str | None:
+    """'Down'/'DN' -> the zone's dn_direction; 'Up' -> the other one. None if the
+    value isn't a SIP direction (already Nominal/Reverse, blank, ...)."""
+    d = (sip_direction or "").strip().lower()
+    other = "Reverse" if dn_direction == "Nominal" else "Nominal"
+    if d in ("down", "dn", "d"):
+        return dn_direction
+    if d in ("up", "u"):
+        return other
+    return None
+
+
+def check_direction_convention(station: Station, elements: list[Element], tags: list[Tag]) -> list[CheckResult]:
+    """A tag linked to a signal must run in that signal's direction, translated with
+    the workspace's convention (SCR: SIP Down = Nominal; ECR: SIP Up = Nominal)."""
+    title = "Tag direction matches its signal"
+    conv = (f"{station.workspace_code + ': ' if station.workspace_code else ''}SIP Down = "
+            f"{station.dn_direction}")
+    els = {e.id: e for e in elements}
+    out = []
+    for t in tags:
+        el = els.get(t.linked_element_id)
+        if el is None or not t.direction:
+            continue
+        want = sip_to_kavach(el.direction, station.dn_direction)
+        if want is None:
+            continue
+        ok = t.direction == want
+        out.append(CheckResult(
+            "DIR-CONV", title, "PASS" if ok else "FAIL",
+            f"{t.tag_ref} ({t.direction}) linked to {el.element_ref} ({el.direction})"
+            + ("" if ok else f" -- expected {want} ({conv})"), subject_ref=t.tag_ref))
+    return out
+
+
 def gate_tag_wl_alternative(tag: Tag, gate: Element, elements: list[Element], reach_m: float) -> Element | None:
     """H2.9 alternative: a Whistle Board (W/L) on the approach to the LC gate, on the
     same side of the gate as the gate tag."""

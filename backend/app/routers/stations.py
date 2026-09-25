@@ -31,7 +31,10 @@ def create_station(payload: schemas.StationCreateRequest, db: Session = Depends(
         if any(b.track_id is not None for b in a.borders):
             raise HTTPException(422, "Add the station's lines first, then link borders to them")
         _validate_adjacent(a)
-    station = models.StationORM(created_by=user.username, **payload.model_dump(exclude={"adjacent_stations"}))
+    from ..workspaces.service import resolve_for_create
+    ws_id = resolve_for_create(db, user, payload.workspace_id)
+    station = models.StationORM(created_by=user.username, workspace_id=ws_id,
+                                **payload.model_dump(exclude={"adjacent_stations", "workspace_id"}))
     station.adjacent_stations = [models.AdjacentStationORM(**a.model_dump(exclude={"borders"}),
                                                            borders=_border_rows(a))
                                  for a in payload.adjacent_stations]
@@ -42,9 +45,16 @@ def create_station(payload: schemas.StationCreateRequest, db: Session = Depends(
 
 
 @router.get("", response_model=list[schemas.StationOut])
-def list_stations(db: Session = Depends(get_db),
+def list_stations(workspace_id: int | None = None, db: Session = Depends(get_db),
     user: models.UserORM = Depends(get_current_user)):
-    return [_station_out(s) for s in db.query(models.StationORM).all()]
+    """Stations in the workspaces the user can see (optionally one workspace)."""
+    from ..workspaces.service import accessible_ids
+    visible = accessible_ids(db, user)
+    q = db.query(models.StationORM)
+    if workspace_id is not None:
+        q = q.filter(models.StationORM.workspace_id == workspace_id)
+    return [_station_out(s) for s in q.all()
+            if visible is None or s.workspace_id is None or s.workspace_id in visible]
 
 
 @router.get("/{station_id}", response_model=schemas.StationOut)

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Dashboard, DashboardRow } from "../types";
 import { STATUS_LABELS, ACTION_LABELS } from "../types";
 import { api } from "../api";
+import { useWorkspace } from "../workspace/WorkspaceContext";
 
 interface Props {
   onOpen: (stationId: number) => void;
@@ -15,12 +16,13 @@ export function DashboardPanel({ onOpen }: Props) {
   const [data, setData] = useState<Dashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("all");
+  const { currentId, current, workspaces } = useWorkspace();
 
   async function load() {
     setError(null);
-    try { setData(await api.dashboard()); } catch (e) { setError(String(e)); }
+    try { setData(await api.dashboard(currentId)); } catch (e) { setError(String(e)); }
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [currentId]);
 
   if (error) return <div className="panel"><div className="error">{error}</div></div>;
   if (!data) return <div className="panel"><p className="muted">Loading dashboard…</p></div>;
@@ -31,7 +33,7 @@ export function DashboardPanel({ onOpen }: Props) {
   return (
     <div className="panel">
       <div className="panel-header">
-        <h3>Portfolio Dashboard <span className="muted small">{data.total} station(s)</span></h3>
+        <h3>Portfolio Dashboard <span className="muted small">{current ? `${current.code} · ` : workspaces.length > 1 ? "all workspaces · " : ""}{data.total} station(s)</span></h3>
         <button className="secondary" onClick={load}>Refresh</button>
       </div>
       <div className="status-chips">
@@ -53,7 +55,8 @@ export function DashboardPanel({ onOpen }: Props) {
         <tbody>
           {rows.map((r) => (
             <tr key={r.id} className="clickable" onClick={() => onOpen(r.id)} title="Open station">
-              <td><strong>{r.name}</strong> <span className="muted small">({r.kavach_station_id})</span></td>
+              <td><strong>{r.name}</strong> <span className="muted small">({r.kavach_station_id})</span>
+                {!current && r.workspace_code && <span className="badge na" style={{ marginLeft: 6 }}>{r.workspace_code}</span>}</td>
               <td><span className={`status-pill status-${r.status}`}>{STATUS_LABELS[r.status] ?? r.status}</span></td>
               <td>{r.layout_version}</td>
               <td className="small">{r.assigned_designer ?? <span className="muted">any</span>}</td>

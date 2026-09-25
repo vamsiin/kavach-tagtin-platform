@@ -1,11 +1,12 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .database import Base, engine, ensure_schema_up_to_date
+from .workspaces.service import station_access
 from . import models  # noqa: F401  -- ensures models are registered before create_all
-from .routers import stations, verify, auth, workflow, documents, observations, reports, checklist, management, tracks, allotment
+from .routers import stations, verify, auth, workflow, documents, observations, reports, checklist, management, tracks, allotment, workspaces
 
 
 @asynccontextmanager
@@ -15,8 +16,10 @@ async def lifespan(app: FastAPI):
     # FR-006: install any default checklist rules not yet in the DB (never overwrites edits)
     from .database import SessionLocal
     from .rules.store import seed_rules
+    from .workspaces.service import ensure_initial_workspace
     with SessionLocal() as db:
-        seed_rules(db)   # renames rows seeded under older clause numbers, then adds new defaults
+        seed_rules(db)
+        ensure_initial_workspace(db)   # data from before workspaces -> 'SCR'; no-op afterwards   # renames rows seeded under older clause numbers, then adds new defaults
     yield
 
 
@@ -49,19 +52,20 @@ app.add_middleware(
 )
 
 
-app.include_router(stations.router)
-app.include_router(verify.router)
+app.include_router(stations.router, dependencies=[Depends(station_access)])
+app.include_router(verify.router, dependencies=[Depends(station_access)])
 app.include_router(auth.router)
-app.include_router(workflow.router)
-app.include_router(documents.router)
+app.include_router(workflow.router, dependencies=[Depends(station_access)])
+app.include_router(documents.router, dependencies=[Depends(station_access)])
 app.include_router(documents.meta_router)
-app.include_router(observations.router)
-app.include_router(reports.router)
+app.include_router(observations.router, dependencies=[Depends(station_access)])
+app.include_router(reports.router, dependencies=[Depends(station_access)])
 app.include_router(reports.meta_router)
-app.include_router(checklist.router)
-app.include_router(management.router)
-app.include_router(tracks.router)
-app.include_router(allotment.router)
+app.include_router(checklist.router, dependencies=[Depends(station_access)])
+app.include_router(management.router, dependencies=[Depends(station_access)])
+app.include_router(tracks.router, dependencies=[Depends(station_access)])
+app.include_router(allotment.router, dependencies=[Depends(station_access)])
+app.include_router(workspaces.router, dependencies=[Depends(station_access)])
 
 
 @app.get("/health")

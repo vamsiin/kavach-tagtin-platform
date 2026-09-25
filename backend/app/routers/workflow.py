@@ -98,7 +98,7 @@ def _run_verification(station_id: int, db: Session):
     tags = [t.to_domain() for t in db.query(models.TagORM).filter_by(station_id=station_id).all()]
     tins = [t.to_domain() for t in db.query(models.TINORM).filter_by(station_id=station_id).all()]
     from ..rules.store import active_rules
-    return run_all_checks(station_orm.to_domain(), elements, tags, tins, rules=active_rules(db))
+    return run_all_checks(station_orm.to_domain(), elements, tags, tins, rules=active_rules(db, station_orm.workspace_id))
 
 
 def _user_email(username: str | None, db: Session) -> str:
@@ -207,6 +207,10 @@ def submit_station(
     checker = db.query(models.UserORM).filter_by(username=payload.assigned_checker_username).first()
     if not checker:
         raise HTTPException(404, f"No user '{payload.assigned_checker_username}' found")
+    from ..workspaces.service import require_member
+    st_orm = db.get(models.StationORM, station_id)
+    if st_orm is not None:
+        require_member(db, checker, st_orm, "assigned as its checker")
 
     station, _ = _do_transition(
         station_id, SUBMIT, payload.comment, db, user,
@@ -232,6 +236,10 @@ def reassign_checker(
     checker = db.query(models.UserORM).filter_by(username=payload.assigned_checker_username).first()
     if not checker or not checker.is_active:
         raise HTTPException(404, f"No active user '{payload.assigned_checker_username}' found")
+    from ..workspaces.service import require_member
+    st_orm = db.get(models.StationORM, station_id)
+    if st_orm is not None:
+        require_member(db, checker, st_orm, "assigned as its checker")
     station, _ = _do_transition(station_id, REASSIGN, payload.comment, db, user,
                                 target_username=checker.username, target_role=checker.role)
     result = notify_checker_assigned(checker.email, station.name, user.full_name)

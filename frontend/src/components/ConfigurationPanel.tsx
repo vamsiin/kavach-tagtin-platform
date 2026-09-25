@@ -3,6 +3,7 @@ import type { Baseline, BaselineDiff, Station, StationChange } from "../types";
 import { STATUS_LABELS, ROLE_LABELS } from "../types";
 import { api } from "../api";
 import { useCan } from "../auth/AuthContext";
+import { useWorkspace } from "../workspace/WorkspaceContext";
 
 interface Props {
   station: Station;
@@ -28,6 +29,10 @@ export function ConfigurationPanel({ station, onStationChanged }: Props) {
   const [notes, setNotes] = useState("");
   const [diff, setDiff] = useState<BaselineDiff | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { workspaces, byId, reload: reloadWorkspaces } = useWorkspace();
+  const canMove = can("workspace.manage");
+  const [moveTo, setMoveTo] = useState("");
+  const [moveReason, setMoveReason] = useState("");
 
   async function reload() {
     setChanges(await api.stationChanges(station.id));
@@ -55,10 +60,39 @@ export function ConfigurationPanel({ station, onStationChanged }: Props) {
     catch (e) { setError(String(e)); }
   }
 
+  async function move() {
+    setError(null);
+    try {
+      onStationChanged(await api.moveStation(station.id, Number(moveTo), moveReason));
+      setMoveTo(""); setMoveReason("");
+      await reload(); await reloadWorkspaces();
+    } catch (e) { setError(String(e)); }
+  }
+
+  const ws = byId(station.workspace_id);
   const preview = `${v.kavach_version || "?"}.${v.sip_version || "?"}.${v.guideline_version || "?"}`;
 
   return (
     <>
+      <div className="panel">
+        <h3>Workspace <span className="muted small">railway zone</span></h3>
+        <p>
+          <strong>{ws ? `${ws.code} — ${ws.name}` : station.workspace_code ?? "—"}</strong>
+          {ws && <span className="muted small"> · SIP Down = {ws.dn_direction}, SIP Up = {ws.dn_direction === "Nominal" ? "Reverse" : "Nominal"}</span>}
+        </p>
+        {canMove && workspaces.length > 1 && (
+          <div className="inline-form">
+            <select value={moveTo} onChange={(e) => setMoveTo(e.target.value)}>
+              <option value="">Move to workspace…</option>
+              {workspaces.filter((w) => w.id !== station.workspace_id).map((w) => <option key={w.id} value={w.id}>{w.code} — {w.name}</option>)}
+            </select>
+            <input style={{ flex: 1, minWidth: 240 }} placeholder="Reason (required, recorded)" value={moveReason}
+              onChange={(e) => setMoveReason(e.target.value)} />
+            <button disabled={!moveTo || !moveReason.trim()} onClick={move}>Move</button>
+          </div>
+        )}
+      </div>
+
       <div className="panel">
         <h3>Version numbers <span className="muted small">layout {station.layout_version}</span></h3>
         <p className="muted small">

@@ -110,7 +110,7 @@ export function WorkflowPanel({ station, onStationChanged }: Props) {
     if (action === "submit") {
       setError(null);
       try {
-        setCheckers(await api.listUsersByRole("checker"));
+        setCheckers(await api.listUsersByRole("checker", station.workspace_id));
         setShowAssignForm(true);
       } catch (err) {
         setError(describeError(err));

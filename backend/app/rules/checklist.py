@@ -170,6 +170,10 @@ def _register_builtins():
        [P("max_speed_kmph", "number", "Max section speed (km/h)", min=1),
         P("normal_tags", "int", "Normal tags required", min=1)],
        lambda st, el, tg, tn, p: L.check_tan_after_adjustment(tg, p))
+    _b("dir_conv", "DIR-CONV", "Tag direction matches its signal",
+       "A tag linked to a signal runs in the signal's direction, using the workspace's convention "
+       "(SCR: SIP Down = Nominal; ECR: SIP Up = Nominal).",
+       {}, [], lambda st, el, tg, tn, p: L.check_direction_convention(st, el, tg), severity="WARN")
     _b("fr004_unique", "FR-004", "Tag ref / number unique", "Tag references and numbers unique within the station.",
        {}, [], lambda st, el, tg, tn, p: E.check_brd_fr004_tag_uniqueness(tg))
     _b("fr004_parity", "FR-004", "Tag number parity by direction",
@@ -308,7 +312,7 @@ def validate_params(kind: str, builtin: str | None, params: dict) -> dict:
 # ---------------------------------------------------------------------------
 _ORDER = ["data_units", "h2_1", "h2_2", "h2_5", "h2_6", "h2_7", "h2_9", "h2_11", "h2_12", "h2_13",
           "h2_15", "h2_16", "h2_18", "h2_21", "h2_23", "h2_28", "fr004_unique", "fr004_parity", "br001", "br005",
-          "topology", "h2_8", "h2_17", "h2_20", "h2_22", "h2_26", "tan_dead_stop", "tan_l_tag", "tan_after_a"]
+          "topology", "h2_8", "h2_17", "h2_20", "h2_22", "h2_26", "tan_dead_stop", "tan_l_tag", "tan_after_a", "dir_conv"]
 
 
 def _ensure():

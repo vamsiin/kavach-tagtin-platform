@@ -180,10 +180,35 @@ def to_config(r: models.ChecklistRuleORM) -> RuleConfig:
                       blocking=bool(r.blocking), builtin=r.builtin, id=r.id)
 
 
-def active_rules(db: Session) -> list[RuleConfig]:
+def overrides_for(db: Session, workspace_id: int | None) -> dict[int, models.WorkspaceRuleOverrideORM]:
+    if workspace_id is None:
+        return {}
+    return {o.rule_id: o for o in db.query(models.WorkspaceRuleOverrideORM).filter_by(workspace_id=workspace_id)}
+
+
+def apply_override(cfg: RuleConfig, o: models.WorkspaceRuleOverrideORM | None) -> RuleConfig:
+    if o is None:
+        return cfg
+    if o.params is not None:
+        cfg.params = json.loads(o.params)
+    if o.severity is not None:
+        cfg.severity = o.severity
+    if o.enabled is not None:
+        cfg.enabled = bool(o.enabled)
+    return cfg
+
+
+def active_rules(db: Session, workspace_id: int | None = None) -> list[RuleConfig]:
+    """The checklist as it applies in a workspace: the standard rules with that
+    workspace's overrides applied (none when workspace_id is None)."""
     rows = (db.query(models.ChecklistRuleORM).filter(models.ChecklistRuleORM.deleted.isnot(True))
             .order_by(models.ChecklistRuleORM.sort_order, models.ChecklistRuleORM.id).all())
-    return [to_config(r) for r in rows]
+    ov = overrides_for(db, workspace_id)
+    return [apply_override(to_config(r), ov.get(r.id)) for r in rows]
+
+
+def rules_for_station(db: Session, station: models.StationORM) -> list[RuleConfig]:
+    return active_rules(db, station.workspace_id)
 
 
 def config_version(db: Session) -> int:
@@ -201,7 +226,8 @@ def current_cycle_event_id(db: Session, station_id: int) -> int:
 def manual_items(db: Session, station_id: int) -> list[dict]:
     """Enabled manual rules with this station's CURRENT-cycle response (if any)."""
     cycle = current_cycle_event_id(db, station_id)
-    rules = [r for r in active_rules(db) if r.kind == "manual" and r.enabled]
+    st = db.get(models.StationORM, station_id)
+    rules = [r for r in active_rules(db, st.workspace_id if st else None) if r.kind == "manual" and r.enabled]
     latest: dict[int, models.ChecklistResponseORM] = {}
     for resp in (db.query(models.ChecklistResponseORM)
                  .filter_by(station_id=station_id, cycle_event_id=cycle)

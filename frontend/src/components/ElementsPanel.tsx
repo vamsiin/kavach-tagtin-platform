@@ -6,6 +6,7 @@ import { RegisterTable, type ColumnDef } from "./RegisterTable";
 interface Props {
   elements: Element[];
   tracks: Track[];
+  dnDirection?: string;
   onAdd: (payload: Partial<Element>) => Promise<void>;
   onUpdate: (id: number, payload: Partial<Element>) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
@@ -28,13 +29,16 @@ export function LineSelect({ tracks, value, onChange, placeholder = "Line —" }
   );
 }
 
-export function ElementsPanel({ elements, tracks, onAdd, onUpdate, onDelete, readOnly, lockReason }: Props) {
+export function ElementsPanel({ elements, tracks, dnDirection, onAdd, onUpdate, onDelete, readOnly, lockReason }: Props) {
   const columns: ColumnDef<Element>[] = [
     { key: "element_ref", label: "Ref" },
     { key: "element_type", label: "Type" },
     { key: "location_m", label: "Location (m)" },
     { key: "track_id", label: "Line", render: (e) => lineName(tracks, e.track_id) },
-    { key: "direction", label: "Dir" },
+    { key: "direction", label: "Dir", render: (e) => e.direction
+        ? (/^(up|down|dn)$/i.test(e.direction) ? `${e.direction} (${/^up$/i.test(e.direction)
+            ? ((dnDirection ?? "Nominal") === "Nominal" ? "Reverse" : "Nominal") : (dnDirection ?? "Nominal")})` : e.direction)
+        : "—" },
     { key: "to_track_id", label: "Details", render: (e) =>
         e.element_type === POINTS ? (e.to_track_id != null ? `to ${lineName(tracks, e.to_track_id)}` : "to —")
         : e.element_type === LC_GATE ? [e.lc_class && `Class ${e.lc_class}`, e.lc_manning].filter(Boolean).join(", ") || "—"

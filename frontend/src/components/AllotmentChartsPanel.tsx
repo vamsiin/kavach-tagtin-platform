@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import type { AllotmentChart, AllotmentChartDetail, AllotmentParse, AllotmentRow } from "../types";
 import { api } from "../api";
 import { useCan } from "../auth/AuthContext";
+import { useWorkspace } from "../workspace/WorkspaceContext";
 
 const TEMPLATE_HEADER = ["S.No.", "Station / Block Section", "Division Code", "Station Code", "Station ID",
   "TIN Range", "TIN Allotted", "RFID Tag Numbers Range", "Total"];
@@ -49,6 +50,7 @@ function RowsTable({ rows }: { rows: AllotmentRow[] }) {
 export function AllotmentChartsPanel() {
   const can = useCan();
   const canManage = can("allotment.manage");
+  const { currentId, current, workspaces } = useWorkspace();
   const [charts, setCharts] = useState<AllotmentChart[]>([]);
   const [view, setView] = useState<AllotmentChartDetail | null>(null);
   const [preview, setPreview] = useState<AllotmentParse | null>(null);
@@ -61,8 +63,8 @@ export function AllotmentChartsPanel() {
   const fileInput = useRef<HTMLInputElement>(null);
   const [attachFor, setAttachFor] = useState<number | null>(null);
 
-  async function reload() { setCharts(await api.listAllotmentCharts()); }
-  useEffect(() => { reload().catch((e) => setError(String(e))); }, []);
+  async function reload() { setCharts(await api.listAllotmentCharts(currentId)); }
+  useEffect(() => { reload().catch((e) => setError(String(e))); }, [currentId]);
 
   async function pickSheet(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -79,7 +81,7 @@ export function AllotmentChartsPanel() {
       const c = await api.createAllotmentChart({
         ...meta, reference_no: meta.reference_no || null, issued_on: meta.issued_on || null,
         issued_by: meta.issued_by || null, remarks: meta.remarks || null,
-        rows: preview.rows.map(strip), supersede_current: supersede,
+        rows: preview.rows.map(strip), supersede_current: supersede, workspace_id: currentId,
       });
       if (original) await api.attachAllotmentFile(c.id, original);
       setPreview(null); setOriginal(null);
@@ -100,8 +102,8 @@ export function AllotmentChartsPanel() {
     <>
       <div className="panel">
         <div className="panel-header">
-          <h3>RFID Tag / TIN allotment charts</h3>
-          {canManage && !preview && (
+          <h3>RFID Tag / TIN allotment charts {current && <span className="muted small">· {current.code}</span>}</h3>
+          {canManage && !preview && (current || workspaces.length <= 1) && (
             <div className="inline-form">
               <button className="secondary" onClick={downloadTemplate}>Download template</button>
               <button onClick={() => sheetInput.current?.click()}>Import chart (.xlsx / .csv)…</button>
@@ -114,17 +116,18 @@ export function AllotmentChartsPanel() {
           The chart issued by RDSO / the Railway for a division (BR-001). Each station and adjacent block section is
           matched to its row by KAVACH station ID. Tag and TIN numbers on a layout must fall in the station's own row or
           its adjacent sections'. Charts are never edited: load a revised chart and it supersedes the current one for
-          that division. {!canManage && "Only a Configuration Manager or admin can load charts."}
+          that division. Charts belong to a zone workspace{!current && workspaces.length > 1 ? " -- choose one (top right) to load a chart" : ""}.
+          {!canManage && " Only a Configuration Manager or admin can load charts."}
         </p>
         {error && <div className="error">{error}</div>}
 
         <table className="register-table">
-          <thead><tr><th>Chart</th><th>Division</th><th>Reference</th><th>Issued</th><th>Rows</th><th>Status</th><th>Original</th><th></th></tr></thead>
+          <thead><tr><th>Chart</th><th>Zone</th><th>Division</th><th>Reference</th><th>Issued</th><th>Rows</th><th>Status</th><th>Original</th><th></th></tr></thead>
           <tbody>
             {charts.map((c) => (
               <tr key={c.id}>
                 <td><strong>{c.title}</strong><div className="muted small">loaded by {c.created_by} · {c.created_at.slice(0, 10)}</div></td>
-                <td>{c.division}</td><td className="small">{c.reference_no ?? "—"}</td><td>{c.issued_on ?? "—"}</td>
+                <td>{c.workspace_code ?? "—"}</td><td>{c.division}</td><td className="small">{c.reference_no ?? "—"}</td><td>{c.issued_on ?? "—"}</td>
                 <td>{c.row_count}</td>
                 <td>{c.is_current ? <span className="badge pass">Current</span>
                   : <span className="badge na">Superseded{c.superseded_by_id ? ` by #${c.superseded_by_id}` : ""}</span>}</td>
@@ -143,7 +146,7 @@ export function AllotmentChartsPanel() {
                 </td>
               </tr>
             ))}
-            {charts.length === 0 && <tr><td colSpan={8} className="muted">No allotment chart loaded. Numbers are only checked against 1-1023 / 1-255 until one is.</td></tr>}
+            {charts.length === 0 && <tr><td colSpan={9} className="muted">No allotment chart loaded. Numbers are only checked against 1-1023 / 1-255 until one is.</td></tr>}
           </tbody>
         </table>
       </div>

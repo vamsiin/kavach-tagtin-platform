@@ -46,15 +46,26 @@ def _log_change(db, station, field, before, after, reason, user):
 # Dashboard (monitor)
 # ---------------------------------------------------------------------------
 @router.get("/dashboard", response_model=schemas.DashboardOut)
-def dashboard(db: Session = Depends(get_db), user: models.UserORM = Depends(get_current_user)):
+def dashboard(workspace_id: int | None = None, db: Session = Depends(get_db),
+              user: models.UserORM = Depends(get_current_user)):
     require(user, "dashboard.view")
     from ..rules.engine import run_all_checks
     from ..rules.store import active_rules
+    from ..workspaces.service import accessible_ids
     from .workflow import _load_workflow_state
-    rules = active_rules(db)
+    rules_by_ws: dict = {}
     now = datetime.now(timezone.utc)
     rows, by_status = [], {}
-    for st in db.query(models.StationORM).order_by(models.StationORM.name).all():
+    visible = accessible_ids(db, user)
+    q = db.query(models.StationORM).order_by(models.StationORM.name)
+    if workspace_id is not None:
+        q = q.filter(models.StationORM.workspace_id == workspace_id)
+    for st in q.all():
+        if visible is not None and st.workspace_id is not None and st.workspace_id not in visible:
+            continue
+        if st.workspace_id not in rules_by_ws:
+            rules_by_ws[st.workspace_id] = active_rules(db, st.workspace_id)
+        rules = rules_by_ws[st.workspace_id]
         events = (db.query(models.WorkflowEventORM).filter_by(station_id=st.id)
                   .order_by(models.WorkflowEventORM.id.desc()).all())
         last = events[0] if events else None
@@ -76,7 +87,7 @@ def dashboard(db: Session = Depends(get_db), user: models.UserORM = Depends(get_
         rail = st.railway_submissions[-1] if st.railway_submissions else None
         by_status[st.status] = by_status.get(st.status, 0) + 1
         rows.append(schemas.DashboardRow(
-            id=st.id, name=st.name, kavach_station_id=st.kavach_station_id, status=st.status,
+            id=st.id, workspace_code=st.workspace_code, name=st.name, kavach_station_id=st.kavach_station_id, status=st.status,
             layout_version=st.layout_version, assigned_designer=st.assigned_designer,
             assigned_checker=state.assigned_checker, created_by=st.created_by,
             days_in_status=days, last_action=last.action if last else None,
@@ -104,6 +115,8 @@ def assign_designer(station_id: int, payload: schemas.AssignDesignerRequest,
             raise HTTPException(404, f"No active user '{new}'")
         if d.role != "designer":
             raise HTTPException(422, f"'{new}' is a {d.role}, not a designer")
+        from ..workspaces.service import require_member
+        require_member(db, d, st, "assigned as its designer")
     if new == st.assigned_designer:
         raise HTTPException(422, "No change")
     _log_change(db, st, "assigned_designer", st.assigned_designer, new, payload.comment, user)
@@ -185,7 +198,7 @@ def create_baseline(station_id: int, payload: schemas.BaselineCreate,
     from .workflow import _layout_snapshot
     rep = run_all_checks(st.to_domain(), [e.to_domain() for e in st.elements],
                          [t.to_domain() for t in st.tags], [n.to_domain() for n in st.tins],
-                         rules=active_rules(db))
+                         rules=active_rules(db, st.workspace_id))
     row = models.BaselineORM(
         station_id=st.id, label=label, layout_version=st.layout_version, station_status=st.status,
         notes=(payload.notes or "").strip() or None, layout_snapshot=_layout_snapshot(st, db),

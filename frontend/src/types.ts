@@ -121,6 +121,8 @@ export interface Station {
   assigned_checker: string | null;
   assigned_designer?: string | null;
   centre_line_m?: number | null;
+  workspace_id?: number | null;
+  workspace_code?: string | null;
 }
 
 export interface Element {
@@ -525,6 +527,9 @@ export interface ChecklistRule {
   updated_by: string | null;
   updated_at: string | null;
   param_schema: ParamSchema[];
+  override?: { params: Record<string, unknown> | null; severity: string | null; enabled: boolean | null;
+    reason: string | null; updated_by: string | null; updated_at: string | null } | null;
+  effective?: { params: Record<string, unknown>; severity: "FAIL" | "WARN"; enabled: boolean } | null;
 }
 
 export interface Checklist {
@@ -543,6 +548,7 @@ export interface ChecklistChange {
   reason: string | null;
   changed_by: string;
   changed_at: string;
+  workspace_id?: number | null;
 }
 
 export interface ManualItem {
@@ -568,6 +574,7 @@ export interface ManualChecklist {
 export interface DashboardRow {
   id: number;
   name: string;
+  workspace_code?: string | null;
   kavach_station_id: string;
   status: string;
   layout_version: string;
@@ -661,6 +668,8 @@ export interface AllotmentChart {
   created_at: string;
   superseded_by_id: number | null;
   row_count: number;
+  workspace_id?: number | null;
+  workspace_code?: string | null;
 }
 
 export interface AllotmentChartDetail extends AllotmentChart {
@@ -693,4 +702,26 @@ export interface StationAllotment {
   adjacent: { adjacent_name: string; row: AllotmentRow | null }[];
   tags: AllotmentUsage | null;
   tins: AllotmentUsage | null;
+}
+
+// ---- Workspaces (railway zones) ----
+export interface Workspace {
+  id: number;
+  code: string;
+  name: string;
+  dn_direction: "Nominal" | "Reverse";   // KAVACH direction of the SIP's Down movements
+  open_to_all: boolean;
+  remarks: string | null;
+  created_by: string | null;
+  created_at: string | null;
+  members: string[];
+  station_count: number;
+  override_count: number;
+}
+
+/** "Nominal (DN)" / "Reverse (UP)" in SCR; "Nominal (UP)" / "Reverse (DN)" in ECR. */
+export function directionLabel(dir: string, dnDirection: string | undefined | null): string {
+  if (dir !== "Nominal" && dir !== "Reverse") return dir;
+  const dn = (dnDirection ?? "Nominal") === dir;
+  return `${dir} (${dn ? "DN" : "UP"})`;
 }

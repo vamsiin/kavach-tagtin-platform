@@ -220,6 +220,8 @@ class Station:
     tracks: list[Track] = field(default_factory=list)
     adjacent: list[AdjacentStation] = field(default_factory=list)
     allotment: StationAllotment | None = None   # None = no allotment chart loaded
+    dn_direction: str = "Nominal"   # workspace convention: KAVACH direction of the SIP's "Down"
+    workspace_code: str = ""
 
     @property
     def layout_version(self) -> str:

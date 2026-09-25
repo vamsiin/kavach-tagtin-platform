@@ -45,6 +45,7 @@ CAPABILITIES: dict[str, tuple[str, ...]] = {
     "station.versions": ("config_manager", "admin"),
     "baseline.create": ("config_manager", "admin"),
     "allotment.manage": ("config_manager", "admin"),
+    "workspace.manage": ("config_manager", "admin"),
     # administration
     "users.manage": ("admin",),
     # everyone who can log in

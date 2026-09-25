@@ -25,8 +25,8 @@ export function AssignmentPanel({ station, assignedChecker, onStationChanged }: 
 
   useEffect(() => {
     setDesigner(station.assigned_designer ?? "");
-    if (canDesigner) api.listUsersByRole("designer").then(setDesigners).catch(() => {});
-    if (canChecker) api.listUsersByRole("checker").then(setCheckers).catch(() => {});
+    if (canDesigner) api.listUsersByRole("designer", station.workspace_id).then(setDesigners).catch(() => {});
+    if (canChecker) api.listUsersByRole("checker", station.workspace_id).then(setCheckers).catch(() => {});
   }, [station.id, station.status, station.assigned_designer]);
 
   if (!canDesigner && !canChecker) return null;
