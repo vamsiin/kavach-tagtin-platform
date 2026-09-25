@@ -551,6 +551,53 @@ def check_h2_16_border_locations(station: Station) -> list[CheckResult]:
 
 
 # ---------------------------------------------------------------------------
+# BRD BR-001 / Annexure-H H2.23: tag and TIN numbers follow the approved RFID Tag /
+# TIN allotment chart. A number is accepted if it is in the station's own row or in
+# the row of one of its adjacent stations / block sections (a station layout also
+# shows the tags of the block sections up to its borders).
+# ---------------------------------------------------------------------------
+def check_br001_allotment(station: Station, tags: list[Tag], tins: list[TIN]) -> list[CheckResult]:
+    title = "Numbers within the allotment chart"
+    a = station.allotment
+    if a is None:
+        return [CheckResult("BR-001", title, "WARN",
+                            "No RFID Tag / TIN allotment chart loaded -- numbers are only checked "
+                            "against 1-1023 / 1-255 (H2.23)")]
+    if a.own is None:
+        return [CheckResult("BR-001", title, "FAIL",
+                            f"Station '{station.name}' (KAVACH ID {station.kavach_station_id}) is not in "
+                            f"the current allotment chart {a.chart_ref}")]
+    out = [CheckResult("BR-001", "Adjacent station found in the allotment chart", "WARN",
+                       f"Adjacent station '{n}' is not in the allotment chart -- record its KAVACH ID "
+                       f"so its numbers are recognised", subject_ref=n) for n in a.unmatched_adjacent]
+
+    def owner(n, attr):
+        if n in getattr(a.own, attr):
+            return a.own.name
+        for _, e in a.adjacent:
+            if n in getattr(e, attr):
+                return f"{e.name} (adjacent)"
+        return None
+
+    for t in tags:
+        if t.tag_number is None:
+            continue
+        w = owner(t.tag_number, "tags")
+        out.append(CheckResult("BR-001", title, "PASS" if w else "FAIL",
+                               f"{t.tag_ref}: tag number {t.tag_number} "
+                               + (f"allotted to {w}" if w else
+                                  f"is not allotted to {a.own.name} ({a.own.tag_text}) or its adjacent sections"),
+                               subject_ref=t.tag_ref))
+    for n in tins:
+        w = owner(n.tin_no, "tins")
+        out.append(CheckResult("BR-001", title, "PASS" if w else "FAIL",
+                               f"TIN {n.tin_no} " + (f"allotted to {w}" if w else
+                                  f"is not allotted to {a.own.name} ({a.own.tin_text}) or its adjacent sections"),
+                               subject_ref=str(n.tin_no)))
+    return out
+
+
+# ---------------------------------------------------------------------------
 # DATA-TOPOLOGY: elements, tags and TINs placed on a line of this station and
 # within its extent; points join two different lines. A data-integrity check that
 # the later automated clauses (H2.8, H2.17, H2.19, H2.22) depend on.

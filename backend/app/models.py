@@ -67,7 +67,14 @@ class StationORM(Base):
             centre_line_m=self.centre_line_m,
             tracks=[t.to_domain() for t in self.tracks],
             adjacent=[a.to_domain() for a in self.adjacent_stations],
+            allotment=self._allotment(),
         )
+
+    def _allotment(self):
+        from sqlalchemy.orm import object_session
+        from .allotment.service import station_allotment
+        db = object_session(self)
+        return station_allotment(db, self) if db is not None else None
 
     @property
     def layout_version(self) -> str:
@@ -239,6 +246,50 @@ class StationBorderORM(Base):
     border_tag_ref = Column(String, nullable=True)
 
     adjacent = relationship("AdjacentStationORM", back_populates="borders")
+
+
+class AllotmentChartORM(Base):
+    """An RFID Tag / TIN allotment chart as issued by RDSO / the Railway for a
+    division (BR-001). Reference data shared by all stations. Never edited: a
+    revised chart is loaded as a new chart that supersedes the current one."""
+    __tablename__ = "allotment_charts"
+
+    id = Column(Integer, primary_key=True)
+    title = Column(String, nullable=False)
+    division = Column(String, nullable=False)
+    reference_no = Column(String, nullable=True)
+    issued_on = Column(String, nullable=True)       # YYYY-MM-DD as on the letter
+    issued_by = Column(String, nullable=True)
+    remarks = Column(Text, nullable=True)
+    is_current = Column(Boolean, default=True)
+    source_filename = Column(String, nullable=True)
+    source_path = Column(String, nullable=True)
+    source_sha256 = Column(String, nullable=True)
+    created_by = Column(String, nullable=False)
+    created_at = Column(String, nullable=False)
+    superseded_by_id = Column(Integer, ForeignKey("allotment_charts.id"), nullable=True)
+
+    rows = relationship("AllotmentRowORM", back_populates="chart", cascade="all, delete-orphan",
+                        order_by="AllotmentRowORM.id")
+
+
+class AllotmentRowORM(Base):
+    __tablename__ = "allotment_rows"
+
+    id = Column(Integer, primary_key=True)
+    chart_id = Column(Integer, ForeignKey("allotment_charts.id"), nullable=False)
+    s_no = Column(String, nullable=True)
+    name = Column(String, nullable=False)
+    division_code = Column(String, nullable=True)
+    station_code = Column(String, nullable=True)
+    station_id = Column(String, nullable=True)
+    tin_ranges = Column(String, nullable=True)
+    tin_allotted = Column(String, nullable=True)
+    tag_ranges = Column(String, nullable=True)
+    tag_total = Column(Integer, nullable=True)       # as printed on the chart
+    remarks = Column(Text, nullable=True)
+
+    chart = relationship("AllotmentChartORM", back_populates="rows")
 
 
 class RevisionORM(Base):

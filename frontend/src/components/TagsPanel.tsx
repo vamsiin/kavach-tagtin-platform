@@ -8,6 +8,7 @@ interface Props {
   tags: Tag[];
   elements: Element[];
   tracks: Track[];
+  nextFree?: { odd: number | null; even: number | null };
   onAdd: (payload: Partial<Tag>) => Promise<void>;
   onUpdate: (id: number, payload: Partial<Tag>) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
@@ -15,7 +16,7 @@ interface Props {
   lockReason?: string;
 }
 
-export function TagsPanel({ tags, elements, tracks, onAdd, onUpdate, onDelete, readOnly, lockReason }: Props) {
+export function TagsPanel({ tags, elements, tracks, nextFree, onAdd, onUpdate, onDelete, readOnly, lockReason }: Props) {
   const columns: ColumnDef<Tag>[] = [
     { key: "tag_ref", label: "Ref" },
     { key: "tag_number", label: "No." },
@@ -41,18 +42,19 @@ export function TagsPanel({ tags, elements, tracks, onAdd, onUpdate, onDelete, r
       readOnly={readOnly}
       readOnlyReason={readOnly ? (lockReason ?? "Registers are locked while this station is not in Draft. Use 'Request changes' to reopen for editing.") : undefined}
       renderForm={(submit, submitting) => (
-        <TagForm elements={elements} tracks={tracks} onSubmit={submit} submitting={submitting} />
+        <TagForm elements={elements} tracks={tracks} nextFree={nextFree} onSubmit={submit} submitting={submitting} />
       )}
       renderEditForm={(row, submit, cancel, submitting) => (
-        <TagForm elements={elements} tracks={tracks} initial={row} onSubmit={submit} onCancel={cancel} submitting={submitting} />
+        <TagForm elements={elements} tracks={tracks} nextFree={nextFree} initial={row} onSubmit={submit} onCancel={cancel} submitting={submitting} />
       )}
     />
   );
 }
 
-function TagForm({ elements, tracks, initial, onSubmit, onCancel, submitting }: {
+function TagForm({ elements, tracks, nextFree, initial, onSubmit, onCancel, submitting }: {
   elements: Element[];
   tracks: Track[];
+  nextFree?: { odd: number | null; even: number | null };
   initial?: Tag;
   onSubmit: (p: Partial<Tag>) => void;
   onCancel?: () => void;
@@ -85,6 +87,14 @@ function TagForm({ elements, tracks, initial, onSubmit, onCancel, submitting }: 
       <input placeholder="Ref (e.g. R-775)" value={ref} onChange={(e) => setRef(e.target.value)} required />
       <input type="number" placeholder="Tag No. (1-1023)" value={number}
              onChange={(e) => setNumber(e.target.value)} style={{ width: 130 }} min={1} max={1023} />
+      {nextFree && (
+        <span className="muted small" title="Lowest unused numbers in this station's allotment (BR-001)">
+          next free:{" "}
+          {nextFree.odd != null && <button type="button" className="link-btn" onClick={() => setNumber(String(nextFree.odd))}>{nextFree.odd}</button>}
+          {" / "}
+          {nextFree.even != null && <button type="button" className="link-btn" onClick={() => setNumber(String(nextFree.even))}>{nextFree.even}</button>}
+        </span>
+      )}
       <select value={type} onChange={(e) => setType(e.target.value)}>
         {TAG_TYPES.map((t) => <option key={t} value={t}>{t} — {TAG_TYPE_LABELS[t]}</option>)}
       </select>

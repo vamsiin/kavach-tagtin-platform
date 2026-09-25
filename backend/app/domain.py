@@ -181,6 +181,28 @@ class AdjacentStation:
 
 
 @dataclass
+class AllotmentEntry:
+    """One row of an RFID Tag / TIN allotment chart (a station or block section)."""
+    name: str
+    station_id: str = ""
+    tags: frozenset = frozenset()
+    tins: frozenset = frozenset()
+    tag_text: str = ""
+    tin_text: str = ""
+
+
+@dataclass
+class StationAllotment:
+    """What the current allotment chart gives this station (BR-001): its own row and
+    the rows of its adjacent block sections, whose numbers may also appear on its
+    layout (e.g. R-774 on the Aler layout is in the Wangapalli-Aler IB range)."""
+    chart_ref: str
+    own: AllotmentEntry | None = None
+    adjacent: list = field(default_factory=list)      # [(adjacent station name, AllotmentEntry)]
+    unmatched_adjacent: list = field(default_factory=list)   # adjacent names not found in the chart
+
+
+@dataclass
 class Station:
     id: int | None = None
     name: str = ""
@@ -197,6 +219,7 @@ class Station:
     centre_line_m: float | None = None   # station centre line absolute location (H2.4 / H2.28)
     tracks: list[Track] = field(default_factory=list)
     adjacent: list[AdjacentStation] = field(default_factory=list)
+    allotment: StationAllotment | None = None   # None = no allotment chart loaded
 
     @property
     def layout_version(self) -> str:

@@ -627,3 +627,70 @@ export interface BaselineDiff {
   inputs_changed: string[];
   identical: boolean;
 }
+
+// ---- RFID Tag / TIN allotment charts (BR-001, FR-004) ----
+export interface AllotmentRow {
+  id?: number | null;
+  s_no: string | null;
+  name: string;
+  division_code: string | null;
+  station_code: string | null;
+  station_id: string | null;
+  tin_ranges: string | null;
+  tin_allotted: string | null;
+  tag_ranges: string | null;
+  tag_total: number | null;
+  remarks: string | null;
+  tag_count?: number;
+  tin_count?: number;
+  problems?: string[];
+}
+
+export interface AllotmentChart {
+  id: number;
+  title: string;
+  division: string;
+  reference_no: string | null;
+  issued_on: string | null;
+  issued_by: string | null;
+  remarks: string | null;
+  is_current: boolean;
+  source_filename: string | null;
+  source_sha256: string | null;
+  created_by: string;
+  created_at: string;
+  superseded_by_id: number | null;
+  row_count: number;
+}
+
+export interface AllotmentChartDetail extends AllotmentChart {
+  rows: AllotmentRow[];
+  warnings: string[];
+}
+
+export interface AllotmentParse {
+  rows: AllotmentRow[];
+  warnings: string[];
+  errors: string[];
+}
+
+export interface NumberUse { number: number; ref: string; owner: string | null }
+
+export interface AllotmentUsage {
+  allotted: number;
+  used_in_own: number;
+  free: number;
+  free_ranges: string;
+  next_free_odd: number | null;
+  next_free_even: number | null;
+  used: NumberUse[];
+  outside: NumberUse[];
+}
+
+export interface StationAllotment {
+  chart: AllotmentChart | null;
+  own: AllotmentRow | null;
+  adjacent: { adjacent_name: string; row: AllotmentRow | null }[];
+  tags: AllotmentUsage | null;
+  tins: AllotmentUsage | null;
+}

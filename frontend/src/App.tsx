@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Station, Element, Tag, TIN, Track, AdjacentStation, ObservationDraft, ObservationSummary, CheckResult } from "./types";
+import type { Station, Element, Tag, TIN, Track, AdjacentStation, StationAllotment, ObservationDraft, ObservationSummary, CheckResult } from "./types";
 import { api } from "./api";
 import { AuthProvider, useAuth, useCan } from "./auth/AuthContext";
 import { LoginScreen } from "./components/LoginScreen";
@@ -8,6 +8,8 @@ import { ElementsPanel } from "./components/ElementsPanel";
 import { TagsPanel } from "./components/TagsPanel";
 import { TinsPanel } from "./components/TinsPanel";
 import { LinesPanel } from "./components/LinesPanel";
+import { AllotmentChartsPanel } from "./components/AllotmentChartsPanel";
+import { StationAllotmentPanel } from "./components/StationAllotmentPanel";
 import { VerificationPanel } from "./components/VerificationPanel";
 import { TocPanel } from "./components/TocPanel";
 import { WorkflowPanel } from "./components/WorkflowPanel";
@@ -63,7 +65,8 @@ function MainContent() {
   const [tins, setTins] = useState<TIN[]>([]);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [adjacent, setAdjacent] = useState<AdjacentStation[]>([]);
-  const [tab, setTab] = useState<"inputs" | "registers" | "verify" | "observations" | "trace" | "reports" | "workflow" | "config" | "checklist" | "users">("registers")
+  const [allotment, setAllotment] = useState<StationAllotment | null>(null);
+  const [tab, setTab] = useState<"inputs" | "registers" | "verify" | "observations" | "trace" | "reports" | "workflow" | "config" | "checklist" | "allotment" | "users">("registers")
   const [obsDraft, setObsDraft] = useState<ObservationDraft | null>(null);
   const [obsSummary, setObsSummary] = useState<ObservationSummary | null>(null);
 
@@ -78,6 +81,7 @@ function MainContent() {
     api.listTins(selected.id).then(setTins).catch(console.error);
     api.listTracks(selected.id).then(setTracks).catch(console.error);
     api.listAdjacent(selected.id).then(setAdjacent).catch(console.error);
+    api.stationAllotment(selected.id).then(setAllotment).catch(console.error);
     api.listObservations(selected.id).then((r) => setObsSummary(r.summary)).catch(console.error);
   }, [selected]);
 
@@ -100,11 +104,16 @@ function MainContent() {
   async function reloadElements() {
     if (selected) setElements(await api.listElements(selected.id));
   }
+  async function reloadAllotment() {
+    if (selected) setAllotment(await api.stationAllotment(selected.id));
+  }
   async function reloadTags() {
     if (selected) setTags(await api.listTags(selected.id));
+    await reloadAllotment();
   }
   async function reloadTins() {
     if (selected) setTins(await api.listTins(selected.id));
+    await reloadAllotment();
   }
   async function reloadTracks() {
     // deleting a line unassigns everything on it, so the registers reload too
@@ -178,6 +187,9 @@ function MainContent() {
             <button className={tab === "checklist" ? "active" : ""} onClick={() => setTab("checklist")}>
               Checklist
             </button>
+            <button className={tab === "allotment" ? "active" : ""} onClick={() => setTab("allotment")}>
+              Allotment
+            </button>
             {can("users.manage") && (
               <button className={tab === "users" ? "active" : ""} onClick={() => setTab("users")}>
                 Users
@@ -204,13 +216,16 @@ function MainContent() {
             <>
               <LinesPanel station={selected} tracks={tracks} adjacent={adjacent} readOnly={readOnly}
                 lockReason={lockReason} onTracksChanged={reloadTracks}
-                onAdjacentChanged={async () => setAdjacent(await api.listAdjacent(selected.id))}
+                onAdjacentChanged={async () => { setAdjacent(await api.listAdjacent(selected.id)); await reloadAllotment(); }}
                 onStationChanged={handleStationChanged} />
+              <StationAllotmentPanel data={allotment} />
               <ElementsPanel elements={elements} tracks={tracks} readOnly={readOnly} lockReason={lockReason}
                 onAdd={async (p) => { await api.addElement(selected.id, p); await reloadElements(); }}
                 onUpdate={async (id, p) => { await api.updateElement(selected.id, id, p); await reloadElements(); }}
                 onDelete={async (id) => { await api.deleteElement(selected.id, id); await reloadElements(); await reloadTags(); }} />
-              <TagsPanel tags={tags} elements={elements} tracks={tracks} readOnly={readOnly} lockReason={lockReason}
+              <TagsPanel tags={tags} elements={elements} tracks={tracks}
+                nextFree={allotment?.tags ? { odd: allotment.tags.next_free_odd, even: allotment.tags.next_free_even } : undefined}
+                readOnly={readOnly} lockReason={lockReason}
                 onAdd={async (p) => { await api.addTag(selected.id, p); await reloadTags(); }}
                 onUpdate={async (id, p) => { await api.updateTag(selected.id, id, p); await reloadTags(); }}
                 onDelete={async (id) => { await api.deleteTag(selected.id, id); await reloadTags(); }} />
@@ -239,6 +254,8 @@ function MainContent() {
           )}
 
           {tab === "checklist" && <ChecklistPanel />}
+
+          {tab === "allotment" && <AllotmentChartsPanel />}
 
           {tab === "config" && <ConfigurationPanel station={selected} onStationChanged={handleStationChanged} />}
 

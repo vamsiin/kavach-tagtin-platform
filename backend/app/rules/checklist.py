@@ -138,6 +138,9 @@ def _register_builtins():
        {"parity_map": dict(E.DIRECTION_PARITY_MAP)},
        [P("parity_map", "parity_map", "Direction -> parity", options=["odd", "even"])],
        lambda st, el, tg, tn, p: E.check_brd_fr004_direction_parity(tg, p))
+    _b("br001", "BR-001", "Numbers within the allotment chart",
+       "Tag and TIN numbers are in the station's allotment, or its adjacent sections', on the current chart.",
+       {}, [], lambda st, el, tg, tn, p: E.check_br001_allotment(st, tg, tn))
     _b("br005", "BR-005", "Border tag location recorded", "Border tags have an absolute location.",
        {}, [], lambda st, el, tg, tn, p: E.check_brd_br005_border_tag_present(tg))
 
@@ -264,7 +267,7 @@ def validate_params(kind: str, builtin: str | None, params: dict) -> dict:
 # Defaults
 # ---------------------------------------------------------------------------
 _ORDER = ["data_units", "h2_1", "h2_2", "h2_5", "h2_6", "h2_7", "h2_9", "h2_11", "h2_12", "h2_13",
-          "h2_15", "h2_16", "h2_18", "h2_21", "h2_23", "h2_28", "fr004_unique", "fr004_parity", "br005",
+          "h2_15", "h2_16", "h2_18", "h2_21", "h2_23", "h2_28", "fr004_unique", "fr004_parity", "br001", "br005",
           "topology"]
 
 

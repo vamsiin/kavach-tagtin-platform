@@ -377,6 +377,19 @@ place on startup (`rules/store.py: migrate_rules`), keeping edits, responses and
   "Lines and neighbouring stations" section.
 - API: `/stations/{id}/tracks`, `/stations/{id}/adjacent-stations`, `PUT /stations/{id}/centre-line`.
 
+**Step 3 — RFID Tag / TIN allotment charts (BR-001, FR-004).**
+- *Allotment tab*: load a division's chart (import .xlsx / .csv, or `POST /allotment-charts`), attach the
+  issued letter (PDF), view rows. Charts are never edited; a revised chart supersedes the current one for its
+  division (`make-current` rolls back). Loading needs the Configuration Manager or admin.
+- Import checks: every range parses (1-1023 tags, 1-255 TINs, wrap-around like `977-1023, 1-70`), station IDs
+  unique; *warnings* for a printed Total that doesn't match the ranges and for overlapping numbers between rows
+  close together on the chart (numbers are deliberately reused across a division, so far-apart rows aren't flagged).
+- Stations and adjacent stations are matched to rows by KAVACH station ID (`00103` = `103`), else by exact name.
+- Rule **BR-001** (FAIL): each tag / TIN number is in the station's own row or an adjacent section's row (the
+  layout shows block-section tags up to its borders). WARN only while no chart is loaded at all.
+- Registers tab: the station's allotment, used / free counts, free ranges, out-of-allotment numbers; the tag
+  form offers the next free odd / even number.
+
 ## BRD (RTLDVMS v1.0) gap analysis — what's covered, what isn't, and two open decisions
 
 A formal Business Requirements Document was checked against this codebase directly

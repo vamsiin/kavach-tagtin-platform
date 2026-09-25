@@ -1,5 +1,6 @@
 import type {
-  Station, Element, Tag, TIN, Track, AdjacentStation, VerificationReport, ToCCrossValidation,
+  Station, Element, Tag, TIN, Track, AdjacentStation,
+  AllotmentChart, AllotmentChartDetail, AllotmentParse, AllotmentRow, StationAllotment, VerificationReport, ToCCrossValidation,
   User, TokenResponse, WorkflowStatus,
   RailwaySubmission, RailwaySubmitPayload,
   Observation, ObservationSummary, ObservationDraft,
@@ -100,6 +101,29 @@ export const api = {
     request<Station>("/stations", { method: "POST", body: JSON.stringify(payload) }),
   deleteStation: (stationId: number) =>
     request<void>(`/stations/${stationId}`, { method: "DELETE" }),
+
+  // ---- RFID Tag / TIN allotment charts (BR-001) ----
+  listAllotmentCharts: () => request<AllotmentChart[]>("/allotment-charts"),
+  getAllotmentChart: (id: number) => request<AllotmentChartDetail>(`/allotment-charts/${id}`),
+  createAllotmentChart: (payload: {
+    title: string; division: string; reference_no?: string | null; issued_on?: string | null;
+    issued_by?: string | null; remarks?: string | null; rows: AllotmentRow[]; supersede_current?: boolean;
+  }) => request<AllotmentChartDetail>("/allotment-charts", { method: "POST", body: JSON.stringify(payload) }),
+  parseAllotmentChart: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<AllotmentParse>("/allotment-charts/parse", { method: "POST", body: form });
+  },
+  attachAllotmentFile: (id: number, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<AllotmentChart>(`/allotment-charts/${id}/file`, { method: "POST", body: form });
+  },
+  downloadAllotmentFile: (c: AllotmentChart) =>
+    downloadBlob(`/allotment-charts/${c.id}/file`, c.source_filename ?? `allotment-chart-${c.id}`),
+  makeAllotmentCurrent: (id: number) =>
+    request<AllotmentChart>(`/allotment-charts/${id}/make-current`, { method: "POST" }),
+  stationAllotment: (stationId: number) => request<StationAllotment>(`/stations/${stationId}/allotment`),
 
   // ---- lines, neighbouring stations, centre line (Annexure-H H2.16 / H2.28) ----
   listTracks: (stationId: number) => request<Track[]>(`/stations/${stationId}/tracks`),

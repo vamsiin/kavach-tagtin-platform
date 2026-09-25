@@ -185,6 +185,95 @@ class CentreLineUpdate(BaseModel):
     centre_line_m: float | None = None
 
 
+class AllotmentRowIn(BaseModel):
+    s_no: str | None = None
+    name: str
+    division_code: str | None = None
+    station_code: str | None = None
+    station_id: str | None = None
+    tin_ranges: str | None = None
+    tin_allotted: str | None = None
+    tag_ranges: str | None = None
+    tag_total: int | None = None
+    remarks: str | None = None
+
+
+class AllotmentRowOut(AllotmentRowIn):
+    id: int | None = None
+    tag_count: int = 0
+    tin_count: int = 0
+    problems: list[str] = Field(default_factory=list)
+
+
+class AllotmentChartCreate(BaseModel):
+    title: str
+    division: str
+    reference_no: str | None = None
+    issued_on: str | None = None
+    issued_by: str | None = None
+    remarks: str | None = None
+    rows: list[AllotmentRowIn]
+    supersede_current: bool = Field(default=True, description="Make this the current chart for its division")
+
+
+class AllotmentChartOut(BaseModel):
+    id: int
+    title: str
+    division: str
+    reference_no: str | None = None
+    issued_on: str | None = None
+    issued_by: str | None = None
+    remarks: str | None = None
+    is_current: bool
+    source_filename: str | None = None
+    source_sha256: str | None = None
+    created_by: str
+    created_at: str
+    superseded_by_id: int | None = None
+    row_count: int = 0
+
+
+class AllotmentChartDetail(AllotmentChartOut):
+    rows: list[AllotmentRowOut]
+    warnings: list[str] = Field(default_factory=list)
+
+
+class AllotmentParseOut(BaseModel):
+    rows: list[AllotmentRowOut]
+    warnings: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
+
+
+class NumberUse(BaseModel):
+    number: int
+    ref: str
+    owner: str | None = None
+
+
+class AllotmentUsage(BaseModel):
+    allotted: int
+    used_in_own: int
+    free: int
+    free_ranges: str
+    next_free_odd: int | None = None
+    next_free_even: int | None = None
+    used: list[NumberUse]
+    outside: list[NumberUse]
+
+
+class AdjacentAllotment(BaseModel):
+    adjacent_name: str
+    row: AllotmentRowOut | None = None
+
+
+class StationAllotmentOut(BaseModel):
+    chart: AllotmentChartOut | None = None
+    own: AllotmentRowOut | None = None
+    adjacent: list[AdjacentAllotment] = Field(default_factory=list)
+    tags: AllotmentUsage | None = None
+    tins: AllotmentUsage | None = None
+
+
 class CheckResultOut(BaseModel):
     clause: str
     title: str
