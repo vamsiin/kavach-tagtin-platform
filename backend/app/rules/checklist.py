@@ -99,28 +99,32 @@ def _register_builtins():
        {"min_sets": 2, "min_set_gap_m": 10},
        [P("min_sets", "int", "Minimum sets", min=1), P("min_set_gap_m", "number", "Minimum gap between sets (m)", min=0)],
        lambda st, el, tg, tn, p: E.check_h2_11_exit_tags(tg, p))
-    _b("h2_12", "H2.12", "Duplicate and tag-set spacing",
-       "Duplicate pair spacing (T/A tags must be co-located) and tag-set to tag-set spacing.",
-       {"dup_min_m": 3, "dup_max_m": 5, "tagset_min_m": 10},
-       [P("dup_min_m", "number", "Duplicate pair min (m)", min=0), P("dup_max_m", "number", "Duplicate pair max (m)", min=0),
-        P("tagset_min_m", "number", "Tag-set to tag-set min (m)", min=0)],
-       lambda st, el, tg, tn, p: E.check_h2_12_duplicate_and_tagset_spacing(tg, p))
-    _b("h2_13", "H2.13", "Numbering ranges", "Tag and TIN numbers within the allotted ranges.",
-       {"tag_min": 1, "tag_max": 1023, "tin_min": 1, "tin_max": 255},
-       [P("tag_min", "int", "Tag number min", min=0), P("tag_max", "int", "Tag number max", min=0),
-        P("tin_min", "int", "TIN min", min=0), P("tin_max", "int", "TIN max", min=0)],
-       lambda st, el, tg, tn, p: E.check_h2_13_numbering_ranges(tg, tn, p))
-    _b("h2_14", "H2.14", "Legend shape matches co-location", "Rectangle if co-located, Triangle if not.",
-       {}, [], lambda st, el, tg, tn, p: E.check_h2_14_legend_shape(tg))
+    _b("h2_12", "H2.12", "Duplicate tag pair spacing",
+       "Main and duplicate tag spacing. T and A tag pairs must be co-located.",
+       {"dup_min_m": 3, "dup_max_m": 5},
+       [P("dup_min_m", "number", "Duplicate pair min (m)", min=0), P("dup_max_m", "number", "Duplicate pair max (m)", min=0)],
+       lambda st, el, tg, tn, p: E.check_h2_12_duplicate_spacing(tg, p))
+    _b("h2_13", "H2.13", "Tag-set to tag-set spacing", "Minimum distance from one tag set to the next.",
+       {"tagset_min_m": 10}, [P("tagset_min_m", "number", "Tag-set to tag-set min (m)", min=0)],
+       lambda st, el, tg, tn, p: E.check_h2_13_tagset_spacing(tg, p))
+    _b("h2_15", "H2.15", "Legend shape matches co-location", "Rectangle if co-located, Triangle if not.",
+       {}, [], lambda st, el, tg, tn, p: E.check_h2_15_legend_shape(tg))
     _b("h2_18", "H2.18", "Non-KAVACH territory colour", "Non-KAVACH TINs must be shown in this colour.",
        {"colour": "White"}, [P("colour", "str", "Colour")],
        lambda st, el, tg, tn, p: E.check_h2_18_non_kavach_white(tn, p))
+    _b("h2_23", "H2.23", "Numbering ranges", "Tag and TIN numbers within the allowed ranges.",
+       {"tag_min": 1, "tag_max": 1023, "tin_min": 1, "tin_max": 255},
+       [P("tag_min", "int", "Tag number min", min=0), P("tag_max", "int", "Tag number max", min=0),
+        P("tin_min", "int", "TIN min", min=0), P("tin_max", "int", "TIN max", min=0)],
+       lambda st, el, tg, tn, p: E.check_h2_23_numbering_ranges(tg, tn, p))
     _b("h2_21", "H2.21", "Tag notation valid", "Tag type is one of the defined notations.",
        {}, [], lambda st, el, tg, tn, p: E.check_h2_21_tag_notation(tg))
     _b("fr004_unique", "FR-004", "Tag ref / number unique", "Tag references and numbers unique within the station.",
        {}, [], lambda st, el, tg, tn, p: E.check_brd_fr004_tag_uniqueness(tg))
     _b("fr004_parity", "FR-004", "Tag number parity by direction",
-       "Odd/even tag numbering per direction. Map each Tag direction value to 'odd' or 'even'.",
+       "Odd/even tag numbering per direction. Map each Tag direction value to 'odd' or 'even'. "
+       "Note: the Aler drawing uses odd on Down Main and even on Up Main, the opposite of the "
+       "manual tool's 'even for DN'. Confirm with the team before relying on this.",
        {"parity_map": dict(E.DIRECTION_PARITY_MAP)},
        [P("parity_map", "parity_map", "Direction -> parity", options=["odd", "even"])],
        lambda st, el, tg, tn, p: E.check_brd_fr004_direction_parity(tg, p))
@@ -250,7 +254,7 @@ def validate_params(kind: str, builtin: str | None, params: dict) -> dict:
 # Defaults
 # ---------------------------------------------------------------------------
 _ORDER = ["data_units", "h2_1", "h2_2", "h2_5", "h2_6", "h2_7", "h2_9", "h2_11", "h2_12", "h2_13",
-          "h2_14", "h2_18", "h2_21", "fr004_unique", "fr004_parity", "br005"]
+          "h2_15", "h2_18", "h2_21", "h2_23", "fr004_unique", "fr004_parity", "br005"]
 
 
 def _ensure():

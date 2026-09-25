@@ -274,28 +274,24 @@ def check_h2_11_exit_tags(tags: list[Tag], p: dict | None = None) -> list[CheckR
 
 # ---------------------------------------------------------------------------
 # H2.12 Duplicate tag pair 3-5m apart, EXCEPT TIN-discrimination/Turnout (T) and
-# Adjustment/Junction (A) tags, which must be co-located (0m).
-# Tag-set to tag-set (main+duplicate group to another main+duplicate group) >= 10m.
+# Adjustment (A) tags, which must be co-located (0m).
 # ---------------------------------------------------------------------------
-def check_h2_12_duplicate_and_tagset_spacing(tags: list[Tag], p: dict | None = None) -> list[CheckResult]:
-    p = _params("h2_12", p)
-    dmin, dmax, tmin = p["dup_min_m"], p["dup_max_m"], p["tagset_min_m"]
-    results = []
+def _pair_groups(tags: list[Tag]) -> dict[str, list[Tag]]:
     groups: dict[str, list[Tag]] = {}
     for t in tags:
         if t.pair_group_id:
             groups.setdefault(t.pair_group_id, []).append(t)
+    return {g: m for g, m in groups.items() if len(m) >= 2}
 
-    group_extents = []  # (group_id, min_m, max_m)
-    for group_id, members in groups.items():
-        if len(members) < 2:
-            continue
+
+def check_h2_12_duplicate_spacing(tags: list[Tag], p: dict | None = None) -> list[CheckResult]:
+    p = _params("h2_12", p)
+    dmin, dmax = p["dup_min_m"], p["dup_max_m"]
+    results = []
+    for group_id, members in _pair_groups(tags).items():
         locs = [m.location_m for m in members]
-        gap_m = (max(locs) - min(locs))
-        group_extents.append((group_id, min(locs), max(locs)))
-
-        is_t_or_a = any(m.tag_type in ("T", "A") for m in members)
-        if is_t_or_a:
+        gap_m = max(locs) - min(locs)
+        if any(m.tag_type in ("T", "A") for m in members):
             ok = gap_m == 0
             results.append(CheckResult(
                 "H2.12", "T/A tag pair co-located (0m)", "PASS" if ok else "FAIL",
@@ -310,16 +306,24 @@ def check_h2_12_duplicate_and_tagset_spacing(tags: list[Tag], p: dict | None = N
                 f"Group '{group_id}': {gap_m:.0f}m apart" + ("" if ok else f" (must be {dmin:g}-{dmax:g}m)"),
                 subject_ref=group_id,
             ))
+    return results
 
-    # Tag-set to tag-set >= 10m (H2.12, second paragraph)
-    group_extents.sort(key=lambda g: g[1])
-    for (id1, _, max1), (id2, min2, _) in zip(group_extents, group_extents[1:]):
-        gap_m = (min2 - max1)
+
+# ---------------------------------------------------------------------------
+# H2.13 Tag-set (main + duplicate) to the next tag-set >= 10m.
+# ---------------------------------------------------------------------------
+def check_h2_13_tagset_spacing(tags: list[Tag], p: dict | None = None) -> list[CheckResult]:
+    tmin = _params("h2_13", p)["tagset_min_m"]
+    extents = sorted(((g, min(m.location_m for m in ms), max(m.location_m for m in ms))
+                      for g, ms in _pair_groups(tags).items()), key=lambda e: e[1])
+    results = []
+    for (id1, _, max1), (id2, min2, _) in zip(extents, extents[1:]):
+        gap_m = min2 - max1
         if gap_m < 0:
-            continue  # overlapping groups -- caught elsewhere / data error
+            continue  # overlapping groups -- a data error, not a spacing result
         ok = gap_m >= tmin
         results.append(CheckResult(
-            "H2.12", f"Tag-set to tag-set >= {tmin:g}m", "PASS" if ok else "FAIL",
+            "H2.13", f"Tag-set to tag-set >= {tmin:g}m", "PASS" if ok else "FAIL",
             f"Group '{id1}' to group '{id2}': {gap_m:.0f}m apart",
             subject_ref=f"{id1}->{id2}",
         ))
@@ -327,51 +331,43 @@ def check_h2_12_duplicate_and_tagset_spacing(tags: list[Tag], p: dict | None = N
 
 
 # ---------------------------------------------------------------------------
-# H2.13 Tag numbers (1-1023) and TIN numbers (1-255) within allotted range.
+# H2.15 Legend shape: Rectangle if main+duplicate co-located, Triangle if not
+# (duplicate ahead of main in direction of travel, per triangle tip).
 # ---------------------------------------------------------------------------
-def check_h2_13_numbering_ranges(tags: list[Tag], tins: list[TIN], p: dict | None = None) -> list[CheckResult]:
-    p = _params("h2_13", p)
+def check_h2_15_legend_shape(tags: list[Tag]) -> list[CheckResult]:
+    results = []
+    for group_id, members in _pair_groups(tags).items():
+        locs = [m.location_m for m in members]
+        expected_shape = "Rectangle" if max(locs) == min(locs) else "Triangle"
+        shapes = {m.legend_shape for m in members if m.legend_shape}
+        ok = shapes == {expected_shape}
+        results.append(CheckResult(
+            "H2.15", "Legend shape matches co-location", "PASS" if ok else "FAIL",
+            f"Group '{group_id}': expected {expected_shape}, found {shapes or 'unset'}",
+            subject_ref=group_id,
+        ))
+    return results
+
+
+# ---------------------------------------------------------------------------
+# H2.23 Tag numbers (1-1023) and TIN numbers (1-255) within the allowed range.
+# ---------------------------------------------------------------------------
+def check_h2_23_numbering_ranges(tags: list[Tag], tins: list[TIN], p: dict | None = None) -> list[CheckResult]:
+    p = _params("h2_23", p)
     results = []
     for t in tags:
         if t.tag_number is None:
             continue
         ok = p["tag_min"] <= t.tag_number <= p["tag_max"]
         results.append(CheckResult(
-            "H2.13", f"Tag number within {p['tag_min']}-{p['tag_max']}", "PASS" if ok else "FAIL",
+            "H2.23", f"Tag number within {p['tag_min']}-{p['tag_max']}", "PASS" if ok else "FAIL",
             f"{t.tag_ref}: tag number {t.tag_number}", subject_ref=t.tag_ref,
         ))
     for tin in tins:
         ok = p["tin_min"] <= tin.tin_no <= p["tin_max"]
         results.append(CheckResult(
-            "H2.13", f"TIN number within {p['tin_min']}-{p['tin_max']}", "PASS" if ok else "FAIL",
+            "H2.23", f"TIN number within {p['tin_min']}-{p['tin_max']}", "PASS" if ok else "FAIL",
             f"TIN {tin.tin_no}", subject_ref=str(tin.tin_no),
-        ))
-    return results
-
-
-# ---------------------------------------------------------------------------
-# H2.14 Legend shape: Rectangle if main+duplicate co-located, Triangle if not
-# (duplicate ahead of main in direction of travel, per triangle tip).
-# ---------------------------------------------------------------------------
-def check_h2_14_legend_shape(tags: list[Tag]) -> list[CheckResult]:
-    results = []
-    groups: dict[str, list[Tag]] = {}
-    for t in tags:
-        if t.pair_group_id:
-            groups.setdefault(t.pair_group_id, []).append(t)
-
-    for group_id, members in groups.items():
-        if len(members) < 2:
-            continue
-        locs = [m.location_m for m in members]
-        co_located = (max(locs) - min(locs)) == 0
-        expected_shape = "Rectangle" if co_located else "Triangle"
-        shapes = {m.legend_shape for m in members if m.legend_shape}
-        ok = shapes == {expected_shape}
-        results.append(CheckResult(
-            "H2.14", "Legend shape matches co-location", "PASS" if ok else "FAIL",
-            f"Group '{group_id}': expected {expected_shape}, found {shapes or 'unset'}",
-            subject_ref=group_id,
         ))
     return results
 
@@ -569,10 +565,10 @@ MANUAL_CLAUSES = {
             "feasibility' to demarcate TIN sections -- topological judgement call.",
     "H2.10": "LC gate tag (optional) at both sides of LC gate 'as required by "
              "operating Railway' -- policy decision, not a fixed rule.",
-    "H2.15/H2.16": "Border RFID tag placement and the overlapping-signal exception "
-                   "diagram -- requires comparing adjacent stations' layouts.",
-    "H2.14 (25km radius)": "Repeated Tag ID not allowed within 25km radius -- requires "
-                            "cross-station data beyond a single station's register.",
+    "H2.16": "Border RFID tag placement and the overlapping-signal exception "
+             "diagram (H2.16.1) -- requires comparing adjacent stations' layouts.",
+    "H2.14": "Repeated Tag ID not allowed within 25km radius -- requires "
+             "cross-station data beyond a single station's register.",
     "H2.17": "Each TIN a single colour, distinguishable from neighbouring TINs -- "
              "automatable partially (flag identical colour on adjacent TIN rows) but "
              "'distinguishable' is ultimately a visual judgement.",

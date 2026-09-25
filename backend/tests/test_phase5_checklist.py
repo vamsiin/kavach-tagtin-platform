@@ -199,12 +199,12 @@ def test_admin_edit_is_audited_and_changes_verification(client, h):
 
 def test_disable_builtin_reported_and_cannot_delete(client, h):
     sid = _station(client, h)
-    rid = _rules(client, h)["builtin.h2_14"]["id"]
+    rid = _rules(client, h)["builtin.h2_15"]["id"]
     assert client.request("DELETE", f"/checklist/rules/{rid}", json={"reason": "x"},
                           headers=h["admin"]).status_code == 409
     client.put(f"/checklist/rules/{rid}", json={"enabled": False, "reason": "trial"}, headers=h["admin"])
     v = client.get(f"/stations/{sid}/verify", headers=h["dana"]).json()
-    assert any("H2.14" in x for x in v["rules_disabled"])
+    assert any("H2.15" in x for x in v["rules_disabled"])
 
 
 def test_custom_rule_lifecycle_via_api(client, h):
@@ -294,3 +294,39 @@ def test_non_blocking_manual_items_do_not_gate(client, h):
     sid = _station(client, h)
     _to_submitted(client, h, sid)
     assert client.post(f"/stations/{sid}/check", json={}, headers=h["cara"]).status_code == 200
+
+
+def test_migrate_rules_renames_old_clause_numbering():
+    """A DB seeded before the Annexure-H clause correction is renamed in place:
+    edits and ids survive, H2.12 is split and the new H2.13 inherits its threshold."""
+    import json
+    from app import models
+    from app.database import SessionLocal
+    from app.rules.store import migrate_rules, active_rules
+    with SessionLocal() as db:
+        rows = {r.key: r for r in db.query(models.ChecklistRuleORM).all()}
+        # rewind the table to the pre-correction shape
+        db.delete(rows["builtin.h2_13"])
+        r23, r15, r12 = rows["builtin.h2_23"], rows["builtin.h2_15"], rows["builtin.h2_12"]
+        db.flush()
+        r23.key, r23.builtin, r23.clause = "builtin.h2_13", "h2_13", "H2.13"
+        r23.params = json.dumps({"tag_min": 1, "tag_max": 900, "tin_min": 1, "tin_max": 255})
+        r15.key, r15.builtin, r15.clause = "builtin.h2_14", "h2_14", "H2.14"
+        r12.params = json.dumps({"dup_min_m": 3, "dup_max_m": 5, "tagset_min_m": 12})
+        r12.title = "Duplicate and tag-set spacing"
+        m16 = rows["manual.h2_16"]
+        m16.key, m16.clause = "manual.h2_15_h2_16", "H2.15/H2.16"
+        ids = (r23.id, r15.id, m16.id)
+        db.commit()
+
+        assert migrate_rules(db) == 5
+        assert migrate_rules(db) == 0          # idempotent
+        rules = {r.key: r for r in active_rules(db)}
+        assert rules["builtin.h2_23"].id == ids[0] and rules["builtin.h2_23"].params["tag_max"] == 900
+        assert rules["builtin.h2_23"].clause == "H2.23"
+        assert rules["builtin.h2_15"].id == ids[1] and rules["builtin.h2_15"].clause == "H2.15"
+        assert rules["manual.h2_16"].id == ids[2] and rules["manual.h2_16"].clause == "H2.16"
+        assert rules["builtin.h2_12"].params == {"dup_min_m": 3, "dup_max_m": 5}
+        assert rules["builtin.h2_12"].title == "Duplicate tag pair spacing"
+        assert rules["builtin.h2_13"].params == {"tagset_min_m": 12}
+        assert rules["builtin.h2_13"].clause == "H2.13"

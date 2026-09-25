@@ -9,9 +9,10 @@ from app.rules.engine import (
     check_h2_7_approach_tag_distance,
     check_h2_9_gate_tag_distance,
     check_h2_11_exit_tags,
-    check_h2_12_duplicate_and_tagset_spacing,
-    check_h2_13_numbering_ranges,
-    check_h2_14_legend_shape,
+    check_h2_12_duplicate_spacing,
+    check_h2_13_tagset_spacing,
+    check_h2_23_numbering_ranges,
+    check_h2_15_legend_shape,
     check_h2_18_non_kavach_white,
     check_brd_fr004_tag_uniqueness,
     check_brd_fr004_direction_parity,
@@ -245,14 +246,14 @@ def test_h2_11_fail_sets_too_close():
 
 
 # ---------------------------------------------------------------------------
-# H2.12 -- Duplicate pair spacing + T/A co-location + tag-set to tag-set
+# H2.12 -- Duplicate pair spacing + T/A co-location; H2.13 -- tag-set to tag-set
 # ---------------------------------------------------------------------------
 def test_h2_12_normal_duplicate_pass_in_3_5m():
     tags = [
         mk_tag(1, "N", 100.000, pair_group_id="G1"),
         mk_tag(2, "N", 100.004, pair_group_id="G1"),  # 4m
     ]
-    results = check_h2_12_duplicate_and_tagset_spacing(tags)
+    results = check_h2_12_duplicate_spacing(tags)
     assert results[0].status == "PASS"
 
 
@@ -261,7 +262,7 @@ def test_h2_12_t_tag_must_be_colocated():
         mk_tag(1, "T", 100.000, pair_group_id="G1"),
         mk_tag(2, "T", 100.000, pair_group_id="G1"),  # 0m -- correct
     ]
-    results = check_h2_12_duplicate_and_tagset_spacing(tags)
+    results = check_h2_12_duplicate_spacing(tags)
     assert results[0].status == "PASS"
 
 
@@ -270,7 +271,7 @@ def test_h2_12_t_tag_fails_if_not_colocated():
         mk_tag(1, "T", 100.000, pair_group_id="G1"),
         mk_tag(2, "T", 100.004, pair_group_id="G1"),  # 4m -- wrong for T tag
     ]
-    results = check_h2_12_duplicate_and_tagset_spacing(tags)
+    results = check_h2_12_duplicate_spacing(tags)
     assert results[0].status == "FAIL"
 
 
@@ -281,44 +282,44 @@ def test_h2_12_tagset_to_tagset_min_10m():
         mk_tag(3, "N", 100.006, pair_group_id="G2"),  # only 2m after G1's max -- fail
         mk_tag(4, "N", 100.010, pair_group_id="G2"),
     ]
-    results = check_h2_12_duplicate_and_tagset_spacing(tags)
-    tagset_results = [r for r in results if "tag-set" in r.title.lower()]
-    assert tagset_results[0].status == "FAIL"
+    assert check_h2_13_tagset_spacing(tags)[0].status == "FAIL"
+    assert check_h2_13_tagset_spacing(tags)[0].clause == "H2.13"
+    assert all(r.clause == "H2.12" for r in check_h2_12_duplicate_spacing(tags))
 
 
 # ---------------------------------------------------------------------------
-# H2.13 -- Numbering ranges
+# H2.23 -- Numbering ranges
 # ---------------------------------------------------------------------------
-def test_h2_13_tag_number_out_of_range():
+def test_h2_23_tag_number_out_of_range():
     tags = [mk_tag(1, "N", 100.0, tag_number=1500)]
-    results = check_h2_13_numbering_ranges(tags, [])
+    results = check_h2_23_numbering_ranges(tags, [])
     assert results[0].status == "FAIL"
 
 
-def test_h2_13_tin_out_of_range():
+def test_h2_23_tin_out_of_range():
     tin = TIN(tin_no=300, section_type="Station", start_m=_m(0), end_m=_m(1))
-    results = check_h2_13_numbering_ranges([], [tin])
+    results = check_h2_23_numbering_ranges([], [tin])
     assert results[0].status == "FAIL"
 
 
 # ---------------------------------------------------------------------------
-# H2.14 -- Legend shape
+# H2.15 -- Legend shape
 # ---------------------------------------------------------------------------
-def test_h2_14_rectangle_for_colocated():
+def test_h2_15_rectangle_for_colocated():
     tags = [
         mk_tag(1, "N", 100.000, pair_group_id="G1", legend_shape="Rectangle"),
         mk_tag(2, "N", 100.000, pair_group_id="G1", legend_shape="Rectangle"),
     ]
-    results = check_h2_14_legend_shape(tags)
+    results = check_h2_15_legend_shape(tags)
     assert results[0].status == "PASS"
 
 
-def test_h2_14_fail_wrong_shape():
+def test_h2_15_fail_wrong_shape():
     tags = [
         mk_tag(1, "N", 100.000, pair_group_id="G1", legend_shape="Rectangle"),
         mk_tag(2, "N", 100.004, pair_group_id="G1", legend_shape="Rectangle"),  # not co-located -> should be Triangle
     ]
-    results = check_h2_14_legend_shape(tags)
+    results = check_h2_15_legend_shape(tags)
     assert results[0].status == "FAIL"
 
 

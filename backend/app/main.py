@@ -14,8 +14,9 @@ async def lifespan(app: FastAPI):
     ensure_schema_up_to_date()
     # FR-006: install any default checklist rules not yet in the DB (never overwrites edits)
     from .database import SessionLocal
-    from .rules.store import seed_rules
+    from .rules.store import migrate_rules, seed_rules
     with SessionLocal() as db:
+        migrate_rules(db)   # rename rows seeded under older clause numbers first
         seed_rules(db)
     yield
 
