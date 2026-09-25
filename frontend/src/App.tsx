@@ -24,6 +24,7 @@ import { DashboardPanel } from "./components/DashboardPanel";
 import { AssignmentPanel } from "./components/AssignmentPanel";
 import { ConfigurationPanel } from "./components/ConfigurationPanel";
 import { WorkspacesPanel } from "./components/WorkspacesPanel";
+import { DrawingPanel } from "./components/DrawingPanel";
 import { WorkspaceProvider, WorkspaceSwitcher, useWorkspace } from "./workspace/WorkspaceContext";
 import "./styles.css";
 
@@ -72,7 +73,7 @@ function MainContent() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [adjacent, setAdjacent] = useState<AdjacentStation[]>([]);
   const [allotment, setAllotment] = useState<StationAllotment | null>(null);
-  const [tab, setTab] = useState<"inputs" | "registers" | "verify" | "observations" | "trace" | "reports" | "workflow" | "config" | "checklist" | "allotment" | "workspaces" | "users">("registers")
+  const [tab, setTab] = useState<"inputs" | "registers" | "drawing" | "verify" | "observations" | "trace" | "reports" | "workflow" | "config" | "checklist" | "allotment" | "workspaces" | "users">("registers")
   const [obsDraft, setObsDraft] = useState<ObservationDraft | null>(null);
   const [obsSummary, setObsSummary] = useState<ObservationSummary | null>(null);
 
@@ -174,6 +175,9 @@ function MainContent() {
             <button className={tab === "registers" ? "active" : ""} onClick={() => setTab("registers")}>
               Registers
             </button>
+            <button className={tab === "drawing" ? "active" : ""} onClick={() => setTab("drawing")}>
+              Drawing
+            </button>
             <button className={tab === "verify" ? "active" : ""} onClick={() => setTab("verify")}>
               Verification
             </button>
@@ -215,6 +219,11 @@ function MainContent() {
           )}
 
           {tab === "trace" && <TraceabilityPanel stationId={selected.id} />}
+
+          {tab === "drawing" && (
+            <DrawingPanel station={selected}
+              version={elements.length + tags.length * 1000 + tins.length * 1000000 + tracks.length * 7 + adjacent.length * 13} />
+          )}
 
           {tab === "reports" && <ReportsPanel stationId={selected.id} stationStatus={selected.status} />}
 

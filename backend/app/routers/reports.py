@@ -196,3 +196,46 @@ def delete_revision(station_id: int, rev_id: int, db: Session = Depends(get_db),
     db.delete(row)
     db.commit()
     return None
+
+
+# ---------------------------------------------------------------------------
+# Layout drawing (Annexure-H H2.24-H2.29): SVG preview, PDF, DXF
+# ---------------------------------------------------------------------------
+DRAWING_MEDIA = {"svg": "image/svg+xml", "pdf": "application/pdf", "dxf": "application/dxf"}
+
+
+@router.get("/{station_id}/drawing")
+def layout_drawing(station_id: int, format: str = Query("svg"), download: bool = False,
+                   db: Session = Depends(get_db), user: models.UserORM = Depends(get_current_user)):
+    """The RFID Tag / TIN layout sheet generated from the station's registers. SVG is
+    for the in-app preview; PDF for printing / submission; DXF to continue in AutoCAD.
+    PDF and DXF downloads are logged like reports."""
+    from ..drawing import layout, render as rnd
+    from ..drawing.service import build_data
+    station = _station_or_404(station_id, db)
+    if format not in DRAWING_MEDIA:
+        raise HTTPException(422, "format must be 'svg', 'pdf' or 'dxf'")
+    data = build_data(db, station, user)
+    scene = layout.build(data)
+    if format == "pdf":
+        try:
+            body = rnd.to_pdf(scene)
+        except ImportError:
+            raise HTTPException(503, "PDF output needs the 'reportlab' package -- run "
+                                     "`pip install -r requirements.txt` in the backend venv. SVG and DXF work without it.")
+    elif format == "dxf":
+        body = rnd.to_dxf(scene)
+    else:
+        body = rnd.to_svg(scene)
+    name = f"{layout.drawing_number(data)}.{format}"
+    if format != "svg" or download:
+        db.add(models.GeneratedReportORM(
+            station_id=station.id, report_type="drawing", report_id=layout.drawing_number(data), fmt=format,
+            generated_by=user.username, generated_at=data.generated_at, layout_version=station.layout_version,
+            station_status=station.status, sha256=hashlib.sha256(body).hexdigest(), size_bytes=len(body),
+            archived=False, trigger="manual"))
+        db.commit()
+    headers = {"Access-Control-Expose-Headers": "Content-Disposition"}
+    if format != "svg" or download:
+        headers["Content-Disposition"] = f'attachment; filename="{name}"'
+    return Response(content=body, media_type=DRAWING_MEDIA[format], headers=headers)

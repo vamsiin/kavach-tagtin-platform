@@ -301,6 +301,17 @@ export const api = {
   dashboard: (workspaceId?: number | null) =>
     request<Dashboard>(`/dashboard${workspaceId != null ? `?workspace_id=${workspaceId}` : ""}`),
 
+  // ---- layout drawing (H2.24-H2.29) ----
+  drawingSvg: async (stationId: number): Promise<string> => {
+    const token = getToken();
+    const res = await fetch(`${BASE_URL}/stations/${stationId}/drawing?format=svg`,
+      { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
+    return res.text();
+  },
+  downloadDrawing: (stationId: number, fmt: "pdf" | "dxf" | "svg") =>
+    downloadBlob(`/stations/${stationId}/drawing?format=${fmt}&download=true`, `layout.${fmt}`),
+
   // ---- workspaces (railway zones) ----
   listWorkspaces: () => request<Workspace[]>("/workspaces"),
   workspaceUsers: () => request<User[]>("/workspaces/users"),

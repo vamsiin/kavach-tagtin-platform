@@ -421,6 +421,17 @@ ToC route, the border-tag RSSI criterion (BR-005).
 - Upgrade: existing data goes into an `SCR` workspace with every existing user as a member. A brand-new install
   gets an open `DEFAULT` workspace with its first station.
 
+**Step 5 — layout drawing** (`app/drawing/`, Drawing tab, `GET /stations/{id}/drawing?format=svg|pdf|dxf`).
+One format-neutral scene (A3 landscape, mm) rendered to SVG (in-app preview), PDF (reportlab) and DXF (ezdxf,
+one layer per kind: TRACKS, TINS, TAGS, SIGNALS, LC, POINTS, BORDER, CENTRE, DIMENSIONS, BLOCKS…). Contents:
+lines with TIN bands in their colours (unknown colour names drawn grey and listed), tags with legend shape
+(co-located pair = one rectangle; triangle tip towards the duplicate), refs / numbers / km, distances between
+tags, signals, LC gates, points to their line, BSLB / stop boards / markers, border lines with their tags, the
+station centre line, neighbours at the ends; legend, Tag/TIN allotment (used / spare), revision history,
+signatures (latest self-check / check / approval) and title block (drawing no. `RFID_TAG_LAYOUT_<STATION>_<X.Y.Z>`,
+SIP drawing, zone, NOT DRAWN TO SCALE). The chainage axis keeps order but compresses gaps logarithmically.
+PDF and DXF downloads are logged in the report log.
+
 ## BRD (RTLDVMS v1.0) gap analysis — what's covered, what isn't, and two open decisions
 
 A formal Business Requirements Document was checked against this codebase directly
