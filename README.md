@@ -479,12 +479,10 @@ decimals.
   without it Word output still works and PDF returns a clear 503.
 
 **Not yet built:** FR-001 does not *parse* the RFID Allocation Chart yet (BR-001
-still enforces range/uniqueness, not "matches the chart"); no submit gate on
-missing inputs (reported as gaps only); FR-006 configurable checklist engine;
-FR-008 observation tracking;
-Project Manager /
+still enforces range/uniqueness, not "matches the chart"); no submit gate on missing
+inputs (reported as gaps only); FR-006 configurable checklist engine; Project Manager /
 Configuration Manager roles; Alembic migrations (schema upgrades still go through
-the SQLite-only `ensure_schema_up_to_date`).
+`ensure_schema_up_to_date`: add-column on SQLite, plus the `*_km` -> `*_m` column renames).
 
 ## Honest limitations (read before demoing this to anyone)
 
