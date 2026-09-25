@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Pencil, Trash2, Check, X } from "lucide-react";
 import type { User } from "../types";
-import { ROLES } from "../types";
+import { ROLES, ROLE_LABELS } from "../types";
 import { api } from "../api";
 import { useAuth } from "../auth/AuthContext";
 
@@ -105,7 +105,7 @@ export function UsersPanel() {
                 <td>{u.username}</td>
                 <td>{u.full_name}</td>
                 <td>{u.email || "—"}</td>
-                <td>{u.role}</td>
+                <td>{ROLE_LABELS[u.role] ?? u.role}</td>
                 <td>{u.is_active ? "Yes" : "No"}</td>
                 <td className="actions-col">
                   {pendingDeleteUsername === u.username ? (
@@ -165,7 +165,7 @@ function UserCreateForm({ onSubmit, submitting }: {
       <input placeholder="Full name" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
       <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
       <select value={role} onChange={(e) => setRole(e.target.value)}>
-        {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+        {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r] ?? r}</option>)}
       </select>
       <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
       <button type="submit" disabled={submitting}>{submitting ? "Creating…" : "Create"}</button>
@@ -192,7 +192,7 @@ function UserEditForm({ user, onSubmit, onCancel, submitting }: {
       <input placeholder="Full name" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
       <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
       <select value={role} onChange={(e) => setRole(e.target.value)}>
-        {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+        {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r] ?? r}</option>)}
       </select>
       <label className="checkbox-label">
         <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />

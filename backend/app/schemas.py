@@ -1,6 +1,6 @@
 import json
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 from .domain import ELEMENT_TYPES, TAG_TYPES
 
 
@@ -22,6 +22,7 @@ class StationOut(StationCreate):
     layout_version: str
     created_by: str | None = None
     assigned_checker: str | None = None
+    assigned_designer: str | None = None
 
     class Config:
         from_attributes = True
@@ -180,6 +181,20 @@ class UserOut(BaseModel):
         tests/test_user_management.py's test_login_works_for_user_with_null_email."""
         return v or ""
 
+    @computed_field
+    @property
+    def role_label(self) -> str:
+        from .auth.permissions import ROLE_LABELS
+        return ROLE_LABELS.get(self.role, self.role)
+
+    @computed_field
+    @property
+    def permissions(self) -> list[str]:
+        """Capabilities from app/auth/permissions.py -- the UI shows/hides controls from
+        this list rather than duplicating the role rules."""
+        from .auth.permissions import capabilities_for
+        return capabilities_for(self.role)
+
     class Config:
         from_attributes = True
 
@@ -251,6 +266,7 @@ class WorkflowStatusOut(BaseModel):
     checked_by: str | None
     assigned_checker: str | None
     self_checked_by: str | None = None
+    assigned_designer: str | None = None
     allowed_actions: list[str]
     history: list[WorkflowEventOut]
 
@@ -684,3 +700,118 @@ class ManualChecklistOut(BaseModel):
 class ManualResponseIn(BaseModel):
     status: str
     note: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Phase 6: roles -- Project Manager & Configuration Manager
+# ---------------------------------------------------------------------------
+class DashboardRow(BaseModel):
+    id: int
+    name: str
+    kavach_station_id: str
+    status: str
+    layout_version: str
+    assigned_designer: str | None = None
+    assigned_checker: str | None = None
+    created_by: str | None = None
+    days_in_status: int | None = None
+    last_action: str | None = None
+    last_actor: str | None = None
+    last_at: str | None = None
+    fail_count: int
+    warn_count: int
+    open_observations: int
+    unverified_observations: int
+    missing_inputs: int
+    tags: int
+    railway_reference: str | None = None
+    baselines: int = 0
+
+
+class DashboardOut(BaseModel):
+    stations: list[DashboardRow]
+    by_status: dict[str, int]
+    total: int
+
+
+class AssignDesignerRequest(BaseModel):
+    designer_username: str | None = None   # None / "" = unassign (any designer)
+    comment: str = ""
+
+
+class VersionUpdateRequest(BaseModel):
+    kavach_version: str | None = None
+    sip_version: str | None = None
+    guideline_version: str | None = None
+    sip_drawing_number: str | None = None
+    reason: str = Field(min_length=1)
+
+
+class StationChangeOut(BaseModel):
+    id: int
+    field: str
+    before: str | None = None
+    after: str | None = None
+    reason: str | None = None
+    changed_by: str
+    changed_by_role: str
+    changed_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class BaselineCreate(BaseModel):
+    label: str = Field(min_length=1)
+    notes: str | None = None
+
+
+class BaselineOut(BaseModel):
+    id: int
+    label: str
+    layout_version: str
+    station_status: str
+    notes: str | None = None
+    checklist_version: int | None = None
+    verification_summary: dict | None = None
+    input_snapshot: list[dict] | None = None
+    counts: dict = {}
+    created_by: str
+    created_at: str
+
+    @field_validator("verification_summary", "input_snapshot", mode="before")
+    @classmethod
+    def _j(cls, v):
+        return json.loads(v) if isinstance(v, str) else v
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_orm_with_counts(cls, data):
+        """Add element/tag/TIN counts from the (not exposed) layout snapshot."""
+        if isinstance(data, dict):
+            return data
+        out = {f: getattr(data, f) for f in cls.model_fields if hasattr(data, f)}
+        try:
+            snap = json.loads(getattr(data, "layout_snapshot", "") or "{}")
+            out["counts"] = {x: len(snap.get(x, [])) for x in ("elements", "tags", "tins")}
+        except ValueError:
+            pass
+        return out
+
+    class Config:
+        from_attributes = True
+
+
+class DiffRow(BaseModel):
+    item: str
+    change: str          # added | removed | changed
+    details: list[str] = []
+
+
+class BaselineDiffOut(BaseModel):
+    baseline: BaselineOut
+    current_layout_version: str
+    current_status: str
+    rows: list[DiffRow]
+    inputs_changed: list[str]
+    identical: bool

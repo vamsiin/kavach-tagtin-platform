@@ -8,6 +8,7 @@ interface Props {
   onUpdate: (id: number, payload: Partial<TIN>) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
   readOnly?: boolean;
+  lockReason?: string;
 }
 
 const columns: ColumnDef<TIN>[] = [
@@ -19,7 +20,7 @@ const columns: ColumnDef<TIN>[] = [
   { key: "is_non_kavach_territory", label: "Non-KAVACH", render: (t) => t.is_non_kavach_territory ? "Yes" : "No" },
 ];
 
-export function TinsPanel({ tins, onAdd, onUpdate, onDelete, readOnly }: Props) {
+export function TinsPanel({ tins, onAdd, onUpdate, onDelete, readOnly, lockReason }: Props) {
   return (
     <RegisterTable
       title="TINs"
@@ -29,7 +30,7 @@ export function TinsPanel({ tins, onAdd, onUpdate, onDelete, readOnly }: Props) 
       onUpdate={onUpdate}
       onDelete={onDelete}
       readOnly={readOnly}
-      readOnlyReason={readOnly ? "Registers are locked while this station is not in Draft. Use 'Request changes' to reopen for editing." : undefined}
+      readOnlyReason={readOnly ? (lockReason ?? "Registers are locked while this station is not in Draft. Use 'Request changes' to reopen for editing.") : undefined}
       renderForm={(submit, submitting) => <TinForm onSubmit={submit} submitting={submitting} />}
       renderEditForm={(row, submit, cancel, submitting) => (
         <TinForm initial={row} onSubmit={submit} onCancel={cancel} submitting={submitting} />

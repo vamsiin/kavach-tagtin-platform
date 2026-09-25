@@ -48,10 +48,16 @@ def _doc_or_404(station_id: int, doc_id: int, db: Session) -> models.InputDocume
     return doc
 
 
-def _require_uploader(user: models.UserORM) -> None:
-    if user.role not in docsvc.UPLOADER_ROLES:
-        raise HTTPException(403, f"Only {' / '.join(docsvc.UPLOADER_ROLES)} can add or "
-                                 f"remove design inputs (you are '{user.role}')")
+def _require_uploader(user: models.UserORM, station: models.StationORM | None = None) -> None:
+    from ..auth.permissions import require
+    require(user, "inputs.upload", "Adding or removing design inputs")
+    if station is not None:
+        _require_assigned_designer(user, station)
+
+
+def _require_assigned_designer(user, station) -> None:
+    if user.role != "admin" and station.assigned_designer and station.assigned_designer != user.username:
+        raise HTTPException(403, f"This station is assigned to designer '{station.assigned_designer}'")
 
 
 def _require_draft(station: models.StationORM) -> None:
@@ -129,7 +135,7 @@ async def upload_document(
     """Uploading a doc_type that already exists creates the next revision; the
     previous revision is kept (it may be what existing tags trace to)."""
     station = _station_or_404(station_id, db)
-    _require_uploader(user)
+    _require_uploader(user, station)
     _require_draft(station)
     doc = await _store_upload(station, file, doc_type, version_label, notes, user, db)
     return _doc_out(doc, _current_ids(db, station_id))
@@ -167,7 +173,7 @@ def download_document(station_id: int, doc_id: int, db: Session = Depends(get_db
 def delete_document(station_id: int, doc_id: int, db: Session = Depends(get_db),
                     user: models.UserORM = Depends(get_current_user)):
     station = _station_or_404(station_id, db)
-    _require_uploader(user)
+    _require_uploader(user, station)
     _require_draft(station)
     doc = _doc_or_404(station_id, doc_id, db)
     reasons = docsvc.document_is_referenced(db, doc)
@@ -227,7 +233,7 @@ async def import_dxf_upload(
         raise HTTPException(422, "Only .dxf files can be imported (export .dwg to DXF "
                                  "from AutoCAD first)")
     station = _station_or_404(station_id, db)
-    _require_uploader(user)
+    _require_uploader(user, station)
     _require_draft(station)
     doc = await _store_upload(station, file, doc_type, version_label, notes, user, db)
     cands, warnings, layers = _parse_dxf(doc, ref_x, ref_m, units_per_m)
@@ -256,7 +262,7 @@ def dxf_commit(station_id: int, doc_id: int, payload: schemas.DxfCommitRequest,
     with source_document_id = this DXF revision. Any validation error rejects
     the whole batch so the register never ends up half-imported."""
     station = _station_or_404(station_id, db)
-    _require_uploader(user)
+    _require_uploader(user, station)
     _require_draft(station)
     _doc_or_404(station_id, doc_id, db)
     if not payload.elements and not payload.tags:

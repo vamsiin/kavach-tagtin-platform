@@ -9,6 +9,7 @@ interface Props {
   onUpdate: (id: number, payload: Partial<Element>) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
   readOnly?: boolean;
+  lockReason?: string;
 }
 
 const columns: ColumnDef<Element>[] = [
@@ -19,7 +20,7 @@ const columns: ColumnDef<Element>[] = [
   { key: "remarks", label: "Remarks" },
 ];
 
-export function ElementsPanel({ elements, onAdd, onUpdate, onDelete, readOnly }: Props) {
+export function ElementsPanel({ elements, onAdd, onUpdate, onDelete, readOnly, lockReason }: Props) {
   return (
     <RegisterTable
       title="Elements"
@@ -29,7 +30,7 @@ export function ElementsPanel({ elements, onAdd, onUpdate, onDelete, readOnly }:
       onUpdate={onUpdate}
       onDelete={onDelete}
       readOnly={readOnly}
-      readOnlyReason={readOnly ? "Registers are locked while this station is not in Draft. Use 'Request changes' to reopen for editing." : undefined}
+      readOnlyReason={readOnly ? (lockReason ?? "Registers are locked while this station is not in Draft. Use 'Request changes' to reopen for editing.") : undefined}
       renderForm={(submit, submitting) => <ElementForm onSubmit={submit} submitting={submitting} />}
       renderEditForm={(row, submit, cancel, submitting) => (
         <ElementForm initial={row} onSubmit={submit} onCancel={cancel} submitting={submitting} />

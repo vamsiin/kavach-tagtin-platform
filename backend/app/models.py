@@ -30,6 +30,7 @@ class StationORM(Base):
     status = Column(String, default="draft")
     created_by = Column(String, nullable=True)  # username of the creator
     assigned_checker = Column(String, nullable=True)  # username of the checker this was submitted to
+    assigned_designer = Column(String, nullable=True)  # set by a Project Manager (Phase 6); None = any designer
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     elements = relationship("ElementORM", back_populates="station", cascade="all, delete-orphan")
@@ -45,6 +46,8 @@ class StationORM(Base):
                                      cascade="all, delete-orphan")
     checklist_responses = relationship("ChecklistResponseORM", back_populates="station",
                                        cascade="all, delete-orphan")
+    changes = relationship("StationChangeORM", back_populates="station", cascade="all, delete-orphan")
+    baselines = relationship("BaselineORM", back_populates="station", cascade="all, delete-orphan")
 
     def to_domain(self) -> domain.Station:
         return domain.Station(
@@ -424,3 +427,44 @@ class ChecklistResponseORM(Base):
     layout_version = Column(String, nullable=True)
 
     station = relationship("StationORM", back_populates="checklist_responses")
+
+
+class StationChangeORM(Base):
+    """Audited change to a station's own particulars made outside the registers --
+    version numbers (Configuration Manager) and designer assignment (Project Manager).
+    Workflow transitions have their own log (WorkflowEventORM)."""
+    __tablename__ = "station_changes"
+
+    id = Column(Integer, primary_key=True)
+    station_id = Column(Integer, ForeignKey("stations.id"), nullable=False, index=True)
+    field = Column(String, nullable=False)
+    before = Column(String, nullable=True)
+    after = Column(String, nullable=True)
+    reason = Column(Text, nullable=True)
+    changed_by = Column(String, nullable=False)
+    changed_by_role = Column(String, nullable=False)
+    changed_at = Column(String, nullable=False)
+
+    station = relationship("StationORM", back_populates="changes")
+
+
+class BaselineORM(Base):
+    """Configuration baseline (BRD Configuration Manager role): a named, frozen copy of
+    an APPROVED layout -- registers, input revisions, checklist version and the
+    verification result -- that later revisions can be compared against."""
+    __tablename__ = "baselines"
+
+    id = Column(Integer, primary_key=True)
+    station_id = Column(Integer, ForeignKey("stations.id"), nullable=False, index=True)
+    label = Column(String, nullable=False)
+    layout_version = Column(String, nullable=False)
+    station_status = Column(String, nullable=False)
+    notes = Column(Text, nullable=True)
+    layout_snapshot = Column(Text, nullable=False)   # JSON
+    input_snapshot = Column(Text, nullable=True)     # JSON
+    checklist_version = Column(Integer, nullable=True)
+    verification_summary = Column(Text, nullable=True)  # JSON
+    created_by = Column(String, nullable=False)
+    created_at = Column(String, nullable=False)
+
+    station = relationship("StationORM", back_populates="baselines")

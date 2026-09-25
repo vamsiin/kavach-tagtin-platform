@@ -5,6 +5,7 @@ import type {
   Observation, ObservationSummary, ObservationDraft,
   ReportType, GeneratedReport, Revision,
   Checklist, ChecklistRule, ChecklistChange, ManualChecklist,
+  Dashboard, StationChange, Baseline, BaselineDiff,
   DocType, InputDocument, DxfImportResult, DxfCalibration, DxfCommitPayload, Traceability,
 } from "./types";
 
@@ -247,6 +248,25 @@ export const api = {
     request<ManualChecklist>(`/stations/${stationId}/checklist/${ruleId}`, {
       method: "PUT", body: JSON.stringify({ status, note }),
     }),
+
+  // ---- Phase 6: dashboard, assignment, configuration management ----
+  dashboard: () => request<Dashboard>("/dashboard"),
+  assignDesigner: (stationId: number, designer_username: string | null, comment = "") =>
+    request<Station>(`/stations/${stationId}/assign-designer`, {
+      method: "PUT", body: JSON.stringify({ designer_username, comment }),
+    }),
+  reassignChecker: (stationId: number, assigned_checker_username: string, comment = "") =>
+    request<Station>(`/stations/${stationId}/reassign-checker`, {
+      method: "POST", body: JSON.stringify({ assigned_checker_username, comment }),
+    }),
+  updateVersions: (stationId: number, payload: Record<string, string | undefined>) =>
+    request<Station>(`/stations/${stationId}/versions`, { method: "PUT", body: JSON.stringify(payload) }),
+  stationChanges: (stationId: number) => request<StationChange[]>(`/stations/${stationId}/changes`),
+  listBaselines: (stationId: number) => request<Baseline[]>(`/stations/${stationId}/baselines`),
+  createBaseline: (stationId: number, label: string, notes: string) =>
+    request<Baseline>(`/stations/${stationId}/baselines`, { method: "POST", body: JSON.stringify({ label, notes }) }),
+  baselineDiff: (stationId: number, baselineId: number) =>
+    request<BaselineDiff>(`/stations/${stationId}/baselines/${baselineId}/diff`),
 
   // ---- workflow ----
   getStation: (stationId: number) => request<Station>(`/stations/${stationId}`),

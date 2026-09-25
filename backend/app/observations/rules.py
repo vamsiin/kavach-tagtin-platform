@@ -43,7 +43,7 @@ SEVERITIES = ["major", "minor", "info"]
 CATEGORIES = ["annexure-h", "toc", "drafting", "data", "inputs", "other"]
 SUBJECT_KINDS = ["station", "tag", "element", "tin", "document"]
 
-REVIEWER_ROLES = ("checker", "approver", "admin")
+REVIEWER_ROLES = ("checker", "approver", "admin")  # == permissions.CAPABILITIES["observations.raise"]
 RESOLVER_ROLES = ("designer", "admin")
 
 RESOLVE = "resolve"

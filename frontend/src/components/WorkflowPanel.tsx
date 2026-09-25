@@ -159,6 +159,7 @@ export function WorkflowPanel({ station, onStationChanged }: Props) {
       </div>
 
       <div className="workflow-meta">
+        <span>Designer: <strong>{status.assigned_designer ?? "any"}</strong></span>
         {status.self_checked_by && <span>Self-checked by: <strong>{status.self_checked_by}</strong></span>}
         {status.submitted_by && <span>Submitted by: <strong>{status.submitted_by}</strong></span>}
         {status.assigned_checker && <span>Assigned checker: <strong>{status.assigned_checker}</strong></span>}
@@ -166,12 +167,13 @@ export function WorkflowPanel({ station, onStationChanged }: Props) {
       </div>
 
       <div className="workflow-actions">
-        {status.allowed_actions.length === 0 && (
+        {status.allowed_actions.filter((a) => a !== "reassign").length === 0 && (
           <span className="muted small">
             {user ? `No actions available for role '${user.role}' at this status.` : ""}
           </span>
         )}
-        {status.allowed_actions.map((action) => (
+        {/* "reassign" is done from the Assignment panel above (it needs a checker picker) */}
+        {status.allowed_actions.filter((a) => a !== "reassign").map((action) => (
           <button key={action} onClick={() => handleActionClick(action)} disabled={submitting}>
             {ACTION_LABELS[action] ?? action}
           </button>

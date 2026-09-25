@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { GeneratedReport, ReportType, Revision } from "../types";
 import { STATUS_LABELS, ACTION_LABELS } from "../types";
 import { api } from "../api";
-import { useAuth } from "../auth/AuthContext";
+import { useCan } from "../auth/AuthContext";
 
 interface Props {
   stationId: number;
@@ -16,8 +16,8 @@ function when(iso: string | null) {
 /** BRD FR-007 / Section 11: the eight reports, archived verification evidence,
  *  and the drawing revision table. */
 export function ReportsPanel({ stationId, stationStatus }: Props) {
-  const { user } = useAuth();
-  const canEditRevisions = stationStatus === "draft" && (user?.role === "designer" || user?.role === "admin");
+  const can = useCan();
+  const canEditRevisions = stationStatus === "draft" && can("revisions.edit");
 
   const [types, setTypes] = useState<ReportType[]>([]);
   const [archived, setArchived] = useState<GeneratedReport[]>([]);

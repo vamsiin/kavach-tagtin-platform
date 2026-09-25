@@ -18,8 +18,9 @@ from ..rules import store
 
 router = APIRouter(tags=["checklist"])
 
-CHECKLIST_EDITOR_ROLES = ("admin",)          # Phase 6 adds the Configuration Manager
-RESPONDER_ROLES = ("checker", "approver", "admin")
+from ..auth.permissions import CAPABILITIES
+CHECKLIST_EDITOR_ROLES = CAPABILITIES["checklist.edit"]      # admin + Configuration Manager
+RESPONDER_ROLES = CAPABILITIES["checklist.respond"]
 RESPOND_STATUSES = ("submitted", "checked")  # manual items are confirmed during review
 
 
@@ -33,7 +34,7 @@ def can_edit(user: models.UserORM) -> bool:
 
 def _require_editor(user):
     if not can_edit(user):
-        raise HTTPException(403, "Only an admin can change the checklist configuration")
+        raise HTTPException(403, "Only a Configuration Manager or admin can change the checklist configuration")
 
 
 def _rule_or_404(rule_id: int, db: Session) -> models.ChecklistRuleORM:

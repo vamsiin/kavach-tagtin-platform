@@ -10,9 +10,10 @@ interface Props {
   onUpdate: (id: number, payload: Partial<Tag>) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
   readOnly?: boolean;
+  lockReason?: string;
 }
 
-export function TagsPanel({ tags, elements, onAdd, onUpdate, onDelete, readOnly }: Props) {
+export function TagsPanel({ tags, elements, onAdd, onUpdate, onDelete, readOnly, lockReason }: Props) {
   const columns: ColumnDef<Tag>[] = [
     { key: "tag_ref", label: "Ref" },
     { key: "tag_number", label: "No." },
@@ -35,7 +36,7 @@ export function TagsPanel({ tags, elements, onAdd, onUpdate, onDelete, readOnly 
       onUpdate={onUpdate}
       onDelete={onDelete}
       readOnly={readOnly}
-      readOnlyReason={readOnly ? "Registers are locked while this station is not in Draft. Use 'Request changes' to reopen for editing." : undefined}
+      readOnlyReason={readOnly ? (lockReason ?? "Registers are locked while this station is not in Draft. Use 'Request changes' to reopen for editing.") : undefined}
       renderForm={(submit, submitting) => (
         <TagForm elements={elements} onSubmit={submit} submitting={submitting} />
       )}

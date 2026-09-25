@@ -98,7 +98,7 @@ def is_starter_signal_eligible_for_h2_7_exception(element_type: str) -> bool:
     return "Starter" in t and ("Advance" in t or "Intermediate" in t)
 
 
-ROLES = ["designer", "checker", "approver", "admin"]
+ROLES = ["designer", "checker", "approver", "project_manager", "config_manager", "admin"]
 
 
 @dataclass

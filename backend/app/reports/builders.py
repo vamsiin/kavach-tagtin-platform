@@ -27,7 +27,7 @@ STATUS_LABELS = {
 }
 ACTION_LABELS = {
     "self_check": "Self-check", "revise": "Revise", "submit": "Submit for check",
-    "request_changes": "Request changes (rework)", "check": "Mark checked",
+    "request_changes": "Request changes (rework)", "check": "Mark checked", "reassign": "Reassign checker",
     "approve": "Approve", "railway_submit": "Railway submission", "reopen": "Reopen",
 }
 
@@ -78,6 +78,8 @@ class Ctx:
     rules: list          # FR-006 active checklist (RuleConfig)
     manual: list         # [{"rule": RuleConfig, "response": ChecklistResponseORM|None}]
     checklist_version: int
+    changes: list        # StationChangeORM (versions, designer assignment)
+    baselines: list      # BaselineORM
 
     @property
     def el_by_id(self):
@@ -104,6 +106,8 @@ def load_ctx(db: Session, station: models.StationORM, user: models.UserORM) -> C
         user=user, now=datetime.now(timezone.utc).isoformat(),
         rules=store.active_rules(db), manual=store.manual_items(db, sid),
         checklist_version=store.config_version(db),
+        changes=q(models.StationChangeORM, models.StationChangeORM.id),
+        baselines=q(models.BaselineORM, models.BaselineORM.id),
     )
 
 
@@ -346,7 +350,12 @@ def build_approval(ctx: Ctx) -> Report:
         rows.append([STATUS_LABELS[s], state])
     r.add(Banner(f"Current status: {STATUS_LABELS.get(st.status, st.status)}",
                  "ok" if st.status in ("approved", "railway_submitted") else "info"))
-    r.add(Heading("1. Lifecycle position"), Table(["Stage", "State"], rows, widths=[3, 1.2]))
+    from ..routers.workflow import _load_workflow_state
+    from sqlalchemy.orm import object_session
+    state = _load_workflow_state(st, object_session(st))
+    r.add(Heading("1. Lifecycle position"), Table(["Stage", "State"], rows, widths=[3, 1.2]),
+          KeyValues([("Assigned designer", st.assigned_designer or "Any designer (not assigned)"),
+                     ("Assigned checker", state.assigned_checker or "-")]))
     steps = [("Self-check (Designer)", "self_check"), ("Submitted for check", "submit"),
              ("Checked (Checker)", "check"), ("Approved (Approver)", "approve"),
              ("Railway submission", "railway_submit")]
@@ -401,6 +410,12 @@ def build_audit(ctx: Ctx) -> Report:
     for x in ctx.railway:
         rows.append((x.recorded_at, "Railway", x.recorded_by, f"Submission {x.reference_no}",
                      f"sent {x.submitted_on} to {x.addressed_to or '-'}"))
+    for c in ctx.changes:
+        rows.append((c.changed_at, "Configuration", f"{c.changed_by} ({c.changed_by_role})",
+                     f"{c.field}: {c.before or '-'} -> {c.after or '-'}", c.reason or ""))
+    for b in ctx.baselines:
+        rows.append((b.created_at, "Baseline", b.created_by, f"Baseline '{b.label}' of layout {b.layout_version}",
+                     b.notes or ""))
     rows.sort(key=lambda x: x[0] or "")
     r.add(Para(f"{len(rows)} recorded event(s). Times are UTC.", "muted"),
           Table(["When (UTC)", "Area", "Who", "What", "Detail"],
@@ -446,13 +461,24 @@ def build_revisions(ctx: Ctx) -> Report:
                 widths=[0.7, 1.1, 4.5, 0.9, 1.8], empty_text="No revision entries recorded yet."))
     milestones = [[_d(e.timestamp), ACTION_LABELS.get(e.action, e.action), e.layout_version or "-",
                    e.actor_username, e.comment or ""]
-                  for e in ctx.events if e.action in ("approve", "railway_submit", "reopen", "request_changes")]
+                  for e in ctx.events if e.action in ("approve", "railway_submit", "reopen", "request_changes", "reassign")]
     r.add(Heading("2. Layout versions at key workflow steps"),
           Para("Layout version = KAVACH.SIP.Guideline (FR-010). Steps before Phase 4 did not record it.", "muted"),
           Table(["When", "Step", "Layout", "By", "Comment"], milestones,
                 widths=[1.3, 1.8, 0.9, 1.2, 3.8], empty_text="No approvals, reworks or submissions yet."))
-    r.add(Heading("3. Design input revisions"), _inputs_table(ctx, current_only=False))
-    r.add(Heading("4. Railway submissions"),
+    vch = [c for c in ctx.changes if c.field in ("kavach_version", "sip_version", "guideline_version",
+                                                 "sip_drawing_number")]
+    r.add(Heading("3. Version number changes (Configuration Manager)"),
+          Table(["When", "Field", "From", "To", "By", "Reason"],
+                [[_d(c.changed_at), c.field, c.before or "-", c.after or "-", c.changed_by, c.reason or ""]
+                 for c in vch], widths=[1.3, 1.5, 0.8, 0.8, 1.1, 3.5], empty_text="No version changes recorded."))
+    r.add(Heading("4. Baselines"),
+          Table(["Label", "Layout", "Status", "Checklist", "Created", "Notes"],
+                [[b.label, b.layout_version, STATUS_LABELS.get(b.station_status, b.station_status),
+                  f"v{b.checklist_version}", f"{b.created_by} {_d(b.created_at)}", b.notes or ""]
+                 for b in ctx.baselines], widths=[1.4, 0.8, 1.3, 0.8, 1.8, 3], empty_text="No baselines."))
+    r.add(Heading("5. Design input revisions"), _inputs_table(ctx, current_only=False))
+    r.add(Heading("6. Railway submissions"),
           Table(["Reference", "Date sent", "Layout", "Package"],
                 [[x.reference_no, x.submitted_on, x.layout_version, _package(x)] for x in ctx.railway],
                 widths=[2, 1.2, 0.9, 4], empty_text="None."))

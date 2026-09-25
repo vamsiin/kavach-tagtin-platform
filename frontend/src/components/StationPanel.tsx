@@ -3,7 +3,7 @@ import { Trash2, Check, X } from "lucide-react";
 import type { Station } from "../types";
 import { STATUS_LABELS } from "../types";
 import { api } from "../api";
-import { useAuth } from "../auth/AuthContext";
+import { useAuth, useCan } from "../auth/AuthContext";
 
 interface Props {
   stations: Station[];
@@ -15,6 +15,7 @@ interface Props {
 
 export function StationPanel({ stations, selected, onSelect, onCreated, onDeleted }: Props) {
   const { user } = useAuth();
+  const can = useCan();
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [kavachId, setKavachId] = useState("");
@@ -94,9 +95,11 @@ export function StationPanel({ stations, selected, onSelect, onCreated, onDelete
           </div>
           );
         })}
-        <button className="station-chip new" onClick={() => setShowForm(!showForm)}>
-          + New station
-        </button>
+        {can("station.create") && (
+          <button className="station-chip new" onClick={() => setShowForm(!showForm)}>
+            + New station
+          </button>
+        )}
       </div>
 
       {selected && (

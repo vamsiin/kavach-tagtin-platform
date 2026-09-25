@@ -15,7 +15,7 @@ from ..notifications.email import (
 from ..workflow.engine import (
     attempt_transition, allowed_actions, StationWorkflowState, WorkflowError,
     SUBMIT, CHECK, APPROVE, REQUEST_CHANGES, REOPEN,
-    SELF_CHECK, REVISE, RAILWAY_SUBMIT, CYCLE_RESET_ACTIONS,
+    SELF_CHECK, REVISE, RAILWAY_SUBMIT, CYCLE_RESET_ACTIONS, REASSIGN,
 )
 
 router = APIRouter(prefix="/stations", tags=["workflow"])
@@ -38,9 +38,12 @@ def _load_workflow_state(station: models.StationORM, db: Session) -> StationWork
     for e in events:
         if e.action in CYCLE_RESET_ACTIONS:
             break
+        if e.action == REASSIGN and assigned_checker is None:
+            assigned_checker = e.target_username  # newest reassignment wins
         if e.action == SUBMIT and submitted_by is None:
             submitted_by = e.actor_username
-            assigned_checker = e.target_username
+            if assigned_checker is None:
+                assigned_checker = e.target_username
         if e.action == CHECK and checked_by is None:
             checked_by = e.actor_username
         if e.action == SELF_CHECK and self_checked_by is None:
@@ -48,6 +51,7 @@ def _load_workflow_state(station: models.StationORM, db: Session) -> StationWork
     return StationWorkflowState(
         status=station.status, submitted_by=submitted_by, checked_by=checked_by,
         assigned_checker=assigned_checker, self_checked_by=self_checked_by,
+        assigned_designer=station.assigned_designer,
     )
 
 
@@ -217,6 +221,26 @@ def submit_station(
     return _station_out(station)
 
 
+@router.post("/{station_id}/reassign-checker", response_model=schemas.StationOut)
+def reassign_checker(
+    station_id: int, payload: schemas.SubmitForCheckRequest,
+    db: Session = Depends(get_db), user: models.UserORM = Depends(get_current_user),
+):
+    """Project Manager (or admin) moves a SUBMITTED layout to a different checker --
+    e.g. the assigned checker is on leave. Recorded as a workflow event; the old
+    checker loses the right to act on it, the new one is notified."""
+    checker = db.query(models.UserORM).filter_by(username=payload.assigned_checker_username).first()
+    if not checker or not checker.is_active:
+        raise HTTPException(404, f"No active user '{payload.assigned_checker_username}' found")
+    station, _ = _do_transition(station_id, REASSIGN, payload.comment, db, user,
+                                target_username=checker.username, target_role=checker.role)
+    result = notify_checker_assigned(checker.email, station.name, user.full_name)
+    if not result.sent and result.mode == "smtp":
+        print(f"[email] WARNING: failed to notify checker {checker.username}: {result.error}")
+    from .stations import _station_out
+    return _station_out(station)
+
+
 @router.post("/{station_id}/check", response_model=schemas.StationOut)
 def check_station(
     station_id: int, payload: schemas.WorkflowActionRequest,
@@ -320,6 +344,7 @@ def get_workflow_status(
     return schemas.WorkflowStatusOut(
         status=state.status, submitted_by=state.submitted_by, checked_by=state.checked_by,
         assigned_checker=state.assigned_checker, self_checked_by=state.self_checked_by,
+        assigned_designer=station.assigned_designer,
         allowed_actions=allowed_actions(state, user.to_domain()),
         history=events,
     )

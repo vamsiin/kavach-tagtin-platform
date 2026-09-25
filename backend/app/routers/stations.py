@@ -19,6 +19,8 @@ def _station_out(s: models.StationORM) -> schemas.StationOut:
 @router.post("", response_model=schemas.StationOut)
 def create_station(payload: schemas.StationCreate, db: Session = Depends(get_db),
     user: models.UserORM = Depends(get_current_user)):
+    from ..auth.permissions import require
+    require(user, "station.create", "Creating a station")
     existing = db.query(models.StationORM).filter_by(
         kavach_station_id=payload.kavach_station_id).first()
     if existing:
@@ -136,6 +138,17 @@ def _update_fields(payload) -> dict:
     return data
 
 
+def _require_register_editor(user: models.UserORM, station: models.StationORM) -> None:
+    """Phase 6: only designers/admins edit registers (before this, any logged-in role
+    could, including checkers and approvers), and when a Project Manager has assigned
+    a designer, only that designer (or an admin)."""
+    from ..auth.permissions import require
+    require(user, "registers.edit", "Editing the registers")
+    if user.role != "admin" and station.assigned_designer and station.assigned_designer != user.username:
+        raise HTTPException(403, f"This station is assigned to designer '{station.assigned_designer}' "
+                                 f"-- only they (or an admin) can edit it")
+
+
 def _require_editable(station: models.StationORM) -> None:
     """Registers (Elements/Tags/TINs) are only mutable while a station is in
     'draft'. Once submitted, edits must go through 'request changes' (which
@@ -161,6 +174,7 @@ def add_element(station_id: int, payload: schemas.ElementCreate, db: Session = D
         raise HTTPException(422, f"element_type must be one of {ELEMENT_TYPES}")
     station = _get_station_or_404(station_id, db)
     _require_editable(station)
+    _require_register_editor(user, station)
     _validate_source_document(station_id, payload.source_document_id, db)
     el = models.ElementORM(station_id=station_id, **payload.model_dump())
     db.add(el)
@@ -193,6 +207,7 @@ def update_element(
         raise HTTPException(422, f"element_type must be one of {ELEMENT_TYPES}")
     station = _get_station_or_404(station_id, db)
     _require_editable(station)
+    _require_register_editor(user, station)
     el = _get_element_or_404(station_id, element_id, db)
     _validate_source_document(station_id, payload.source_document_id, db)
     for field, value in _update_fields(payload).items():
@@ -209,6 +224,7 @@ def delete_element(
 ):
     station = _get_station_or_404(station_id, db)
     _require_editable(station)
+    _require_register_editor(user, station)
     el = _get_element_or_404(station_id, element_id, db)
     # Tags that reference this element as linked_element_id are not cascade-deleted
     # (the FK has no ON DELETE CASCADE) -- unlink them rather than leaving a dangling
@@ -235,6 +251,7 @@ def add_tag(station_id: int, payload: schemas.TagCreate, db: Session = Depends(g
         raise HTTPException(422, f"tag_type must be one of {TAG_TYPES}")
     station = _get_station_or_404(station_id, db)
     _require_editable(station)
+    _require_register_editor(user, station)
     _validate_source_document(station_id, payload.source_document_id, db)
     tag = models.TagORM(station_id=station_id, **payload.model_dump())
     db.add(tag)
@@ -267,6 +284,7 @@ def update_tag(
         raise HTTPException(422, f"tag_type must be one of {TAG_TYPES}")
     station = _get_station_or_404(station_id, db)
     _require_editable(station)
+    _require_register_editor(user, station)
     tag = _get_tag_or_404(station_id, tag_id, db)
     _validate_source_document(station_id, payload.source_document_id, db)
     for field, value in _update_fields(payload).items():
@@ -283,6 +301,7 @@ def delete_tag(
 ):
     station = _get_station_or_404(station_id, db)
     _require_editable(station)
+    _require_register_editor(user, station)
     tag = _get_tag_or_404(station_id, tag_id, db)
     db.delete(tag)
     db.commit()
@@ -297,6 +316,7 @@ def add_tin(station_id: int, payload: schemas.TINCreate, db: Session = Depends(g
     user: models.UserORM = Depends(get_current_user)):
     station = _get_station_or_404(station_id, db)
     _require_editable(station)
+    _require_register_editor(user, station)
     _validate_source_document(station_id, payload.source_document_id, db)
     tin = models.TINORM(station_id=station_id, **payload.model_dump())
     db.add(tin)
@@ -326,6 +346,7 @@ def update_tin(
 ):
     station = _get_station_or_404(station_id, db)
     _require_editable(station)
+    _require_register_editor(user, station)
     tin = _get_tin_or_404(station_id, tin_id, db)
     _validate_source_document(station_id, payload.source_document_id, db)
     for field, value in _update_fields(payload).items():
@@ -342,6 +363,7 @@ def delete_tin(
 ):
     station = _get_station_or_404(station_id, db)
     _require_editable(station)
+    _require_register_editor(user, station)
     tin = _get_tin_or_404(station_id, tin_id, db)
     db.delete(tin)
     db.commit()

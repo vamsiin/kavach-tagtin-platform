@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Station, Element, Tag, TIN, ObservationDraft, ObservationSummary, CheckResult } from "./types";
 import { api } from "./api";
-import { AuthProvider, useAuth } from "./auth/AuthContext";
+import { AuthProvider, useAuth, useCan } from "./auth/AuthContext";
 import { LoginScreen } from "./components/LoginScreen";
 import { StationPanel } from "./components/StationPanel";
 import { ElementsPanel } from "./components/ElementsPanel";
@@ -17,6 +17,9 @@ import { ObservationsPanel } from "./components/ObservationsPanel";
 import { ReportsPanel } from "./components/ReportsPanel";
 import { ChecklistPanel } from "./components/ChecklistPanel";
 import { ManualChecklistPanel } from "./components/ManualChecklistPanel";
+import { DashboardPanel } from "./components/DashboardPanel";
+import { AssignmentPanel } from "./components/AssignmentPanel";
+import { ConfigurationPanel } from "./components/ConfigurationPanel";
 import "./styles.css";
 
 export default function App() {
@@ -41,7 +44,7 @@ function Shell() {
           <span className="muted">Design &amp; verification against RDSO/SPN/196/2020 Annexure-H</span>
         </div>
         <div className="user-badge">
-          <span>{user.full_name} <span className="muted">({user.role})</span></span>
+          <span>{user.full_name} <span className="muted">({user.role_label ?? user.role})</span></span>
           <button onClick={logout} className="secondary">Log out</button>
         </div>
       </header>
@@ -57,7 +60,7 @@ function MainContent() {
   const [elements, setElements] = useState<Element[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [tins, setTins] = useState<TIN[]>([]);
-  const [tab, setTab] = useState<"inputs" | "registers" | "verify" | "observations" | "trace" | "reports" | "workflow" | "checklist" | "users">("registers")
+  const [tab, setTab] = useState<"inputs" | "registers" | "verify" | "observations" | "trace" | "reports" | "workflow" | "config" | "checklist" | "users">("registers")
   const [obsDraft, setObsDraft] = useState<ObservationDraft | null>(null);
   const [obsSummary, setObsSummary] = useState<ObservationSummary | null>(null);
 
@@ -73,7 +76,8 @@ function MainContent() {
     api.listObservations(selected.id).then((r) => setObsSummary(r.summary)).catch(console.error);
   }, [selected]);
 
-  const isReviewer = !!user && ["checker", "approver", "admin"].includes(user.role);
+  const can = useCan();
+  const isReviewer = can("observations.raise");
   function raiseFromCheck(r: CheckResult) {
     const tag = tags.find((t) => t.tag_ref === r.subject_ref);
     const el = elements.find((e) => e.element_ref === r.subject_ref);
@@ -108,10 +112,22 @@ function MainContent() {
     if (selected?.id === id) setSelected(null);
   }
 
-  const readOnly = !!selected && selected.status !== "draft";
+  // Registers/inputs are editable only in Draft, only by roles with registers.edit, and --
+  // when a Project Manager has assigned a designer -- only by that designer (or an admin).
+  const lockedByAssignment = !!selected?.assigned_designer && user?.role !== "admin"
+    && selected.assigned_designer !== user?.username;
+  const readOnly = !!selected && (selected.status !== "draft" || !can("registers.edit") || lockedByAssignment);
+  const lockReason = !selected ? undefined
+    : selected.status !== "draft" ? "Registers are locked while this station is not in Draft. Use 'Request changes' to reopen for editing."
+    : !can("registers.edit") ? `Read-only for your role (${user?.role_label ?? user?.role}). Only designers edit the registers.`
+    : lockedByAssignment ? `This station is assigned to designer '${selected.assigned_designer}'. Only they (or an admin) can edit it.`
+    : undefined;
 
   return (
     <>
+      {selected && (
+        <button className="link-btn back-link" onClick={() => setSelected(null)}>← Portfolio dashboard</button>
+      )}
       <StationPanel
         stations={stations}
         selected={selected}
@@ -145,10 +161,13 @@ function MainContent() {
             <button className={tab === "workflow" ? "active" : ""} onClick={() => setTab("workflow")}>
               Workflow
             </button>
+            <button className={tab === "config" ? "active" : ""} onClick={() => setTab("config")}>
+              Configuration
+            </button>
             <button className={tab === "checklist" ? "active" : ""} onClick={() => setTab("checklist")}>
               Checklist
             </button>
-            {user?.role === "admin" && (
+            {can("users.manage") && (
               <button className={tab === "users" ? "active" : ""} onClick={() => setTab("users")}>
                 Users
               </button>
@@ -172,15 +191,15 @@ function MainContent() {
 
           {tab === "registers" && (
             <>
-              <ElementsPanel elements={elements} readOnly={readOnly}
+              <ElementsPanel elements={elements} readOnly={readOnly} lockReason={lockReason}
                 onAdd={async (p) => { await api.addElement(selected.id, p); await reloadElements(); }}
                 onUpdate={async (id, p) => { await api.updateElement(selected.id, id, p); await reloadElements(); }}
                 onDelete={async (id) => { await api.deleteElement(selected.id, id); await reloadElements(); await reloadTags(); }} />
-              <TagsPanel tags={tags} elements={elements} readOnly={readOnly}
+              <TagsPanel tags={tags} elements={elements} readOnly={readOnly} lockReason={lockReason}
                 onAdd={async (p) => { await api.addTag(selected.id, p); await reloadTags(); }}
                 onUpdate={async (id, p) => { await api.updateTag(selected.id, id, p); await reloadTags(); }}
                 onDelete={async (id) => { await api.deleteTag(selected.id, id); await reloadTags(); }} />
-              <TinsPanel tins={tins} readOnly={readOnly}
+              <TinsPanel tins={tins} readOnly={readOnly} lockReason={lockReason}
                 onAdd={async (p) => { await api.addTin(selected.id, p); await reloadTins(); }}
                 onUpdate={async (id, p) => { await api.updateTin(selected.id, id, p); await reloadTins(); }}
                 onDelete={async (id) => { await api.deleteTin(selected.id, id); await reloadTins(); }} />
@@ -197,16 +216,24 @@ function MainContent() {
           )}
 
           {tab === "workflow" && (
-            <WorkflowPanel station={selected} onStationChanged={handleStationChanged} />
+            <>
+              <AssignmentPanel station={selected} assignedChecker={selected.assigned_checker}
+                onStationChanged={handleStationChanged} />
+              <WorkflowPanel station={selected} onStationChanged={handleStationChanged} />
+            </>
           )}
 
           {tab === "checklist" && <ChecklistPanel />}
 
-          {tab === "users" && user?.role === "admin" && <UsersPanel />}
+          {tab === "config" && <ConfigurationPanel station={selected} onStationChanged={handleStationChanged} />}
+
+          {tab === "users" && can("users.manage") && <UsersPanel />}
         </>
       )}
 
-      {!selected && <p className="muted" style={{ padding: "2rem" }}>Select or create a station to begin.</p>}
+      {!selected && (
+        <DashboardPanel onOpen={(id) => { const s = stations.find((x) => x.id === id); if (s) setSelected(s); }} />
+      )}
     </>
   );
 }

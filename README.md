@@ -498,10 +498,33 @@ decimals.
   in the Verification and Compliance reports; disabled automated rules are listed too.
 - With no edits, results are identical to the previous hard-coded engine.
 
+**Phase 6 — done (BRD Section 7 roles):**
+- One permission matrix, `app/auth/permissions.py`, now decides who may do what (routers
+  call `require(user, "capability")`; the UI reads the same list from `/auth/me` →
+  `permissions`). Roles: Designer, Checker, Approver, **Project Manager**,
+  **Configuration Manager**, Administrator.
+- **Tightened:** before Phase 6 *any* logged-in role could create stations and edit
+  registers in Draft. Now only designers (and admins) can.
+- **Project Manager** — monitor & assign, no edit rights: portfolio **dashboard**
+  (`GET /dashboard`: status, assignee, days in status, failing checks, open
+  observations, missing inputs, Railway reference; shown when no station is open);
+  **assign the designer** (`PUT /stations/{id}/assign-designer`; while assigned, only
+  that designer or an admin can edit registers/inputs, self-check or submit);
+  **reassign the checker** of a submitted layout (`POST …/reassign-checker`, recorded
+  as a workflow event, the new checker is emailed, the old one loses access).
+- **Configuration Manager** — versions & baselines, no layout editing: edit the
+  KAVACH/SIP/Guideline version numbers and SIP drawing number (draft only, reason
+  required, audited — previously these could only be set at creation);
+  **baselines** of approved layouts (`POST …/baselines`) and **compare** any baseline
+  with the current layout (`GET …/baselines/{id}/diff`); edit the checklist; reopen an
+  approved / Railway-submitted layout for a new revision.
+- Assignments, version changes and baselines appear in the Audit Trail, Revision
+  History and Approval Status reports. UI: dashboard, Assignment panel (Workflow tab),
+  **Configuration** tab.
+
 **Not yet built:** FR-001 does not *parse* the RFID Allocation Chart yet (BR-001
 still enforces range/uniqueness, not "matches the chart"); no submit gate on missing
-inputs (reported as gaps only); Project Manager /
-Configuration Manager roles; Alembic migrations (schema upgrades still go through
+inputs (reported as gaps only); Alembic migrations (schema upgrades still go through
 `ensure_schema_up_to_date`: add-column on SQLite, plus the `*_km` -> `*_m` column renames).
 
 ## Honest limitations (read before demoing this to anyone)

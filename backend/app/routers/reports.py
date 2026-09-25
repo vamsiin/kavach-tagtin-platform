@@ -161,8 +161,8 @@ def list_revisions(station_id: int, db: Session = Depends(get_db),
 
 
 def _require_designer_draft(station, user):
-    if user.role not in ("designer", "admin"):
-        raise HTTPException(403, "Only a designer or admin can edit the revision table")
+    from ..auth.permissions import require
+    require(user, "revisions.edit", "Editing the revision table")
     if station.status != "draft":
         raise HTTPException(409, f"Station is '{station.status}', not 'draft' -- the revision "
                                  f"table can only be edited in draft")

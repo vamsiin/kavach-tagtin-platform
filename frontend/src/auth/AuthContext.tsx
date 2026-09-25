@@ -44,6 +44,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/** Capability check from the server's permission matrix (app/auth/permissions.py) --
+ *  the UI never re-implements role rules, it just asks. */
+export function useCan(): (capability: string) => boolean {
+  const { user } = useAuth();
+  return (capability: string) => !!user?.permissions?.includes(capability);
+}
+
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within an AuthProvider");

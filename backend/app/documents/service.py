@@ -49,7 +49,8 @@ DOC_TYPES: dict[str, dict] = {
 # (yet) so existing in-flight stations aren't blocked by an upgrade.
 REQUIRED_DOC_TYPES = (SIP, SITE_SURVEY, RFID_ALLOCATION_CHART)
 
-UPLOADER_ROLES = ("designer", "admin")
+from ..auth.permissions import CAPABILITIES
+UPLOADER_ROLES = CAPABILITIES["inputs.upload"]
 
 
 def upload_dir() -> Path:

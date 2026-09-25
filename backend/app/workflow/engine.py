@@ -57,6 +57,7 @@ CHECK = "check"
 APPROVE = "approve"
 RAILWAY_SUBMIT = "railway_submit"
 REOPEN = "reopen"
+REASSIGN = "reassign"              # Project Manager moves a submitted layout to another checker
 
 # Actions after which the previous submit/check/self-check cycle no longer applies
 # (used when reconstructing state from the event log).
@@ -79,13 +80,16 @@ TRANSITIONS: list[TransitionRule] = [
     TransitionRule(DRAFT, SELF_CHECK, SELF_CHECKED, ("designer", "admin")),
     TransitionRule(SELF_CHECKED, REVISE, DRAFT, ("designer", "admin")),
     TransitionRule(SELF_CHECKED, SUBMIT, SUBMITTED, ("designer", "admin")),
+    TransitionRule(SUBMITTED, REASSIGN, SUBMITTED, ("project_manager", "admin")),
     TransitionRule(SUBMITTED, REQUEST_CHANGES, DRAFT, ("checker", "approver", "admin")),
     TransitionRule(SUBMITTED, CHECK, CHECKED, ("checker", "admin")),
     TransitionRule(CHECKED, REQUEST_CHANGES, DRAFT, ("approver", "admin")),
     TransitionRule(CHECKED, APPROVE, APPROVED, ("approver", "admin")),
     TransitionRule(APPROVED, RAILWAY_SUBMIT, RAILWAY_SUBMITTED, ("approver", "admin")),
-    TransitionRule(APPROVED, REOPEN, DRAFT, ("admin",)),
-    TransitionRule(RAILWAY_SUBMITTED, REOPEN, DRAFT, ("admin",)),
+    # Reopening an approved layout starts a new revision -- a configuration-management
+    # decision, so the Configuration Manager may do it as well as an admin.
+    TransitionRule(APPROVED, REOPEN, DRAFT, ("config_manager", "admin")),
+    TransitionRule(RAILWAY_SUBMITTED, REOPEN, DRAFT, ("config_manager", "admin")),
 ]
 
 _BY_FROM_ACTION = {(t.from_status, t.action): t for t in TRANSITIONS}
@@ -102,6 +106,7 @@ class StationWorkflowState:
     checked_by: str | None = None
     assigned_checker: str | None = None
     self_checked_by: str | None = None
+    assigned_designer: str | None = None  # set by a Project Manager; None = any designer
 
 
 def attempt_transition(
@@ -141,6 +146,12 @@ def attempt_transition(
     if not actor.is_active:
         raise WorkflowError(f"User '{actor.username}' is not an active account")
 
+    if action in (SELF_CHECK, SUBMIT, REVISE) and actor.role != "admin" \
+            and state.assigned_designer and actor.username != state.assigned_designer:
+        raise WorkflowError(
+            f"This station is assigned to designer '{state.assigned_designer}' -- only they "
+            f"(or an admin) can {action.replace('_', '-')} it")
+
     if action == SELF_CHECK:
         if verification_fail_count is None:
             raise WorkflowError(
@@ -151,6 +162,17 @@ def attempt_transition(
                 f"Self-check failed: {verification_fail_count} automated Annexure-H "
                 f"check(s) are failing. Fix them in the registers and self-check again."
             )
+
+    if action == REASSIGN:
+        if not target_username:
+            raise WorkflowError("Reassigning requires the new checker's username")
+        if target_role is not None and target_role != "checker":
+            raise WorkflowError(f"Assigned user must have the 'checker' role (got '{target_role}')")
+        if target_username == state.assigned_checker:
+            raise WorkflowError(f"Already assigned to '{target_username}'")
+        if target_username == state.submitted_by:
+            raise WorkflowError("Segregation of duties: cannot assign the check to the person "
+                                "who submitted the layout")
 
     if action == SUBMIT:
         if (actor.role != "admin" and state.self_checked_by
@@ -208,7 +230,7 @@ def attempt_transition(
         id=None, station_id=station_id, from_status=state.status, to_status=rule.to_status,
         action=action, actor_username=actor.username, actor_role=actor.role,
         comment=comment, timestamp=now_iso, verification_fail_count=verification_fail_count,
-        target_username=target_username if action == SUBMIT else None,
+        target_username=target_username if action in (SUBMIT, REASSIGN) else None,
     )
 
     resets = action in CYCLE_RESET_ACTIONS
@@ -221,12 +243,13 @@ def attempt_transition(
         checked_by=actor.username if action == CHECK else (
             None if resets else state.checked_by
         ),
-        assigned_checker=target_username if action == SUBMIT else (
+        assigned_checker=target_username if action in (SUBMIT, REASSIGN) else (
             None if resets else state.assigned_checker
         ),
         self_checked_by=actor.username if action == SELF_CHECK else (
             None if resets else state.self_checked_by
         ),
+        assigned_designer=state.assigned_designer,
     )
 
     return new_state, event

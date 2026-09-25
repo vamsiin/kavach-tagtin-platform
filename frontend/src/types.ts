@@ -73,6 +73,7 @@ export interface Station {
   layout_version: string;
   created_by: string | null;
   assigned_checker: string | null;
+  assigned_designer?: string | null;
 }
 
 export interface Element {
@@ -157,7 +158,11 @@ export interface ToCCrossValidation {
   };
 }
 
-export const ROLES = ["designer", "checker", "approver", "admin"] as const;
+export const ROLES = ["designer", "checker", "approver", "project_manager", "config_manager", "admin"] as const;
+export const ROLE_LABELS: Record<string, string> = {
+  designer: "Designer", checker: "Checker (Verifier)", approver: "Approver",
+  project_manager: "Project Manager", config_manager: "Configuration Manager", admin: "Administrator",
+};
 export type Role = (typeof ROLES)[number];
 
 export interface User {
@@ -167,6 +172,8 @@ export interface User {
   email: string;
   role: Role;
   is_active: boolean;
+  role_label?: string;
+  permissions?: string[];
 }
 
 export interface TokenResponse {
@@ -196,6 +203,7 @@ export interface WorkflowStatus {
   checked_by: string | null;
   assigned_checker: string | null;
   self_checked_by?: string | null;
+  assigned_designer?: string | null;
   allowed_actions: string[];
   history: WorkflowEvent[];
 }
@@ -218,6 +226,7 @@ export const ACTION_LABELS: Record<string, string> = {
   approve: "Approve",
   request_changes: "Request changes",
   reopen: "Reopen",
+  reassign: "Reassign checker",
 };
 
 
@@ -500,4 +509,68 @@ export interface ManualChecklist {
   items: ManualItem[];
   summary: { total: number; answered: number; pending_blocking: string[]; failed: string[] };
   can_respond: boolean;
+}
+
+// ---- Phase 6: roles, dashboard, configuration management ----
+export interface DashboardRow {
+  id: number;
+  name: string;
+  kavach_station_id: string;
+  status: string;
+  layout_version: string;
+  assigned_designer: string | null;
+  assigned_checker: string | null;
+  created_by: string | null;
+  days_in_status: number | null;
+  last_action: string | null;
+  last_actor: string | null;
+  last_at: string | null;
+  fail_count: number;
+  warn_count: number;
+  open_observations: number;
+  unverified_observations: number;
+  missing_inputs: number;
+  tags: number;
+  railway_reference: string | null;
+  baselines: number;
+}
+
+export interface Dashboard {
+  stations: DashboardRow[];
+  by_status: Record<string, number>;
+  total: number;
+}
+
+export interface StationChange {
+  id: number;
+  field: string;
+  before: string | null;
+  after: string | null;
+  reason: string | null;
+  changed_by: string;
+  changed_by_role: string;
+  changed_at: string;
+}
+
+export interface Baseline {
+  id: number;
+  label: string;
+  layout_version: string;
+  station_status: string;
+  notes: string | null;
+  checklist_version: number | null;
+  verification_summary: { fail_count: number; warn_count: number; total_checks: number } | null;
+  input_snapshot: InputSnapshotItem[] | null;
+  counts: { elements?: number; tags?: number; tins?: number };
+  created_by: string;
+  created_at: string;
+}
+
+export interface BaselineDiff {
+  baseline: Baseline;
+  current_layout_version: string;
+  current_status: string;
+  rows: { item: string; change: "added" | "removed" | "changed"; details: string[] }[];
+  inputs_changed: string[];
+  identical: boolean;
 }

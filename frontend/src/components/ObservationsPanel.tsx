@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import type { Element, Observation, ObservationDraft, ObservationSummary, Tag, TIN } from "../types";
 import { OBS_CATEGORIES, OBS_SEVERITIES, OBS_STATUS_LABELS } from "../types";
 import { api } from "../api";
-import { useAuth } from "../auth/AuthContext";
+import { useCan } from "../auth/AuthContext";
 
 interface Props {
   stationId: number;
@@ -37,8 +37,8 @@ function when(iso: string) {
 
 /** BRD FR-008: tracked, individually resolvable review observations. */
 export function ObservationsPanel({ stationId, stationStatus, tags, elements, tins, draft, onDraftConsumed, onSummary }: Props) {
-  const { user } = useAuth();
-  const isReviewer = !!user && ["checker", "approver", "admin"].includes(user.role);
+  const can = useCan();
+  const isReviewer = can("observations.raise");
   const frozen = stationStatus === "railway_submitted";
 
   const [items, setItems] = useState<Observation[]>([]);

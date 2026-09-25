@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DocType, InputDocument, Element } from "../types";
 import { api } from "../api";
-import { useAuth } from "../auth/AuthContext";
+import { useCan } from "../auth/AuthContext";
 import { DxfReviewPanel } from "./DxfReviewPanel";
 
 interface Props {
@@ -20,8 +20,9 @@ function fmtSize(n: number) {
 /** FR-001: SIP / Site Survey / RFID Allocation Chart / Adjacent Layout / ToC uploads,
  *  kept as immutable revisions. FR-002: DXF import entry point. */
 export function InputsPanel({ stationId, readOnly, existingElements, onRegistersChanged }: Props) {
-  const { user } = useAuth();
-  const canUpload = !readOnly && (user?.role === "designer" || user?.role === "admin");
+  const can = useCan();
+  // readOnly already folds in status, role and designer assignment (see App.tsx)
+  const canUpload = !readOnly && can("inputs.upload");
 
   const [types, setTypes] = useState<DocType[]>([]);
   const [docs, setDocs] = useState<InputDocument[]>([]);
@@ -135,7 +136,7 @@ export function InputsPanel({ stationId, readOnly, existingElements, onRegisters
             <input ref={dxfInput} type="file" accept=".dxf" style={{ display: "none" }} onChange={handleDxfPicked} />
           </div>
         )}
-        {readOnly && <p className="muted small">Inputs are locked while this station is not in Draft.</p>}
+        {readOnly && <p className="muted small">Inputs are read-only for you here: the station is not in Draft, your role cannot upload, or another designer is assigned.</p>}
         {error && <div className="error">{error}</div>}
 
         <table className="register-table">
