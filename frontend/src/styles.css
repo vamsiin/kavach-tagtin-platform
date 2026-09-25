@@ -199,6 +199,7 @@ body { margin: 0; background: #fafbfc; }
 .lifecycle { display: flex; flex-wrap: wrap; gap: 0.25rem; align-items: center; margin: 0.5rem 0 0.25rem; font-size: 0.8rem; }
 .lifecycle .step { padding: 0.15rem 0.55rem; border-radius: 999px; background: #eef0f3; color: #6b7280; }
 .lifecycle .step.done { background: #d4f4dd; color: var(--green); }
+.lifecycle .step.skipped { background: #fdf1cf; color: #8a6116; }
 .lifecycle .step.current { background: var(--teal); color: white; font-weight: 600; }
 .lifecycle .arrow { color: #9ca3af; }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.5rem; margin-bottom: 0.5rem; }

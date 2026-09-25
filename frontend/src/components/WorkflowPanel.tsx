@@ -132,16 +132,30 @@ export function WorkflowPanel({ station, onStationChanged }: Props) {
       </div>
 
       <div className="lifecycle">
-        {LIFECYCLE.map((st, i) => {
+        {(() => {
+          // Layouts that went through the workflow before Self Check existed have no
+          // self_check event in the current cycle -- show that step as skipped rather
+          // than implying it happened.
+          const resets = ["request_changes", "revise", "reopen"];
+          let selfChecked = false;
+          for (const ev of status.history) {
+            if (resets.includes(ev.action)) selfChecked = false;
+            if (ev.action === "self_check") selfChecked = true;
+          }
           const cur = LIFECYCLE.indexOf(status.status);
-          const cls = i < cur ? "done" : i === cur ? "current" : "";
-          return (
-            <span key={st} style={{ display: "contents" }}>
-              {i > 0 && <span className="arrow">→</span>}
-              <span className={`step ${cls}`}>{STATUS_LABELS[st]}</span>
-            </span>
-          );
-        })}
+          return LIFECYCLE.map((st, i) => {
+            const skipped = st === "self_checked" && i < cur && !selfChecked;
+            const cls = skipped ? "skipped" : i < cur ? "done" : i === cur ? "current" : "";
+            return (
+              <span key={st} style={{ display: "contents" }}>
+                {i > 0 && <span className="arrow">→</span>}
+                <span className={`step ${cls}`} title={skipped ? "Not recorded — this cycle predates the Self Check step" : undefined}>
+                  {STATUS_LABELS[st]}{skipped ? " (not recorded)" : ""}
+                </span>
+              </span>
+            );
+          });
+        })()}
       </div>
 
       <div className="workflow-meta">
