@@ -197,7 +197,10 @@ def check_h2_22_block_tin_extent(station: Station, elements: list[Element], tins
             out.append(CheckResult("H2.22", title, "NA", f"TIN {n.tin_no}: not placed on a line",
                                    subject_ref=str(n.tin_no)))
             continue
-        below = _hi(n) <= station.centre_line_m
+        # side of the station by the TIN's midpoint: a block TIN can reach just past the
+        # centre line (Aler's TIN 222 ends at 262.910, centre 262.750) and still be the
+        # lower-km block section
+        below = (_lo(n) + _hi(n)) / 2 < station.centre_line_m
         inner = _hi(n) if below else _lo(n)
         cfg = _side_config(station, below)
         if cfg is None:

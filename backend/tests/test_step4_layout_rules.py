@@ -151,3 +151,17 @@ def test_registered_and_run_by_default():
     keys = {r.key for r in ck.default_rules()}
     assert {"builtin.h2_8", "builtin.h2_17", "builtin.h2_20", "builtin.h2_22", "builtin.h2_26",
             "builtin.tan_dead_stop", "builtin.tan_l_tag", "builtin.tan_after_a"} <= keys
+
+
+def test_h2_22_side_by_midpoint_aler():
+    """Aler: TIN 222 runs 259.740 -> 262.910, past the 262.750 centre line, but it is the
+    lower-km (Wangapalli-Aler IB) block section; its station-side end is 262.910."""
+    adj = [AdjacentStation(id=1, name="Aler-WP-IB", side="Lower km", line_config="Single"),
+           AdjacentStation(id=2, name="Aler-PBP-IB", side="Higher km", line_config="Single")]
+    els = [Element(id=1, element_ref="S6", element_type="Advanced Starter Signal", location_m=263275, track_id=1),
+           Element(id=2, element_ref="S1", element_type="Advanced Starter Signal", location_m=262900, track_id=1)]
+    res = {r.subject_ref: r for r in check_h2_22_block_tin_extent(
+        st(adjacent=adj), els, [tin(222, 259740, 262910, 1, "Black", section="Block"),
+                                tin(217, 263275, 265279, 1, "Black", section="Block")])}
+    assert res["222"].status == "PASS" and "ends at 262910" in res["222"].message
+    assert res["217"].status == "PASS" and "ends at 263275" in res["217"].message
