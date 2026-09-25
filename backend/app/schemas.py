@@ -1,0 +1,243 @@
+from pydantic import BaseModel, Field, field_validator
+from .domain import ELEMENT_TYPES, TAG_TYPES
+
+
+class StationCreate(BaseModel):
+    name: str
+    kavach_station_id: str
+    sip_drawing_number: str | None = None
+    kavach_version: str | None = None
+    sip_version: str | None = None
+    guideline_version: str | None = None
+    drawn_to_scale: bool = True
+    not_to_scale_note_present: bool = False
+
+
+class StationOut(StationCreate):
+    id: int
+    status: str
+    layout_version: str
+    created_by: str | None = None
+    assigned_checker: str | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class ElementCreate(BaseModel):
+    element_ref: str
+    element_type: str = Field(description=f"One of: {', '.join(ELEMENT_TYPES)}")
+    location_km: float
+    direction: str | None = None
+    remarks: str | None = None
+
+
+class ElementOut(ElementCreate):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class TagCreate(BaseModel):
+    tag_ref: str
+    tag_type: str = Field(description=f"One of: {', '.join(TAG_TYPES)}")
+    location_km: float
+    tag_number: int | None = None
+    direction: str | None = None
+    tin_no: int | None = None
+    linked_element_id: int | None = None
+    is_duplicate: bool = False
+    pair_group_id: str | None = None
+    legend_shape: str | None = None
+    exit_set: str | None = None
+    is_border_tag: bool = False
+    remarks: str | None = None
+
+    @field_validator("is_duplicate", "is_border_tag", mode="before")
+    @classmethod
+    def _coerce_none_bool_to_false(cls, v):
+        """Defensive coercion for both boolean fields on this schema. is_border_tag
+        is confirmed vulnerable (added via the auto-migration to an already-
+        populated table, so pre-existing rows get NULL, not False -- see the
+        regression test this validator was written to satisfy). is_duplicate
+        SHOULD always have a non-null value in practice (its SQLAlchemy column has
+        had default=False since the very first schema, so every row created
+        through the ORM has always gotten an explicit value) -- but the exact same
+        raw-SQL-insert test that caught the is_border_tag bug incidentally proved
+        this field has the identical failure mode if a row's value were ever NULL
+        for any other reason (a manual DB edit, a future refactor, etc.), so it's
+        covered here too rather than left as a narrower landmine."""
+        return bool(v)
+
+
+class TagOut(TagCreate):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class TINCreate(BaseModel):
+    tin_no: int
+    section_type: str  # Station | Block
+    color: str | None = None
+    start_km: float
+    end_km: float
+    direction: str | None = None
+    is_non_kavach_territory: bool = False
+    remarks: str | None = None
+
+
+class TINOut(TINCreate):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class CheckResultOut(BaseModel):
+    clause: str
+    title: str
+    status: str
+    message: str
+    subject_ref: str | None = None
+
+
+class VerificationReportOut(BaseModel):
+    results: list[CheckResultOut]
+    summary: dict
+    manual_clauses: dict[str, str]
+
+
+class ChainCheckResultOut(BaseModel):
+    route_s_no: str
+    entry_signal: str
+    exit_signal: str
+    status: str
+    message: str
+    tag_ref: str | None = None
+
+
+class ToCCrossValidationOut(BaseModel):
+    results: list[ChainCheckResultOut]
+    summary: dict
+
+
+class UserCreate(BaseModel):
+    username: str
+    full_name: str
+    email: str = ""
+    role: str  # designer | checker | approver | admin
+    password: str
+
+
+class UserUpdate(BaseModel):
+    """Edit an existing user's profile/role/active status. Password is deliberately
+    excluded here -- use the dedicated reset-password flows instead, so editing a
+    user's name/email/role never accidentally touches their credentials."""
+    full_name: str
+    email: str = ""
+    role: str
+    is_active: bool = True
+
+
+class UserOut(BaseModel):
+    id: int
+    username: str
+    full_name: str
+    email: str = ""
+    role: str
+    is_active: bool
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _coerce_none_email_to_empty_string(cls, v):
+        """Accounts created before the `email` column existed (or created directly
+        via the DB) have NULL there. `str = ""` as a field default only applies
+        when the field is ABSENT from the input -- Pydantic does NOT apply it when
+        the field is explicitly present with value None, which is exactly what
+        happens when this schema validates straight off an ORM object via
+        from_attributes (getattr returns None, not "missing"). Without this
+        validator, logging in as any account that predates email support throws a
+        500 -- this happened for real, not hypothetically; see
+        tests/test_user_management.py's test_login_works_for_user_with_null_email."""
+        return v or ""
+
+    class Config:
+        from_attributes = True
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserOut
+
+
+class WorkflowActionRequest(BaseModel):
+    comment: str = ""
+
+
+class SubmitForCheckRequest(BaseModel):
+    assigned_checker_username: str
+    comment: str = ""
+
+
+class WorkflowEventOut(BaseModel):
+    id: int
+    station_id: int
+    from_status: str
+    to_status: str
+    action: str
+    actor_username: str
+    actor_role: str
+    comment: str
+    timestamp: str
+    verification_fail_count: int | None = None
+    target_username: str | None = None
+
+    @field_validator("comment", mode="before")
+    @classmethod
+    def _coerce_none_comment_to_empty_string(cls, v):
+        """Defensive, same pattern/reason as UserOut.email above -- comment maps to
+        a nullable DB column (WorkflowEventORM.comment) but is typed as a required
+        str here. Every event created through this app's own API always supplies
+        comment="" at minimum (never None), so this hasn't been observed to fail
+        in practice the way the email case did -- but it's the identical landmine
+        shape, and cheap enough to close pre-emptively rather than wait for a
+        directly-inserted row or a future refactor to hit it."""
+        return v or ""
+
+    class Config:
+        from_attributes = True
+
+
+class WorkflowStatusOut(BaseModel):
+    status: str
+    submitted_by: str | None
+    checked_by: str | None
+    assigned_checker: str | None
+    allowed_actions: list[str]
+    history: list[WorkflowEventOut]
+
+
+class ForgotPasswordRequest(BaseModel):
+    username: str
+
+
+class ForgotPasswordResponse(BaseModel):
+    message: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+class AdminResetPasswordRequest(BaseModel):
+    new_password: str

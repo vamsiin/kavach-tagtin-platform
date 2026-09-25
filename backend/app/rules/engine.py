@@ -1,0 +1,555 @@
+"""
+Codified checks against RDSO/SPN/196/2020 Annexure-H (Amdt-5), "KAVACH RFID Tag-TIN
+Layout Guidelines". Each check function is named after and cites its clause, and
+returns CheckResult objects so a Checker can verify the tool's reasoning by reading
+the clause reference, not just trusting a pass/fail.
+
+Design note: a few clauses (H2.3, H2.4, H2.17 partial, H2.19, H2.24-H2.26, H2.28) are
+inherently about visual/topological judgement on the actual drawing (e.g. "does the
+TIN layout permit all Table-of-Control movements") and are NOT checked here -- see
+MANUAL_CLAUSES at the bottom. Silently skipping them would be worse than listing them;
+a Checker still has to look, but knows exactly what the tool did and didn't verify.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Literal
+
+from ..domain import (
+    Element, Tag, TIN, Station, TAG_TYPES,
+    requires_signal_foot_tag, is_starter_signal_eligible_for_h2_7_exception,
+)
+
+Status = Literal["PASS", "FAIL", "WARN", "NA"]
+
+
+@dataclass
+class CheckResult:
+    clause: str            # e.g. "H2.5"
+    title: str              # short human label
+    status: Status
+    message: str
+    subject_ref: str | None = None  # tag_ref / element_ref this result is about, if any
+
+
+@dataclass
+class VerificationReport:
+    results: list[CheckResult] = field(default_factory=list)
+
+    def add(self, *results: CheckResult):
+        self.results.extend(results)
+
+    @property
+    def fail_count(self) -> int:
+        return sum(1 for r in self.results if r.status == "FAIL")
+
+    @property
+    def warn_count(self) -> int:
+        return sum(1 for r in self.results if r.status == "WARN")
+
+    def by_clause(self) -> dict[str, list[CheckResult]]:
+        out: dict[str, list[CheckResult]] = {}
+        for r in self.results:
+            out.setdefault(r.clause, []).append(r)
+        return out
+
+    def summary(self) -> dict:
+        by_clause = self.by_clause()
+        return {
+            "total_checks": len(self.results),
+            "fail_count": self.fail_count,
+            "warn_count": self.warn_count,
+            "clauses_checked": sorted(by_clause.keys()),
+            "clauses_failing": sorted(c for c, rs in by_clause.items()
+                                       if any(r.status == "FAIL" for r in rs)),
+        }
+
+
+# ---------------------------------------------------------------------------
+# H2.1 Version control
+# ---------------------------------------------------------------------------
+def check_h2_1_version_control(station: Station) -> list[CheckResult]:
+    ok = station.layout_version != "INCOMPLETE"
+    return [CheckResult(
+        "H2.1", "Version control X.Y.Z complete",
+        "PASS" if ok else "FAIL",
+        f"Layout version: {station.layout_version}" if ok else
+        "KAVACH/SIP/Guideline version fields incomplete -- X.Y.Z cannot be composed",
+    )]
+
+
+# ---------------------------------------------------------------------------
+# H2.2 SIP drawing number + stationary KAVACH ID must be present
+# ---------------------------------------------------------------------------
+def check_h2_2_identifiers(station: Station) -> list[CheckResult]:
+    results = []
+    results.append(CheckResult(
+        "H2.2", "Stationary KAVACH ID present",
+        "PASS" if station.kavach_station_id else "FAIL",
+        station.kavach_station_id or "Stationary KAVACH ID is blank",
+    ))
+    results.append(CheckResult(
+        "H2.2", "Reference SIP drawing number present",
+        "PASS" if station.sip_drawing_number else "FAIL",
+        station.sip_drawing_number or "Reference SIP drawing number is blank",
+    ))
+    return results
+
+
+# ---------------------------------------------------------------------------
+# H2.5 Normal tag spacing <= 1000m between consecutive Normal tags
+# ---------------------------------------------------------------------------
+def check_h2_5_normal_tag_spacing(tags: list[Tag]) -> list[CheckResult]:
+    results = []
+    normals = sorted(
+        [t for t in tags if t.tag_type == "N"],
+        key=lambda t: (t.direction or "", t.location_km),
+    )
+    by_dir: dict[str, list[Tag]] = {}
+    for t in normals:
+        by_dir.setdefault(t.direction or "?", []).append(t)
+
+    for direction, group in by_dir.items():
+        for prev, curr in zip(group, group[1:]):
+            gap_m = abs(curr.location_km - prev.location_km) * 1000
+            if gap_m > 1000:
+                results.append(CheckResult(
+                    "H2.5", "Normal tag spacing <= 1000m", "FAIL",
+                    f"{prev.tag_ref} -> {curr.tag_ref}: {gap_m:.0f}m apart (max 1000m)",
+                    subject_ref=curr.tag_ref,
+                ))
+            else:
+                results.append(CheckResult(
+                    "H2.5", "Normal tag spacing <= 1000m", "PASS",
+                    f"{prev.tag_ref} -> {curr.tag_ref}: {gap_m:.0f}m", subject_ref=curr.tag_ref,
+                ))
+    return results
+
+
+# ---------------------------------------------------------------------------
+# H2.6 Every Main/Subsidiary signal, Stop board, berthing-track end, BSLB
+# must have a Signal Foot Tag (S)
+# ---------------------------------------------------------------------------
+def check_h2_6_signal_foot_tags(elements: list[Element], tags: list[Tag]) -> list[CheckResult]:
+    results = []
+    linked_element_ids = {t.linked_element_id for t in tags if t.tag_type == "S" and t.linked_element_id}
+    for el in elements:
+        if not requires_signal_foot_tag(el.element_type):
+            continue
+        ok = el.id in linked_element_ids
+        results.append(CheckResult(
+            "H2.6", "Signal Foot Tag present", "PASS" if ok else "FAIL",
+            f"{el.element_type} '{el.element_ref}' "
+            + ("has a linked Signal Foot Tag" if ok else "has NO linked Signal Foot Tag"),
+            subject_ref=el.element_ref,
+        ))
+    return results
+
+
+# ---------------------------------------------------------------------------
+# H2.7 Normal (Signal Approach) tag 150-250m before Main Signal's Signal Foot Tag.
+# Exception: may be <150m for Advance Starter / Intermediate Starter (and their
+# "...-cum-Starter..." combination signal variants -- see
+# is_starter_signal_eligible_for_h2_7_exception() in domain.py).
+# ---------------------------------------------------------------------------
+def check_h2_7_approach_tag_distance(tags: list[Tag], elements: list[Element]) -> list[CheckResult]:
+    results = []
+    elements_by_id = {e.id: e for e in elements}
+    s_tags_by_element = {t.linked_element_id: t for t in tags if t.tag_type == "S" and t.linked_element_id}
+
+    for t in tags:
+        if t.tag_type != "N" or not t.linked_element_id:
+            continue
+        s_tag = s_tags_by_element.get(t.linked_element_id)
+        if not s_tag:
+            continue
+        el = elements_by_id.get(t.linked_element_id)
+        gap_m = abs(s_tag.location_km - t.location_km) * 1000
+        is_starter = el and is_starter_signal_eligible_for_h2_7_exception(el.element_type)
+
+        if 150 <= gap_m <= 250:
+            results.append(CheckResult(
+                "H2.7", "Approach tag 150-250m before Signal Foot Tag", "PASS",
+                f"{t.tag_ref} is {gap_m:.0f}m before {s_tag.tag_ref}", subject_ref=t.tag_ref,
+            ))
+        elif gap_m < 150 and is_starter:
+            results.append(CheckResult(
+                "H2.7", "Approach tag 150-250m before Signal Foot Tag", "PASS",
+                f"{t.tag_ref} is {gap_m:.0f}m before {s_tag.tag_ref} "
+                f"(<150m permitted -- exception for {el.element_type})", subject_ref=t.tag_ref,
+            ))
+        elif gap_m < 150:
+            results.append(CheckResult(
+                "H2.7", "Approach tag 150-250m before Signal Foot Tag", "FAIL",
+                f"{t.tag_ref} is only {gap_m:.0f}m before {s_tag.tag_ref} "
+                f"(<150m only permitted for Advance/Intermediate Starter)", subject_ref=t.tag_ref,
+            ))
+        else:
+            results.append(CheckResult(
+                "H2.7", "Approach tag 150-250m before Signal Foot Tag", "FAIL",
+                f"{t.tag_ref} is {gap_m:.0f}m before {s_tag.tag_ref} (exceeds 250m)",
+                subject_ref=t.tag_ref,
+            ))
+    return results
+
+
+# ---------------------------------------------------------------------------
+# H2.9 Gate tag placed so auto-whistling can commence from >= 600m (or W/L board).
+# NOTE: an earlier internal Excel tool used a 550-850m *range* for this, based on a
+# secondary source deck. The Annexure-H text itself specifies only a *minimum* of
+# 600m ("at least 600m or W/L board on approach of LC gate") -- no stated upper bound.
+# This function follows the Annexure-H text; the 550-850m figure should be treated
+# as superseded unless a Railway-specific circular says otherwise.
+# ---------------------------------------------------------------------------
+def check_h2_9_gate_tag_distance(tags: list[Tag], elements: list[Element]) -> list[CheckResult]:
+    results = []
+    elements_by_id = {e.id: e for e in elements}
+    for t in tags:
+        if t.tag_type != "G" or not t.linked_element_id:
+            continue
+        el = elements_by_id.get(t.linked_element_id)
+        if not el:
+            continue
+        gap_m = abs(el.location_km - t.location_km) * 1000
+        ok = gap_m >= 600
+        results.append(CheckResult(
+            "H2.9", "Gate tag >= 600m approach to LC gate", "PASS" if ok else "FAIL",
+            f"{t.tag_ref} is {gap_m:.0f}m from LC gate '{el.element_ref}' "
+            + ("(meets >=600m minimum)" if ok else "(below 600m minimum, or provide W/L board)"),
+            subject_ref=t.tag_ref,
+        ))
+    return results
+
+
+# ---------------------------------------------------------------------------
+# H2.11 Exit tags: minimum 2 sets, each set >= 10m apart (H2.11(ii))
+# ---------------------------------------------------------------------------
+def check_h2_11_exit_tags(tags: list[Tag]) -> list[CheckResult]:
+    results = []
+    exit_tags = [t for t in tags if t.tag_type == "X" and t.pair_group_id]
+    groups: dict[str, list[Tag]] = {}
+    for t in exit_tags:
+        groups.setdefault(t.pair_group_id, []).append(t)
+
+    for group_id, members in groups.items():
+        sets = {m.exit_set for m in members if m.exit_set}
+        if len(sets) < 2:
+            results.append(CheckResult(
+                "H2.11", "Exit tag: minimum 2 sets", "FAIL",
+                f"Exit tag group '{group_id}' has only {len(sets)} set(s); minimum 2 required",
+                subject_ref=group_id,
+            ))
+            continue
+        locs = [m.location_km for m in members]
+        gap_m = (max(locs) - min(locs)) * 1000
+        ok = gap_m >= 10
+        results.append(CheckResult(
+            "H2.11", "Exit tag sets >= 10m apart", "PASS" if ok else "FAIL",
+            f"Exit tag group '{group_id}': sets are {gap_m:.0f}m apart",
+            subject_ref=group_id,
+        ))
+    return results
+
+
+# ---------------------------------------------------------------------------
+# H2.12 Duplicate tag pair 3-5m apart, EXCEPT TIN-discrimination/Turnout (T) and
+# Adjustment/Junction (A) tags, which must be co-located (0m).
+# Tag-set to tag-set (main+duplicate group to another main+duplicate group) >= 10m.
+# ---------------------------------------------------------------------------
+def check_h2_12_duplicate_and_tagset_spacing(tags: list[Tag]) -> list[CheckResult]:
+    results = []
+    groups: dict[str, list[Tag]] = {}
+    for t in tags:
+        if t.pair_group_id:
+            groups.setdefault(t.pair_group_id, []).append(t)
+
+    group_extents = []  # (group_id, min_km, max_km)
+    for group_id, members in groups.items():
+        if len(members) < 2:
+            continue
+        locs = [m.location_km for m in members]
+        gap_m = (max(locs) - min(locs)) * 1000
+        group_extents.append((group_id, min(locs), max(locs)))
+
+        is_t_or_a = any(m.tag_type in ("T", "A") for m in members)
+        if is_t_or_a:
+            ok = gap_m == 0
+            results.append(CheckResult(
+                "H2.12", "T/A tag pair co-located (0m)", "PASS" if ok else "FAIL",
+                f"Group '{group_id}' (T/A): {gap_m:.0f}m apart"
+                + ("" if ok else " -- must be same absolute location"),
+                subject_ref=group_id,
+            ))
+        else:
+            ok = 3 <= gap_m <= 5
+            results.append(CheckResult(
+                "H2.12", "Duplicate tag pair 3-5m apart", "PASS" if ok else "FAIL",
+                f"Group '{group_id}': {gap_m:.0f}m apart" + ("" if ok else " (must be 3-5m)"),
+                subject_ref=group_id,
+            ))
+
+    # Tag-set to tag-set >= 10m (H2.12, second paragraph)
+    group_extents.sort(key=lambda g: g[1])
+    for (id1, _, max1), (id2, min2, _) in zip(group_extents, group_extents[1:]):
+        gap_m = (min2 - max1) * 1000
+        if gap_m < 0:
+            continue  # overlapping groups -- caught elsewhere / data error
+        ok = gap_m >= 10
+        results.append(CheckResult(
+            "H2.12", "Tag-set to tag-set >= 10m", "PASS" if ok else "FAIL",
+            f"Group '{id1}' to group '{id2}': {gap_m:.0f}m apart",
+            subject_ref=f"{id1}->{id2}",
+        ))
+    return results
+
+
+# ---------------------------------------------------------------------------
+# H2.13 Tag numbers (1-1023) and TIN numbers (1-255) within allotted range.
+# ---------------------------------------------------------------------------
+def check_h2_13_numbering_ranges(tags: list[Tag], tins: list[TIN]) -> list[CheckResult]:
+    results = []
+    for t in tags:
+        if t.tag_number is None:
+            continue
+        ok = 1 <= t.tag_number <= 1023
+        results.append(CheckResult(
+            "H2.13", "Tag number within 1-1023", "PASS" if ok else "FAIL",
+            f"{t.tag_ref}: tag number {t.tag_number}", subject_ref=t.tag_ref,
+        ))
+    for tin in tins:
+        ok = 1 <= tin.tin_no <= 255
+        results.append(CheckResult(
+            "H2.13", "TIN number within 1-255", "PASS" if ok else "FAIL",
+            f"TIN {tin.tin_no}", subject_ref=str(tin.tin_no),
+        ))
+    return results
+
+
+# ---------------------------------------------------------------------------
+# H2.14 Legend shape: Rectangle if main+duplicate co-located, Triangle if not
+# (duplicate ahead of main in direction of travel, per triangle tip).
+# ---------------------------------------------------------------------------
+def check_h2_14_legend_shape(tags: list[Tag]) -> list[CheckResult]:
+    results = []
+    groups: dict[str, list[Tag]] = {}
+    for t in tags:
+        if t.pair_group_id:
+            groups.setdefault(t.pair_group_id, []).append(t)
+
+    for group_id, members in groups.items():
+        if len(members) < 2:
+            continue
+        locs = [m.location_km for m in members]
+        co_located = (max(locs) - min(locs)) == 0
+        expected_shape = "Rectangle" if co_located else "Triangle"
+        shapes = {m.legend_shape for m in members if m.legend_shape}
+        ok = shapes == {expected_shape}
+        results.append(CheckResult(
+            "H2.14", "Legend shape matches co-location", "PASS" if ok else "FAIL",
+            f"Group '{group_id}': expected {expected_shape}, found {shapes or 'unset'}",
+            subject_ref=group_id,
+        ))
+    return results
+
+
+# ---------------------------------------------------------------------------
+# H2.18 Non-KAVACH territory shown in white
+# ---------------------------------------------------------------------------
+def check_h2_18_non_kavach_white(tins: list[TIN]) -> list[CheckResult]:
+    results = []
+    for tin in tins:
+        if not tin.is_non_kavach_territory:
+            continue
+        ok = (tin.color or "").strip().lower() == "white"
+        results.append(CheckResult(
+            "H2.18", "Non-KAVACH territory shown white", "PASS" if ok else "FAIL",
+            f"TIN {tin.tin_no}: color={tin.color or 'unset'}", subject_ref=str(tin.tin_no),
+        ))
+    return results
+
+
+# ---------------------------------------------------------------------------
+# H2.21 Tag type notation must be one of the defined set
+# ---------------------------------------------------------------------------
+def check_h2_21_tag_notation(tags: list[Tag]) -> list[CheckResult]:
+    results = []
+    for t in tags:
+        ok = t.tag_type in TAG_TYPES
+        results.append(CheckResult(
+            "H2.21", "Tag notation valid", "PASS" if ok else "FAIL",
+            f"{t.tag_ref}: type '{t.tag_type}'" + ("" if ok else f" not in {TAG_TYPES}"),
+            subject_ref=t.tag_ref,
+        ))
+    return results
+
+
+# ---------------------------------------------------------------------------
+# BRD FR-004: tag reference and tag number must each be unique within a station.
+# Not tied to a specific Annexure-H clause number -- this is a data-integrity rule
+# from the BRD (RTLDVMS v1.0), not something the RDSO text states explicitly, but
+# a duplicate tag_ref or tag_number on one station's register is unambiguously a
+# defect regardless of source, so it's implemented as a hard FAIL either way.
+# ---------------------------------------------------------------------------
+def check_brd_fr004_tag_uniqueness(tags: list[Tag]) -> list[CheckResult]:
+    results = []
+
+    by_ref: dict[str, list[Tag]] = {}
+    for t in tags:
+        by_ref.setdefault(t.tag_ref, []).append(t)
+    for ref, group in by_ref.items():
+        if len(group) > 1:
+            results.append(CheckResult(
+                "FR-004", "Tag reference unique within station", "FAIL",
+                f"Tag ref '{ref}' used by {len(group)} tags -- must be unique",
+                subject_ref=ref,
+            ))
+
+    by_number: dict[int, list[Tag]] = {}
+    for t in tags:
+        if t.tag_number is not None:
+            by_number.setdefault(t.tag_number, []).append(t)
+    for number, group in by_number.items():
+        if len(group) > 1:
+            refs = ", ".join(g.tag_ref for g in group)
+            results.append(CheckResult(
+                "FR-004", "Tag number unique within station", "FAIL",
+                f"Tag number {number} used by {len(group)} tags ({refs}) -- must be unique",
+                subject_ref=str(number),
+            ))
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# BRD FR-004: "Allocate even numbers for DN direction, odd numbers for UP direction."
+#
+# IMPORTANT ASSUMPTION -- please verify: Tag.direction currently holds "Reverse" /
+# "Nominal" (renamed from UP/DN earlier per a separate request), not "UP"/"DN"
+# literally. Evidence from the ALER drawing legend (UP/DOWN paired with
+# REVERSE/NOMINAL as the same physical directions) suggests UP<->Reverse and
+# DN<->Nominal, which is the mapping used below. If that mapping is wrong, this
+# check will systematically flag every tag as a false FAIL -- confirm before
+# relying on it, and see DIRECTION_PARITY_MAP below to correct it in one place.
+# ---------------------------------------------------------------------------
+DIRECTION_PARITY_MAP = {
+    "Reverse": "odd",   # assumed == UP
+    "Nominal": "even",  # assumed == DN
+}
+
+
+def check_brd_fr004_direction_parity(tags: list[Tag]) -> list[CheckResult]:
+    results = []
+    for t in tags:
+        if t.tag_number is None or not t.direction:
+            continue
+        expected_parity = DIRECTION_PARITY_MAP.get(t.direction)
+        if expected_parity is None:
+            results.append(CheckResult(
+                "FR-004", "Tag number parity matches direction", "NA",
+                f"{t.tag_ref}: direction '{t.direction}' not recognized for the "
+                f"parity rule (expected one of {list(DIRECTION_PARITY_MAP)})",
+                subject_ref=t.tag_ref,
+            ))
+            continue
+        actual_parity = "even" if t.tag_number % 2 == 0 else "odd"
+        ok = actual_parity == expected_parity
+        results.append(CheckResult(
+            "FR-004", "Tag number parity matches direction", "PASS" if ok else "FAIL",
+            f"{t.tag_ref}: number {t.tag_number} is {actual_parity}, direction "
+            f"'{t.direction}' expects {expected_parity}",
+            subject_ref=t.tag_ref,
+        ))
+    return results
+
+
+# ---------------------------------------------------------------------------
+# BRD BR-005 / Annexure-H H2.16: Border RFID tag must have an absolute location
+# recorded (it marks the station boundary and is used to compute the maximum
+# communication distance from the previous station's Stationary KAVACH -- see
+# H2.16's full text). This checks presence/shape, not the RSSI survey criterion
+# itself (BR-005's "RSSI survey criteria") -- that requires a Tower RSSI Survey
+# dataset this platform doesn't currently ingest, so it stays a manual check;
+# see MANUAL_CLAUSES.
+# ---------------------------------------------------------------------------
+def check_brd_br005_border_tag_present(tags: list[Tag]) -> list[CheckResult]:
+    results = []
+    border_tags = [t for t in tags if t.is_border_tag]
+    for t in border_tags:
+        ok = t.location_km is not None
+        results.append(CheckResult(
+            "BR-005", "Border tag has absolute location recorded", "PASS" if ok else "FAIL",
+            f"{t.tag_ref}: location_km={t.location_km}",
+            subject_ref=t.tag_ref,
+        ))
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Full run
+# ---------------------------------------------------------------------------
+def run_all_checks(station: Station, elements: list[Element], tags: list[Tag],
+                    tins: list[TIN]) -> VerificationReport:
+    report = VerificationReport()
+    report.add(*check_h2_1_version_control(station))
+    report.add(*check_h2_2_identifiers(station))
+    report.add(*check_h2_5_normal_tag_spacing(tags))
+    report.add(*check_h2_6_signal_foot_tags(elements, tags))
+    report.add(*check_h2_7_approach_tag_distance(tags, elements))
+    report.add(*check_h2_9_gate_tag_distance(tags, elements))
+    report.add(*check_h2_11_exit_tags(tags))
+    report.add(*check_h2_12_duplicate_and_tagset_spacing(tags))
+    report.add(*check_h2_13_numbering_ranges(tags, tins))
+    report.add(*check_h2_14_legend_shape(tags))
+    report.add(*check_h2_18_non_kavach_white(tins))
+    report.add(*check_h2_21_tag_notation(tags))
+    report.add(*check_brd_fr004_tag_uniqueness(tags))
+    report.add(*check_brd_fr004_direction_parity(tags))
+    report.add(*check_brd_br005_border_tag_present(tags))
+    return report
+
+
+# Clauses that require visual/topological judgement on the actual drawing and are
+# NOT (and cannot reliably be) automated here -- surfaced to the Checker explicitly
+# rather than silently omitted.
+MANUAL_CLAUSES = {
+    "H2.3": "RFID layout must be prepared against the SIP with actual site-survey "
+            "considerations -- requires comparing the drawing to the SIP and site survey.",
+    "H2.4": "Station Master's panel centre taken as station centre line -- requires "
+            "visual confirmation against the panel/drawing.",
+    "H2.8": "TIN discrimination/Turnout/Inline/Signal-foot/Gate tags placed 'as per "
+            "feasibility' to demarcate TIN sections -- topological judgement call.",
+    "H2.10": "LC gate tag (optional) at both sides of LC gate 'as required by "
+             "operating Railway' -- policy decision, not a fixed rule.",
+    "H2.15/H2.16": "Border RFID tag placement and the overlapping-signal exception "
+                   "diagram -- requires comparing adjacent stations' layouts.",
+    "H2.14 (25km radius)": "Repeated Tag ID not allowed within 25km radius -- requires "
+                            "cross-station data beyond a single station's register.",
+    "H2.17": "Each TIN a single colour, distinguishable from neighbouring TINs -- "
+             "automatable partially (flag identical colour on adjacent TIN rows) but "
+             "'distinguishable' is ultimately a visual judgement.",
+    "H2.19": "TIN layout must permit all Table-of-Control movements -- this is exactly "
+             "what the ToC cross-validation module checks; see toc/cross_validate.py, "
+             "not this rules engine.",
+    "H2.20": "Exit tags provided at all places a train may leave KAVACH territory or "
+             "stable long-term (e.g. sidings) -- requires knowing operational intent.",
+    "H2.22": "Block Section TIN extended to BSLB (double line) / opposite Advance "
+             "Starter (single line) -- topological continuity check across the network, "
+             "not a single station's data.",
+    "H2.24-H2.26": "Signature block, revision history, and legend presence/format -- "
+                   "checked at a basic presence level in StationInfo, but format "
+                   "compliance with 'User Railway practice' needs human review.",
+    "BR-005 (RSSI)": "Border RFID tag's location is checked for presence (see "
+                      "check_brd_br005_border_tag_present), but the BRD's full "
+                      "criterion -- RSSI -70 dBm on both handing-over and "
+                      "taking-over sides per a Tower RSSI Survey -- requires a "
+                      "dataset this platform doesn't currently ingest.",
+}
+
+# BRD BR-008 states G-tags must be 550-850m from the LC gate. This directly
+# contradicts check_h2_9_gate_tag_distance()'s >=600m-minimum-only rule, which was
+# deliberately set to match the literal Annexure-H H2.9 text over an earlier
+# 550-850m figure traced to a secondary source deck. The BRD re-asserting 550-850m
+# might mean it's a genuine QFTL-specific policy stricter than the base standard,
+# or it might mean the BRD inherited the same secondary-source figure. NOT changed
+# here pending explicit confirmation -- see check_h2_9_gate_tag_distance()'s
+# docstring, which still reflects the >=600m interpretation.
