@@ -11,7 +11,6 @@ interface Props {
 export function VerificationPanel({ stationId, onRaiseObservation }: Props) {
   const [report, setReport] = useState<VerificationReport | null>(null);
   const [loading, setLoading] = useState(false);
-  const [showManual, setShowManual] = useState(false);
 
   async function runVerification() {
     setLoading(true);
@@ -66,18 +65,13 @@ export function VerificationPanel({ stationId, onRaiseObservation }: Props) {
             </tbody>
           </table>
 
-          <div className="manual-clauses">
-            <button className="link-btn" onClick={() => setShowManual(!showManual)}>
-              {showManual ? "Hide" : "Show"} clauses requiring manual review ({Object.keys(report.manual_clauses).length})
-            </button>
-            {showManual && (
-              <ul>
-                {Object.entries(report.manual_clauses).map(([clause, reason]) => (
-                  <li key={clause}><strong>{clause}:</strong> {reason}</li>
-                ))}
-              </ul>
-            )}
-          </div>
+          <p className="muted small">
+            Checklist configuration v{report.checklist_version ?? "—"}. Manual items are confirmed in the
+            Manual Checklist below; rules are managed in the Checklist tab.
+          </p>
+          {(report.rules_disabled ?? []).length > 0 && (
+            <div className="status-banner warn">Automated rules switched off by an admin: {(report.rules_disabled ?? []).join(", ")}</div>
+          )}
         </>
       )}
     </div>

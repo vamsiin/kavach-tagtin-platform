@@ -43,6 +43,8 @@ class StationORM(Base):
                                 cascade="all, delete-orphan")
     generated_reports = relationship("GeneratedReportORM", back_populates="station",
                                      cascade="all, delete-orphan")
+    checklist_responses = relationship("ChecklistResponseORM", back_populates="station",
+                                       cascade="all, delete-orphan")
 
     def to_domain(self) -> domain.Station:
         return domain.Station(
@@ -362,3 +364,63 @@ class GeneratedReportORM(Base):
     trigger = Column(String, nullable=True)             # e.g. "self_check", "approve", "manual"
 
     station = relationship("StationORM", back_populates="generated_reports")
+
+
+class ChecklistRuleORM(Base):
+    """BRD FR-006: one configurable checklist rule (see app/rules/checklist.py).
+    Global (applies to every station). Built-in rules are seeded on startup and can be
+    edited/disabled but never deleted; custom rules are soft-deleted (deleted=True) so
+    that past manual responses and change history keep pointing at a real row."""
+    __tablename__ = "checklist_rules"
+
+    id = Column(Integer, primary_key=True)
+    key = Column(String, unique=True, nullable=False)
+    kind = Column(String, nullable=False)
+    builtin = Column(String, nullable=True)
+    clause = Column(String, nullable=False)
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    params = Column(Text, nullable=False, default="{}")   # JSON
+    severity = Column(String, nullable=False, default="FAIL")
+    enabled = Column(Boolean, default=True)
+    blocking = Column(Boolean, default=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    deleted = Column(Boolean, default=False)
+    updated_by = Column(String, nullable=True)
+    updated_at = Column(String, nullable=True)
+
+
+class ChecklistChangeORM(Base):
+    """Append-only audit of every checklist configuration change. Its row count is the
+    configuration version stamped on verification results and reports."""
+    __tablename__ = "checklist_changes"
+
+    id = Column(Integer, primary_key=True)
+    rule_id = Column(Integer, nullable=True)
+    rule_key = Column(String, nullable=True)
+    action = Column(String, nullable=False)     # seed | create | update | delete | reorder | reset
+    before = Column(Text, nullable=True)        # JSON
+    after = Column(Text, nullable=True)         # JSON
+    reason = Column(Text, nullable=True)
+    changed_by = Column(String, nullable=False)
+    changed_at = Column(String, nullable=False)
+
+
+class ChecklistResponseORM(Base):
+    """A reviewer's confirmation of a MANUAL checklist item for one station, in one
+    review cycle. Responses are never deleted: a new cycle (after rework / revise /
+    reopen) simply makes earlier ones non-current (see cycle_event_id)."""
+    __tablename__ = "checklist_responses"
+
+    id = Column(Integer, primary_key=True)
+    station_id = Column(Integer, ForeignKey("stations.id"), nullable=False, index=True)
+    rule_id = Column(Integer, ForeignKey("checklist_rules.id"), nullable=False)
+    cycle_event_id = Column(Integer, nullable=False, default=0)  # id of the cycle-start event (0 = first cycle)
+    status = Column(String, nullable=False)     # PASS | FAIL | NA
+    note = Column(Text, nullable=True)
+    responded_by = Column(String, nullable=False)
+    responded_by_role = Column(String, nullable=False)
+    responded_at = Column(String, nullable=False)
+    layout_version = Column(String, nullable=True)
+
+    station = relationship("StationORM", back_populates="checklist_responses")

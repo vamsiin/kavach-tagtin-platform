@@ -5,13 +5,18 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .database import Base, engine, ensure_schema_up_to_date
 from . import models  # noqa: F401  -- ensures models are registered before create_all
-from .routers import stations, verify, auth, workflow, documents, observations, reports
+from .routers import stations, verify, auth, workflow, documents, observations, reports, checklist
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     ensure_schema_up_to_date()
+    # FR-006: install any default checklist rules not yet in the DB (never overwrites edits)
+    from .database import SessionLocal
+    from .rules.store import seed_rules
+    with SessionLocal() as db:
+        seed_rules(db)
     yield
 
 
@@ -53,6 +58,7 @@ app.include_router(documents.meta_router)
 app.include_router(observations.router)
 app.include_router(reports.router)
 app.include_router(reports.meta_router)
+app.include_router(checklist.router)
 
 
 @app.get("/health")

@@ -4,6 +4,7 @@ import type {
   RailwaySubmission, RailwaySubmitPayload,
   Observation, ObservationSummary, ObservationDraft,
   ReportType, GeneratedReport, Revision,
+  Checklist, ChecklistRule, ChecklistChange, ManualChecklist,
   DocType, InputDocument, DxfImportResult, DxfCalibration, DxfCommitPayload, Traceability,
 } from "./types";
 
@@ -227,6 +228,25 @@ export const api = {
     request<Revision>(`/stations/${stationId}/revisions`, { method: "POST", body: JSON.stringify(payload) }),
   deleteRevision: (stationId: number, revId: number) =>
     request<void>(`/stations/${stationId}/revisions/${revId}`, { method: "DELETE" }),
+
+  // ---- checklist (FR-006) ----
+  getChecklist: () => request<Checklist>("/checklist"),
+  checklistChanges: () => request<ChecklistChange[]>("/checklist/changes"),
+  createRule: (payload: Record<string, unknown>) =>
+    request<ChecklistRule>("/checklist/rules", { method: "POST", body: JSON.stringify(payload) }),
+  updateRule: (id: number, payload: Record<string, unknown>) =>
+    request<ChecklistRule>(`/checklist/rules/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  resetRule: (id: number, reason: string) =>
+    request<ChecklistRule>(`/checklist/rules/${id}/reset`, { method: "POST", body: JSON.stringify({ reason }) }),
+  deleteRule: (id: number, reason: string) =>
+    request<void>(`/checklist/rules/${id}`, { method: "DELETE", body: JSON.stringify({ reason }) }),
+  reorderRules: (ordered_ids: number[], reason: string) =>
+    request<Checklist>("/checklist/reorder", { method: "POST", body: JSON.stringify({ ordered_ids, reason }) }),
+  stationChecklist: (stationId: number) => request<ManualChecklist>(`/stations/${stationId}/checklist`),
+  respondChecklist: (stationId: number, ruleId: number, status: string, note: string) =>
+    request<ManualChecklist>(`/stations/${stationId}/checklist/${ruleId}`, {
+      method: "PUT", body: JSON.stringify({ status, note }),
+    }),
 
   // ---- workflow ----
   getStation: (stationId: number) => request<Station>(`/stations/${stationId}`),

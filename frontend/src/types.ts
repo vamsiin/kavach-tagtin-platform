@@ -134,6 +134,8 @@ export interface VerificationReport {
     clauses_failing: string[];
   };
   manual_clauses: Record<string, string>;
+  checklist_version?: number | null;
+  rules_disabled?: string[];
 }
 
 export interface ChainCheckResult {
@@ -431,4 +433,71 @@ export interface Revision {
   layout_version: string | null;
   created_by: string | null;
   created_at: string | null;
+}
+
+// ---- Phase 5: configurable checklist (FR-006) ----
+export interface ParamSchema {
+  name: string;
+  type: "number" | "int" | "bool" | "str" | "tag_types" | "element_types" | "choice" | "parity_map";
+  label: string;
+  required: boolean;
+  min: number | null;
+  options: string[] | null;
+  nullable: boolean;
+}
+
+export interface ChecklistRule {
+  id: number;
+  key: string;
+  kind: string;
+  builtin: string | null;
+  clause: string;
+  title: string;
+  description: string | null;
+  params: Record<string, unknown>;
+  severity: "FAIL" | "WARN";
+  enabled: boolean;
+  blocking: boolean;
+  sort_order: number;
+  is_builtin: boolean;
+  updated_by: string | null;
+  updated_at: string | null;
+  param_schema: ParamSchema[];
+}
+
+export interface Checklist {
+  config_version: number;
+  rules: ChecklistRule[];
+  kinds: Record<string, ParamSchema[]>;
+  can_edit: boolean;
+}
+
+export interface ChecklistChange {
+  id: number;
+  rule_key: string | null;
+  action: string;
+  before: unknown;
+  after: unknown;
+  reason: string | null;
+  changed_by: string;
+  changed_at: string;
+}
+
+export interface ManualItem {
+  rule_id: number;
+  clause: string;
+  title: string;
+  description: string | null;
+  blocking: boolean;
+  severity: string;
+  status: "PASS" | "FAIL" | "NA" | null;
+  note: string | null;
+  responded_by: string | null;
+  responded_at: string | null;
+}
+
+export interface ManualChecklist {
+  items: ManualItem[];
+  summary: { total: number; answered: number; pending_blocking: string[]; failed: string[] };
+  can_respond: boolean;
 }

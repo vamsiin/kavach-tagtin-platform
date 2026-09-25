@@ -105,7 +105,7 @@ class Report:
 STATUS_TONES = {
     "PASS": "ok", "CLOSED": "ok", "APPROVED": "ok", "YES": "ok",
     "FAIL": "fail", "OPEN": "fail", "REOPENED": "fail", "MISSING": "fail", "NO": "fail",
-    "WARN": "warn", "RESOLVED": "warn", "SUPERSEDED": "warn", "MANUAL": "warn",
+    "WARN": "warn", "RESOLVED": "warn", "SUPERSEDED": "warn", "MANUAL": "warn", "PENDING": "warn",
     "NA": "info", "WITHDRAWN": "info",
 }
 

@@ -122,6 +122,8 @@ class VerificationReportOut(BaseModel):
     results: list[CheckResultOut]
     summary: dict
     manual_clauses: dict[str, str]
+    checklist_version: int | None = None   # FR-006 configuration version used
+    rules_disabled: list[str] = []         # automated rules switched off by an admin
 
 
 class ChainCheckResultOut(BaseModel):
@@ -564,3 +566,121 @@ class GeneratedReportOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: configurable checklist (FR-006)
+# ---------------------------------------------------------------------------
+class ChecklistRuleOut(BaseModel):
+    id: int
+    key: str
+    kind: str
+    builtin: str | None = None
+    clause: str
+    title: str
+    description: str | None = None
+    params: dict
+    severity: str
+    enabled: bool
+    blocking: bool
+    sort_order: int
+    is_builtin: bool = False
+    updated_by: str | None = None
+    updated_at: str | None = None
+    param_schema: list[dict] = []
+
+    @field_validator("params", mode="before")
+    @classmethod
+    def _p(cls, v):
+        return json.loads(v) if isinstance(v, str) else (v or {})
+
+    @field_validator("enabled", "blocking", mode="before")
+    @classmethod
+    def _b(cls, v):
+        return bool(v)
+
+    class Config:
+        from_attributes = True
+
+
+class ChecklistOut(BaseModel):
+    config_version: int
+    rules: list[ChecklistRuleOut]
+    kinds: dict[str, list[dict]]
+    can_edit: bool
+
+
+class ChecklistRuleCreate(BaseModel):
+    kind: str
+    clause: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    description: str | None = None
+    params: dict = {}
+    severity: str = "FAIL"
+    enabled: bool = True
+    blocking: bool = False
+    reason: str = Field(min_length=1, description="Why this change is being made (audited)")
+
+
+class ChecklistRuleUpdate(BaseModel):
+    clause: str | None = None
+    title: str | None = None
+    description: str | None = None
+    params: dict | None = None
+    severity: str | None = None
+    enabled: bool | None = None
+    blocking: bool | None = None
+    reason: str = Field(min_length=1)
+
+
+class ChecklistReorder(BaseModel):
+    ordered_ids: list[int]
+    reason: str = Field(min_length=1)
+
+
+class ChecklistReason(BaseModel):
+    reason: str = Field(min_length=1)
+
+
+class ChecklistChangeOut(BaseModel):
+    id: int
+    rule_id: int | None = None
+    rule_key: str | None = None
+    action: str
+    before: dict | list | None = None
+    after: dict | list | None = None
+    reason: str | None = None
+    changed_by: str
+    changed_at: str
+
+    @field_validator("before", "after", mode="before")
+    @classmethod
+    def _j(cls, v):
+        return json.loads(v) if isinstance(v, str) else v
+
+    class Config:
+        from_attributes = True
+
+
+class ManualItemOut(BaseModel):
+    rule_id: int
+    clause: str
+    title: str
+    description: str | None = None
+    blocking: bool
+    severity: str
+    status: str | None = None      # PASS | FAIL | NA | None (pending)
+    note: str | None = None
+    responded_by: str | None = None
+    responded_at: str | None = None
+
+
+class ManualChecklistOut(BaseModel):
+    items: list[ManualItemOut]
+    summary: dict
+    can_respond: bool
+
+
+class ManualResponseIn(BaseModel):
+    status: str
+    note: str = ""

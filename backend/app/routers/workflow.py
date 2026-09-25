@@ -51,6 +51,24 @@ def _load_workflow_state(station: models.StationORM, db: Session) -> StationWork
     )
 
 
+def _manual_checklist_gate(station_id: int, action: str, db: Session) -> None:
+    """FR-006: before 'Mark checked', blocking manual items must be confirmed and no
+    FAIL-severity item may be confirmed as FAIL."""
+    if action != CHECK:
+        return
+    from ..rules import store
+    items = store.manual_items(db, station_id)
+    pending = [i["rule"].clause for i in items if i["rule"].blocking and i["response"] is None]
+    failed = [i["rule"].clause for i in items if i["response"] is not None
+              and i["response"].status == "FAIL" and i["rule"].severity == "FAIL"]
+    if pending:
+        raise HTTPException(409, f"Manual checklist item(s) not yet confirmed: {', '.join(pending)} "
+                                 f"-- confirm them (Verification tab) before 'check'.")
+    if failed:
+        raise HTTPException(409, f"Manual checklist item(s) confirmed as FAIL: {', '.join(failed)} "
+                                 f"-- request changes instead of marking checked.")
+
+
 def _observation_gate(station_id: int, action: str, db: Session) -> None:
     """BRD FR-008 gates -- see app/observations/rules.py for the policy."""
     from .observations import observation_summary
@@ -75,7 +93,8 @@ def _run_verification(station_id: int, db: Session):
     elements = [e.to_domain() for e in db.query(models.ElementORM).filter_by(station_id=station_id).all()]
     tags = [t.to_domain() for t in db.query(models.TagORM).filter_by(station_id=station_id).all()]
     tins = [t.to_domain() for t in db.query(models.TINORM).filter_by(station_id=station_id).all()]
-    return run_all_checks(station_orm.to_domain(), elements, tags, tins)
+    from ..rules.store import active_rules
+    return run_all_checks(station_orm.to_domain(), elements, tags, tins, rules=active_rules(db))
 
 
 def _user_email(username: str | None, db: Session) -> str:
@@ -101,6 +120,7 @@ def _do_transition(
 
     state = _load_workflow_state(station, db)
     _observation_gate(station_id, action, db)
+    _manual_checklist_gate(station_id, action, db)
     actor = user.to_domain()
     now_iso = datetime.now(timezone.utc).isoformat()
 

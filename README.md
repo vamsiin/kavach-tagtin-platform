@@ -478,9 +478,29 @@ decimals.
 - UI: **Reports** tab. **Requires `pip install -r requirements.txt`** (adds `reportlab`);
   without it Word output still works and PDF returns a clear 503.
 
+**Phase 5 — done (FR-006 configurable checklist):**
+- The verification checklist is now data, not code (`checklist_rules`, managed in the
+  **Checklist** tab; engine in `app/rules/checklist.py`, storage in `app/rules/store.py`,
+  API in `app/routers/checklist.py`). Every built-in Annexure-H / BRD check is a rule
+  whose thresholds are editable parameters, e.g. H2.9 gate distance min/max (settles
+  BR-008 550–850 m vs ≥600 m as configuration) and the FR-004 direction→parity map.
+- Per rule: enable/disable, severity FAIL or WARN (WARN is reported, never blocks),
+  order. Built-ins can be reset to defaults but not deleted.
+- Admins can add rules without code: tag↔element distance, tag spacing,
+  required field, and manual checklist items.
+- **Manual checklist items** (the former fixed "manual clauses" list) are confirmed per
+  station by a checker/approver/admin while it is Submitted/Checked (PASS / FAIL / NA,
+  note required for FAIL/NA). Responses belong to the current review cycle; rework,
+  revise or reopen starts a fresh cycle, keeping old responses. "Mark checked" is refused
+  while a *blocking* item is unconfirmed or any FAIL-severity item is confirmed as FAIL.
+- Every configuration change needs a reason and is written to an append-only change
+  log (before/after). The configuration version is shown on verification results and
+  in the Verification and Compliance reports; disabled automated rules are listed too.
+- With no edits, results are identical to the previous hard-coded engine.
+
 **Not yet built:** FR-001 does not *parse* the RFID Allocation Chart yet (BR-001
 still enforces range/uniqueness, not "matches the chart"); no submit gate on missing
-inputs (reported as gaps only); FR-006 configurable checklist engine; Project Manager /
+inputs (reported as gaps only); Project Manager /
 Configuration Manager roles; Alembic migrations (schema upgrades still go through
 `ensure_schema_up_to_date`: add-column on SQLite, plus the `*_km` -> `*_m` column renames).
 

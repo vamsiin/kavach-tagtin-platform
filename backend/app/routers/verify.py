@@ -35,12 +35,17 @@ def verify_station(station_id: int, db: Session = Depends(get_db),
     """Run the full Annexure-H automated rule set against a station's current
     Elements/Tags/TINs. Every result carries the clause it came from. MANUAL_CLAUSES
     lists what this endpoint deliberately does NOT check, and why -- see rules/engine.py."""
+    from ..rules import store
     station, elements, tags, tins = _load_domain_layout(station_id, db)
-    report = run_all_checks(station, elements, tags, tins)
+    rules = store.active_rules(db)
+    report = run_all_checks(station, elements, tags, tins, rules=rules)
+    manual = {r.clause: r.description or r.title for r in rules if r.kind == "manual" and r.enabled}
     return schemas.VerificationReportOut(
         results=[schemas.CheckResultOut(**vars(r)) for r in report.results],
         summary=report.summary(),
-        manual_clauses=MANUAL_CLAUSES,
+        manual_clauses=manual,
+        checklist_version=store.config_version(db),
+        rules_disabled=[f"{r.clause} {r.title}" for r in rules if not r.enabled and r.kind != "manual"],
     )
 
 

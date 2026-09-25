@@ -16,7 +16,8 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..documents import service as docsvc
 from ..observations import rules as obsrules
-from ..rules.engine import MANUAL_CLAUSES, run_all_checks
+from ..rules import store
+from ..rules.engine import run_all_checks
 from .model import (Banner, Bullets, Heading, KeyValues, PageBreak, Para, Report,
                     SignOff, Table)
 
@@ -74,6 +75,9 @@ class Ctx:
     revisions: list
     user: models.UserORM
     now: str
+    rules: list          # FR-006 active checklist (RuleConfig)
+    manual: list         # [{"rule": RuleConfig, "response": ChecklistResponseORM|None}]
+    checklist_version: int
 
     @property
     def el_by_id(self):
@@ -98,6 +102,8 @@ def load_ctx(db: Session, station: models.StationORM, user: models.UserORM) -> C
         railway=q(models.RailwaySubmissionORM, models.RailwaySubmissionORM.id),
         revisions=q(models.RevisionORM, models.RevisionORM.id),
         user=user, now=datetime.now(timezone.utc).isoformat(),
+        rules=store.active_rules(db), manual=store.manual_items(db, sid),
+        checklist_version=store.config_version(db),
     )
 
 
@@ -115,7 +121,20 @@ def _new(ctx: Ctx, code: str) -> Report:
 
 def _verify(ctx: Ctx):
     return run_all_checks(ctx.station.to_domain(), [e.to_domain() for e in ctx.elements],
-                          [t.to_domain() for t in ctx.tags], [n.to_domain() for n in ctx.tins])
+                          [t.to_domain() for t in ctx.tags], [n.to_domain() for n in ctx.tins],
+                          rules=ctx.rules)
+
+
+def _manual_rows(ctx: Ctx) -> list[list[str]]:
+    rows = []
+    for i in ctx.manual:
+        r, resp = i["rule"], i["response"]
+        rows.append([r.clause, r.description or r.title,
+                     "Yes" if r.blocking else "No",
+                     resp.status if resp else "PENDING",
+                     f"{resp.responded_by} {_d(resp.responded_at)}" + (f"\n{resp.note}" if resp.note else "")
+                     if resp else "-"])
+    return rows
 
 
 def _cycle_actor(ctx: Ctx, action: str) -> tuple[str, str]:
@@ -215,16 +234,20 @@ def build_verification(ctx: Ctx) -> Report:
         ("Failures / warnings", f"{rep.fail_count} / {rep.warn_count}"),
         ("Clauses checked", ", ".join(s["clauses_checked"]) or "-"),
         ("Registers", f"{len(ctx.elements)} elements, {len(ctx.tags)} tags, {len(ctx.tins)} TINs"),
+        ("Checklist configuration", f"version {ctx.checklist_version}"),
+        ("Automated rules switched off", ", ".join(f"{r.clause} {r.title}" for r in ctx.rules
+                                                 if not r.enabled and r.kind != "manual") or "None"),
     ]))
     r.add(Heading("2. Results"),
           Table(["Clause", "Check", "Result", "Subject", "Detail"],
                 [[x.clause, x.title, x.status, x.subject_ref or "-", x.message]
                  for x in sorted(rep.results, key=lambda x: (x.status == "PASS", x.clause))],
                 widths=[1.15, 2.2, 0.8, 1, 4], status_col=2, empty_text="No checks produced results."))
-    r.add(Heading("3. Clauses requiring manual review"),
-          Para("These clauses are not automated and must be confirmed by the Checker on the drawing.", "muted"),
-          Table(["Clause", "What must be checked by hand"],
-                [[k, v] for k, v in MANUAL_CLAUSES.items()], widths=[1.2, 6]))
+    r.add(Heading("3. Manual checklist (current review cycle)"),
+          Para("Items that cannot be automated; confirmed by a reviewer on the drawing.", "muted"),
+          Table(["Clause", "What must be checked by hand", "Blocking", "Result", "Confirmed by"],
+                _manual_rows(ctx), widths=[1.1, 4.2, 0.8, 0.9, 1.8], status_col=3,
+                empty_text="No manual checklist items are enabled."))
     open_obs = [o for o in ctx.observations if o.status in obsrules.UNRESOLVED + obsrules.UNVERIFIED]
     r.add(Heading("4. Open review observations"),
           Table(["No.", "Severity", "Status", "Observation"],
@@ -249,15 +272,21 @@ def build_compliance(ctx: Ctx) -> Report:
         c = by[clause]
         verdict = "FAIL" if c["FAIL"] else "WARN" if c["WARN"] else "PASS"
         rows.append([clause, c["title"], verdict, str(c["PASS"]), str(c["FAIL"]), str(c["WARN"])])
-    for clause in MANUAL_CLAUSES:
-        rows.append([clause, MANUAL_CLAUSES[clause][:110] + ("..." if len(MANUAL_CLAUSES[clause]) > 110 else ""),
-                     "MANUAL", "-", "-", "-"])
+    for i in ctx.manual:
+        mr, resp = i["rule"], i["response"]
+        text = mr.description or mr.title
+        verdict = resp.status if resp and resp.status != "NA" else ("NA" if resp else "MANUAL")
+        rows.append([mr.clause, text[:110] + ("..." if len(text) > 110 else ""), verdict,
+                     "1" if resp and resp.status == "PASS" else "-",
+                     "1" if resp and resp.status == "FAIL" else "-", "-"])
     compliant = sum(1 for x in rows if x[2] == "PASS")
     failing = [x[0] for x in rows if x[2] == "FAIL"]
     r.add(Banner(f"{len(failing)} clause(s) non-compliant: {', '.join(failing)}" if failing
-                 else f"All {compliant} automatically checked clauses compliant; "
-                      f"{len(MANUAL_CLAUSES)} require manual confirmation", "fail" if failing else "ok"))
-    r.add(Heading("1. Clause compliance matrix"),
+                 else f"All {compliant} checked clauses compliant; "
+                      f"{sum(1 for x in rows if x[2] == 'MANUAL')} manual item(s) awaiting confirmation",
+                 "fail" if failing else "ok"))
+    r.add(Para(f"Checklist configuration version {ctx.checklist_version}.", "muted"),
+          Heading("1. Clause compliance matrix"),
           Table(["Clause", "Requirement", "Verdict", "Pass", "Fail", "Warn"], rows,
                 widths=[1.1, 4.5, 0.9, 0.6, 0.6, 0.6], status_col=2))
     missing = [docsvc.DOC_TYPES[c]["label"] for c in docsvc.REQUIRED_DOC_TYPES if c not in _current_docs(ctx)]

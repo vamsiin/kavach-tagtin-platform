@@ -65,6 +65,13 @@ class VerificationReport:
         }
 
 
+def _params(key: str, p: dict | None) -> dict:
+    """Defaults for a built-in rule, overlaid with configured params (FR-006)."""
+    from .checklist import BUILTINS, _ensure
+    _ensure()
+    return {**BUILTINS[key]["defaults"], **(p or {})}
+
+
 # ---------------------------------------------------------------------------
 # H2.1 Version control
 # ---------------------------------------------------------------------------
@@ -99,10 +106,13 @@ def check_h2_2_identifiers(station: Station) -> list[CheckResult]:
 # ---------------------------------------------------------------------------
 # H2.5 Normal tag spacing <= 1000m between consecutive Normal tags
 # ---------------------------------------------------------------------------
-def check_h2_5_normal_tag_spacing(tags: list[Tag]) -> list[CheckResult]:
+def check_h2_5_normal_tag_spacing(tags: list[Tag], p: dict | None = None) -> list[CheckResult]:
+    p = _params("h2_5", p)
+    mx = p["max_gap_m"]
+    title = f"Normal tag spacing <= {mx:g}m"
     results = []
     normals = sorted(
-        [t for t in tags if t.tag_type == "N"],
+        [t for t in tags if t.tag_type in p["tag_types"]],
         key=lambda t: (t.direction or "", t.location_m),
     )
     by_dir: dict[str, list[Tag]] = {}
@@ -112,15 +122,15 @@ def check_h2_5_normal_tag_spacing(tags: list[Tag]) -> list[CheckResult]:
     for direction, group in by_dir.items():
         for prev, curr in zip(group, group[1:]):
             gap_m = abs(curr.location_m - prev.location_m)
-            if gap_m > 1000:
+            if gap_m > mx:
                 results.append(CheckResult(
-                    "H2.5", "Normal tag spacing <= 1000m", "FAIL",
-                    f"{prev.tag_ref} -> {curr.tag_ref}: {gap_m:.0f}m apart (max 1000m)",
+                    "H2.5", title, "FAIL",
+                    f"{prev.tag_ref} -> {curr.tag_ref}: {gap_m:.0f}m apart (max {mx:g}m)",
                     subject_ref=curr.tag_ref,
                 ))
             else:
                 results.append(CheckResult(
-                    "H2.5", "Normal tag spacing <= 1000m", "PASS",
+                    "H2.5", title, "PASS",
                     f"{prev.tag_ref} -> {curr.tag_ref}: {gap_m:.0f}m", subject_ref=curr.tag_ref,
                 ))
     return results
@@ -152,7 +162,11 @@ def check_h2_6_signal_foot_tags(elements: list[Element], tags: list[Tag]) -> lis
 # "...-cum-Starter..." combination signal variants -- see
 # is_starter_signal_eligible_for_h2_7_exception() in domain.py).
 # ---------------------------------------------------------------------------
-def check_h2_7_approach_tag_distance(tags: list[Tag], elements: list[Element]) -> list[CheckResult]:
+def check_h2_7_approach_tag_distance(tags: list[Tag], elements: list[Element],
+                                     p: dict | None = None) -> list[CheckResult]:
+    p = _params("h2_7", p)
+    lo, hi = p["min_m"], p["max_m"]
+    title = f"Approach tag {lo:g}-{hi:g}m before Signal Foot Tag"
     results = []
     elements_by_id = {e.id: e for e in elements}
     s_tags_by_element = {t.linked_element_id: t for t in tags if t.tag_type == "S" and t.linked_element_id}
@@ -165,29 +179,30 @@ def check_h2_7_approach_tag_distance(tags: list[Tag], elements: list[Element]) -
             continue
         el = elements_by_id.get(t.linked_element_id)
         gap_m = abs(s_tag.location_m - t.location_m)
-        is_starter = el and is_starter_signal_eligible_for_h2_7_exception(el.element_type)
+        is_starter = (p["starter_exception"] and el
+                      and is_starter_signal_eligible_for_h2_7_exception(el.element_type))
 
-        if 150 <= gap_m <= 250:
+        if lo <= gap_m <= hi:
             results.append(CheckResult(
-                "H2.7", "Approach tag 150-250m before Signal Foot Tag", "PASS",
+                "H2.7", title, "PASS",
                 f"{t.tag_ref} is {gap_m:.0f}m before {s_tag.tag_ref}", subject_ref=t.tag_ref,
             ))
-        elif gap_m < 150 and is_starter:
+        elif gap_m < lo and is_starter:
             results.append(CheckResult(
-                "H2.7", "Approach tag 150-250m before Signal Foot Tag", "PASS",
+                "H2.7", title, "PASS",
                 f"{t.tag_ref} is {gap_m:.0f}m before {s_tag.tag_ref} "
-                f"(<150m permitted -- exception for {el.element_type})", subject_ref=t.tag_ref,
+                f"(<{lo:g}m permitted -- exception for {el.element_type})", subject_ref=t.tag_ref,
             ))
-        elif gap_m < 150:
+        elif gap_m < lo:
             results.append(CheckResult(
-                "H2.7", "Approach tag 150-250m before Signal Foot Tag", "FAIL",
+                "H2.7", title, "FAIL",
                 f"{t.tag_ref} is only {gap_m:.0f}m before {s_tag.tag_ref} "
-                f"(<150m only permitted for Advance/Intermediate Starter)", subject_ref=t.tag_ref,
+                f"(<{lo:g}m only permitted for Advance/Intermediate Starter)", subject_ref=t.tag_ref,
             ))
         else:
             results.append(CheckResult(
-                "H2.7", "Approach tag 150-250m before Signal Foot Tag", "FAIL",
-                f"{t.tag_ref} is {gap_m:.0f}m before {s_tag.tag_ref} (exceeds 250m)",
+                "H2.7", title, "FAIL",
+                f"{t.tag_ref} is {gap_m:.0f}m before {s_tag.tag_ref} (exceeds {hi:g}m)",
                 subject_ref=t.tag_ref,
             ))
     return results
@@ -201,7 +216,11 @@ def check_h2_7_approach_tag_distance(tags: list[Tag], elements: list[Element]) -
 # This function follows the Annexure-H text; the 550-850m figure should be treated
 # as superseded unless a Railway-specific circular says otherwise.
 # ---------------------------------------------------------------------------
-def check_h2_9_gate_tag_distance(tags: list[Tag], elements: list[Element]) -> list[CheckResult]:
+def check_h2_9_gate_tag_distance(tags: list[Tag], elements: list[Element],
+                                 p: dict | None = None) -> list[CheckResult]:
+    p = _params("h2_9", p)
+    lo, hi = p["min_m"], p.get("max_m")
+    title = f"Gate tag {lo:g}-{hi:g}m from LC gate" if hi else f"Gate tag >= {lo:g}m approach to LC gate"
     results = []
     elements_by_id = {e.id: e for e in elements}
     for t in tags:
@@ -211,11 +230,12 @@ def check_h2_9_gate_tag_distance(tags: list[Tag], elements: list[Element]) -> li
         if not el:
             continue
         gap_m = abs(el.location_m - t.location_m)
-        ok = gap_m >= 600
+        ok = gap_m >= lo and (hi is None or gap_m <= hi)
+        rng = f"{lo:g}-{hi:g}m" if hi else f">={lo:g}m"
         results.append(CheckResult(
-            "H2.9", "Gate tag >= 600m approach to LC gate", "PASS" if ok else "FAIL",
+            "H2.9", title, "PASS" if ok else "FAIL",
             f"{t.tag_ref} is {gap_m:.0f}m from LC gate '{el.element_ref}' "
-            + ("(meets >=600m minimum)" if ok else "(below 600m minimum, or provide W/L board)"),
+            + (f"(within {rng})" if ok else f"(outside {rng}, or provide W/L board)"),
             subject_ref=t.tag_ref,
         ))
     return results
@@ -224,7 +244,8 @@ def check_h2_9_gate_tag_distance(tags: list[Tag], elements: list[Element]) -> li
 # ---------------------------------------------------------------------------
 # H2.11 Exit tags: minimum 2 sets, each set >= 10m apart (H2.11(ii))
 # ---------------------------------------------------------------------------
-def check_h2_11_exit_tags(tags: list[Tag]) -> list[CheckResult]:
+def check_h2_11_exit_tags(tags: list[Tag], p: dict | None = None) -> list[CheckResult]:
+    p = _params("h2_11", p)
     results = []
     exit_tags = [t for t in tags if t.tag_type == "X" and t.pair_group_id]
     groups: dict[str, list[Tag]] = {}
@@ -233,18 +254,18 @@ def check_h2_11_exit_tags(tags: list[Tag]) -> list[CheckResult]:
 
     for group_id, members in groups.items():
         sets = {m.exit_set for m in members if m.exit_set}
-        if len(sets) < 2:
+        if len(sets) < p["min_sets"]:
             results.append(CheckResult(
-                "H2.11", "Exit tag: minimum 2 sets", "FAIL",
-                f"Exit tag group '{group_id}' has only {len(sets)} set(s); minimum 2 required",
+                "H2.11", f"Exit tag: minimum {p['min_sets']} sets", "FAIL",
+                f"Exit tag group '{group_id}' has only {len(sets)} set(s); minimum {p['min_sets']} required",
                 subject_ref=group_id,
             ))
             continue
         locs = [m.location_m for m in members]
         gap_m = (max(locs) - min(locs))
-        ok = gap_m >= 10
+        ok = gap_m >= p["min_set_gap_m"]
         results.append(CheckResult(
-            "H2.11", "Exit tag sets >= 10m apart", "PASS" if ok else "FAIL",
+            "H2.11", f"Exit tag sets >= {p['min_set_gap_m']:g}m apart", "PASS" if ok else "FAIL",
             f"Exit tag group '{group_id}': sets are {gap_m:.0f}m apart",
             subject_ref=group_id,
         ))
@@ -256,7 +277,9 @@ def check_h2_11_exit_tags(tags: list[Tag]) -> list[CheckResult]:
 # Adjustment/Junction (A) tags, which must be co-located (0m).
 # Tag-set to tag-set (main+duplicate group to another main+duplicate group) >= 10m.
 # ---------------------------------------------------------------------------
-def check_h2_12_duplicate_and_tagset_spacing(tags: list[Tag]) -> list[CheckResult]:
+def check_h2_12_duplicate_and_tagset_spacing(tags: list[Tag], p: dict | None = None) -> list[CheckResult]:
+    p = _params("h2_12", p)
+    dmin, dmax, tmin = p["dup_min_m"], p["dup_max_m"], p["tagset_min_m"]
     results = []
     groups: dict[str, list[Tag]] = {}
     for t in tags:
@@ -281,10 +304,10 @@ def check_h2_12_duplicate_and_tagset_spacing(tags: list[Tag]) -> list[CheckResul
                 subject_ref=group_id,
             ))
         else:
-            ok = 3 <= gap_m <= 5
+            ok = dmin <= gap_m <= dmax
             results.append(CheckResult(
-                "H2.12", "Duplicate tag pair 3-5m apart", "PASS" if ok else "FAIL",
-                f"Group '{group_id}': {gap_m:.0f}m apart" + ("" if ok else " (must be 3-5m)"),
+                "H2.12", f"Duplicate tag pair {dmin:g}-{dmax:g}m apart", "PASS" if ok else "FAIL",
+                f"Group '{group_id}': {gap_m:.0f}m apart" + ("" if ok else f" (must be {dmin:g}-{dmax:g}m)"),
                 subject_ref=group_id,
             ))
 
@@ -294,9 +317,9 @@ def check_h2_12_duplicate_and_tagset_spacing(tags: list[Tag]) -> list[CheckResul
         gap_m = (min2 - max1)
         if gap_m < 0:
             continue  # overlapping groups -- caught elsewhere / data error
-        ok = gap_m >= 10
+        ok = gap_m >= tmin
         results.append(CheckResult(
-            "H2.12", "Tag-set to tag-set >= 10m", "PASS" if ok else "FAIL",
+            "H2.12", f"Tag-set to tag-set >= {tmin:g}m", "PASS" if ok else "FAIL",
             f"Group '{id1}' to group '{id2}': {gap_m:.0f}m apart",
             subject_ref=f"{id1}->{id2}",
         ))
@@ -306,20 +329,21 @@ def check_h2_12_duplicate_and_tagset_spacing(tags: list[Tag]) -> list[CheckResul
 # ---------------------------------------------------------------------------
 # H2.13 Tag numbers (1-1023) and TIN numbers (1-255) within allotted range.
 # ---------------------------------------------------------------------------
-def check_h2_13_numbering_ranges(tags: list[Tag], tins: list[TIN]) -> list[CheckResult]:
+def check_h2_13_numbering_ranges(tags: list[Tag], tins: list[TIN], p: dict | None = None) -> list[CheckResult]:
+    p = _params("h2_13", p)
     results = []
     for t in tags:
         if t.tag_number is None:
             continue
-        ok = 1 <= t.tag_number <= 1023
+        ok = p["tag_min"] <= t.tag_number <= p["tag_max"]
         results.append(CheckResult(
-            "H2.13", "Tag number within 1-1023", "PASS" if ok else "FAIL",
+            "H2.13", f"Tag number within {p['tag_min']}-{p['tag_max']}", "PASS" if ok else "FAIL",
             f"{t.tag_ref}: tag number {t.tag_number}", subject_ref=t.tag_ref,
         ))
     for tin in tins:
-        ok = 1 <= tin.tin_no <= 255
+        ok = p["tin_min"] <= tin.tin_no <= p["tin_max"]
         results.append(CheckResult(
-            "H2.13", "TIN number within 1-255", "PASS" if ok else "FAIL",
+            "H2.13", f"TIN number within {p['tin_min']}-{p['tin_max']}", "PASS" if ok else "FAIL",
             f"TIN {tin.tin_no}", subject_ref=str(tin.tin_no),
         ))
     return results
@@ -355,14 +379,16 @@ def check_h2_14_legend_shape(tags: list[Tag]) -> list[CheckResult]:
 # ---------------------------------------------------------------------------
 # H2.18 Non-KAVACH territory shown in white
 # ---------------------------------------------------------------------------
-def check_h2_18_non_kavach_white(tins: list[TIN]) -> list[CheckResult]:
+def check_h2_18_non_kavach_white(tins: list[TIN], p: dict | None = None) -> list[CheckResult]:
+    p = _params("h2_18", p)
+    colour = p["colour"].strip().lower()
     results = []
     for tin in tins:
         if not tin.is_non_kavach_territory:
             continue
-        ok = (tin.color or "").strip().lower() == "white"
+        ok = (tin.color or "").strip().lower() == colour
         results.append(CheckResult(
-            "H2.18", "Non-KAVACH territory shown white", "PASS" if ok else "FAIL",
+            "H2.18", f"Non-KAVACH territory shown {colour}", "PASS" if ok else "FAIL",
             f"TIN {tin.tin_no}: color={tin.color or 'unset'}", subject_ref=str(tin.tin_no),
         ))
     return results
@@ -437,17 +463,18 @@ DIRECTION_PARITY_MAP = {
 }
 
 
-def check_brd_fr004_direction_parity(tags: list[Tag]) -> list[CheckResult]:
+def check_brd_fr004_direction_parity(tags: list[Tag], p: dict | None = None) -> list[CheckResult]:
+    parity_map = _params("fr004_parity", p)["parity_map"]
     results = []
     for t in tags:
         if t.tag_number is None or not t.direction:
             continue
-        expected_parity = DIRECTION_PARITY_MAP.get(t.direction)
+        expected_parity = parity_map.get(t.direction)
         if expected_parity is None:
             results.append(CheckResult(
                 "FR-004", "Tag number parity matches direction", "NA",
                 f"{t.tag_ref}: direction '{t.direction}' not recognized for the "
-                f"parity rule (expected one of {list(DIRECTION_PARITY_MAP)})",
+                f"parity rule (expected one of {list(parity_map)})",
                 subject_ref=t.tag_ref,
             ))
             continue
@@ -492,7 +519,9 @@ def check_brd_br005_border_tag_present(tags: list[Tag]) -> list[CheckResult]:
 # (262.910) makes every distance rule 1000x too small without any of them visibly
 # failing -- so warn. It's a WARN, not a FAIL: a genuine metre chainage near km 0 can
 # be small, so this is a prompt to look, not a proof.
-def check_data_units(elements: list[Element], tags: list[Tag], tins: list[TIN]) -> list[CheckResult]:
+def check_data_units(elements: list[Element], tags: list[Tag], tins: list[TIN],
+                     p: dict | None = None) -> list[CheckResult]:
+    threshold = _params("data_units", p)["span_threshold_m"]
     vals = ([e.location_m for e in elements] + [t.location_m for t in tags]
             + [n.start_m for n in tins] + [n.end_m for n in tins])
     vals = [v for v in vals if v is not None]
@@ -502,7 +531,7 @@ def check_data_units(elements: list[Element], tags: list[Tag], tins: list[TIN]) 
     fractional = sum(1 for v in vals if abs(v - round(v)) > 1e-9)
     # A real station layout spans hundreds of metres or more; one that spans < 50
     # "metres" while carrying decimal parts is almost certainly entered in km.
-    if span < 50 and fractional >= max(1, len(vals) // 2):
+    if span < threshold and fractional >= max(1, len(vals) // 2):
         return [CheckResult(
             "DATA-UNITS", "Chainage entered in metres", "WARN",
             f"All locations fall within {span:g} units of each other and have decimal parts "
@@ -513,24 +542,18 @@ def check_data_units(elements: list[Element], tags: list[Tag], tins: list[TIN]) 
 
 
 def run_all_checks(station: Station, elements: list[Element], tags: list[Tag],
-                    tins: list[TIN]) -> VerificationReport:
+                    tins: list[TIN], rules: "list | None" = None) -> VerificationReport:
+    """Run the configured checklist (BRD FR-006). `rules` is a list of
+    app.rules.checklist.RuleConfig, normally loaded from the database; None means the
+    built-in defaults (identical to the pre-Phase-5 hard-coded behaviour). Manual
+    checklist items are NOT run here -- they are confirmations by a reviewer, handled
+    separately (see app/rules/checklist.py and routers/checklist.py)."""
+    from .checklist import default_rules, execute_rule
     report = VerificationReport()
-    report.add(*check_data_units(elements, tags, tins))
-    report.add(*check_h2_1_version_control(station))
-    report.add(*check_h2_2_identifiers(station))
-    report.add(*check_h2_5_normal_tag_spacing(tags))
-    report.add(*check_h2_6_signal_foot_tags(elements, tags))
-    report.add(*check_h2_7_approach_tag_distance(tags, elements))
-    report.add(*check_h2_9_gate_tag_distance(tags, elements))
-    report.add(*check_h2_11_exit_tags(tags))
-    report.add(*check_h2_12_duplicate_and_tagset_spacing(tags))
-    report.add(*check_h2_13_numbering_ranges(tags, tins))
-    report.add(*check_h2_14_legend_shape(tags))
-    report.add(*check_h2_18_non_kavach_white(tins))
-    report.add(*check_h2_21_tag_notation(tags))
-    report.add(*check_brd_fr004_tag_uniqueness(tags))
-    report.add(*check_brd_fr004_direction_parity(tags))
-    report.add(*check_brd_br005_border_tag_present(tags))
+    for rule in (rules if rules is not None else default_rules()):
+        if not rule.enabled or rule.kind == "manual":
+            continue
+        report.add(*execute_rule(rule, station, elements, tags, tins))
     return report
 
 

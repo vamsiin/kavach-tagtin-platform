@@ -15,6 +15,8 @@ import { InputsPanel } from "./components/InputsPanel";
 import { TraceabilityPanel } from "./components/TraceabilityPanel";
 import { ObservationsPanel } from "./components/ObservationsPanel";
 import { ReportsPanel } from "./components/ReportsPanel";
+import { ChecklistPanel } from "./components/ChecklistPanel";
+import { ManualChecklistPanel } from "./components/ManualChecklistPanel";
 import "./styles.css";
 
 export default function App() {
@@ -55,7 +57,7 @@ function MainContent() {
   const [elements, setElements] = useState<Element[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [tins, setTins] = useState<TIN[]>([]);
-  const [tab, setTab] = useState<"inputs" | "registers" | "verify" | "observations" | "trace" | "reports" | "workflow" | "users">("registers")
+  const [tab, setTab] = useState<"inputs" | "registers" | "verify" | "observations" | "trace" | "reports" | "workflow" | "checklist" | "users">("registers")
   const [obsDraft, setObsDraft] = useState<ObservationDraft | null>(null);
   const [obsSummary, setObsSummary] = useState<ObservationSummary | null>(null);
 
@@ -143,6 +145,9 @@ function MainContent() {
             <button className={tab === "workflow" ? "active" : ""} onClick={() => setTab("workflow")}>
               Workflow
             </button>
+            <button className={tab === "checklist" ? "active" : ""} onClick={() => setTab("checklist")}>
+              Checklist
+            </button>
             {user?.role === "admin" && (
               <button className={tab === "users" ? "active" : ""} onClick={() => setTab("users")}>
                 Users
@@ -186,6 +191,7 @@ function MainContent() {
             <>
               <VerificationPanel stationId={selected.id}
                 onRaiseObservation={isReviewer && selected.status !== "railway_submitted" ? raiseFromCheck : undefined} />
+              <ManualChecklistPanel stationId={selected.id} stationStatus={selected.status} />
               <TocPanel stationId={selected.id} />
             </>
           )}
@@ -193,6 +199,8 @@ function MainContent() {
           {tab === "workflow" && (
             <WorkflowPanel station={selected} onStationChanged={handleStationChanged} />
           )}
+
+          {tab === "checklist" && <ChecklistPanel />}
 
           {tab === "users" && user?.role === "admin" && <UsersPanel />}
         </>
