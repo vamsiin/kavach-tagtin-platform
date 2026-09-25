@@ -68,7 +68,8 @@ def test_warn_severity_and_disable():
     r = next(x for x in rules if x.key == "builtin.h2_5")
     r.severity = "WARN"
     rep = run_all_checks(ST, [], tags, [], rules=rules)
-    assert rep.fail_count == 0 and rep.warn_count == 1
+    h25 = [x.status for x in rep.results if x.clause == "H2.5"]
+    assert h25 == ["WARN"]
     r.enabled = False
     assert not [x for x in run_all_checks(ST, [], tags, [], rules=rules).results if x.clause == "H2.5"]
 
@@ -143,7 +144,7 @@ def _rules(client, h):
 
 
 def _station(client, h):
-    return client.post("/stations", json={
+    return client.post("/stations", json={"centre_line_m": 0, "adjacent_stations": [{"name": "ADJ", "side": "Nominal", "border_m": 0}],
         "name": "ALER", "kavach_station_id": "103", "sip_drawing_number": "IPU.1100A",
         "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=h["dana"]).json()["id"]
 

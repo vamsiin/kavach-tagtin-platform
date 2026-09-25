@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Station, Element, Tag, TIN, ObservationDraft, ObservationSummary, CheckResult } from "./types";
+import type { Station, Element, Tag, TIN, Track, AdjacentStation, ObservationDraft, ObservationSummary, CheckResult } from "./types";
 import { api } from "./api";
 import { AuthProvider, useAuth, useCan } from "./auth/AuthContext";
 import { LoginScreen } from "./components/LoginScreen";
@@ -7,6 +7,7 @@ import { StationPanel } from "./components/StationPanel";
 import { ElementsPanel } from "./components/ElementsPanel";
 import { TagsPanel } from "./components/TagsPanel";
 import { TinsPanel } from "./components/TinsPanel";
+import { LinesPanel } from "./components/LinesPanel";
 import { VerificationPanel } from "./components/VerificationPanel";
 import { TocPanel } from "./components/TocPanel";
 import { WorkflowPanel } from "./components/WorkflowPanel";
@@ -60,6 +61,8 @@ function MainContent() {
   const [elements, setElements] = useState<Element[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [tins, setTins] = useState<TIN[]>([]);
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [adjacent, setAdjacent] = useState<AdjacentStation[]>([]);
   const [tab, setTab] = useState<"inputs" | "registers" | "verify" | "observations" | "trace" | "reports" | "workflow" | "config" | "checklist" | "users">("registers")
   const [obsDraft, setObsDraft] = useState<ObservationDraft | null>(null);
   const [obsSummary, setObsSummary] = useState<ObservationSummary | null>(null);
@@ -73,6 +76,8 @@ function MainContent() {
     api.listElements(selected.id).then(setElements).catch(console.error);
     api.listTags(selected.id).then(setTags).catch(console.error);
     api.listTins(selected.id).then(setTins).catch(console.error);
+    api.listTracks(selected.id).then(setTracks).catch(console.error);
+    api.listAdjacent(selected.id).then(setAdjacent).catch(console.error);
     api.listObservations(selected.id).then((r) => setObsSummary(r.summary)).catch(console.error);
   }, [selected]);
 
@@ -100,6 +105,12 @@ function MainContent() {
   }
   async function reloadTins() {
     if (selected) setTins(await api.listTins(selected.id));
+  }
+  async function reloadTracks() {
+    // deleting a line unassigns everything on it, so the registers reload too
+    if (!selected) return;
+    setTracks(await api.listTracks(selected.id));
+    await Promise.all([reloadElements(), reloadTags(), reloadTins()]);
   }
 
   function handleStationChanged(updated: Station) {
@@ -191,15 +202,19 @@ function MainContent() {
 
           {tab === "registers" && (
             <>
-              <ElementsPanel elements={elements} readOnly={readOnly} lockReason={lockReason}
+              <LinesPanel station={selected} tracks={tracks} adjacent={adjacent} readOnly={readOnly}
+                lockReason={lockReason} onTracksChanged={reloadTracks}
+                onAdjacentChanged={async () => setAdjacent(await api.listAdjacent(selected.id))}
+                onStationChanged={handleStationChanged} />
+              <ElementsPanel elements={elements} tracks={tracks} readOnly={readOnly} lockReason={lockReason}
                 onAdd={async (p) => { await api.addElement(selected.id, p); await reloadElements(); }}
                 onUpdate={async (id, p) => { await api.updateElement(selected.id, id, p); await reloadElements(); }}
                 onDelete={async (id) => { await api.deleteElement(selected.id, id); await reloadElements(); await reloadTags(); }} />
-              <TagsPanel tags={tags} elements={elements} readOnly={readOnly} lockReason={lockReason}
+              <TagsPanel tags={tags} elements={elements} tracks={tracks} readOnly={readOnly} lockReason={lockReason}
                 onAdd={async (p) => { await api.addTag(selected.id, p); await reloadTags(); }}
                 onUpdate={async (id, p) => { await api.updateTag(selected.id, id, p); await reloadTags(); }}
                 onDelete={async (id) => { await api.deleteTag(selected.id, id); await reloadTags(); }} />
-              <TinsPanel tins={tins} readOnly={readOnly} lockReason={lockReason}
+              <TinsPanel tins={tins} tracks={tracks} readOnly={readOnly} lockReason={lockReason}
                 onAdd={async (p) => { await api.addTin(selected.id, p); await reloadTins(); }}
                 onUpdate={async (id, p) => { await api.updateTin(selected.id, id, p); await reloadTins(); }}
                 onDelete={async (id) => { await api.deleteTin(selected.id, id); await reloadTins(); }} />

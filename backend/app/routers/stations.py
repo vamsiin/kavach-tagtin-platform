@@ -17,7 +17,7 @@ def _station_out(s: models.StationORM) -> schemas.StationOut:
 
 
 @router.post("", response_model=schemas.StationOut)
-def create_station(payload: schemas.StationCreate, db: Session = Depends(get_db),
+def create_station(payload: schemas.StationCreateRequest, db: Session = Depends(get_db),
     user: models.UserORM = Depends(get_current_user)):
     from ..auth.permissions import require
     require(user, "station.create", "Creating a station")
@@ -25,7 +25,11 @@ def create_station(payload: schemas.StationCreate, db: Session = Depends(get_db)
         kavach_station_id=payload.kavach_station_id).first()
     if existing:
         raise HTTPException(400, f"Station with KAVACH ID {payload.kavach_station_id} already exists")
-    station = models.StationORM(created_by=user.username, **payload.model_dump())
+    from .tracks import _validate_adjacent
+    for a in payload.adjacent_stations:
+        _validate_adjacent(a)
+    station = models.StationORM(created_by=user.username, **payload.model_dump(exclude={"adjacent_stations"}))
+    station.adjacent_stations = [models.AdjacentStationORM(**a.model_dump()) for a in payload.adjacent_stations]
     db.add(station)
     db.commit()
     db.refresh(station)
@@ -127,14 +131,51 @@ def _validate_source_document(station_id: int, doc_id: int | None, db: Session) 
                                  f"of this station")
 
 
+# Fields added after the first clients shipped: only changed when the client sends
+# them, so an older client can't wipe them on every edit.
+_SEND_TO_CHANGE = ("source_document_id", "track_id", "to_track_id", "lc_class", "lc_manning")
+
+
 def _update_fields(payload) -> dict:
-    """PUT semantics for register rows, with one exception: source_document_id is
-    only changed when the client explicitly sends it. Older clients that don't
-    know about the field must not silently wipe a row's traceability link on
-    every edit."""
+    """PUT semantics for register rows, with one exception: fields in _SEND_TO_CHANGE
+    (traceability link, track placement, LC details) are only changed when the client
+    explicitly sends them."""
     data = payload.model_dump()
-    if "source_document_id" not in payload.model_fields_set:
-        data.pop("source_document_id", None)
+    for f in _SEND_TO_CHANGE:
+        if f in data and f not in payload.model_fields_set:
+            data.pop(f)
+    return data
+
+
+def _validate_track_ref(station_id: int, track_id: int | None, db: Session, label: str = "track_id") -> None:
+    if track_id is None:
+        return
+    if not db.query(models.TrackORM).filter_by(id=track_id, station_id=station_id).first():
+        raise HTTPException(422, f"{label} {track_id} is not a line of this station")
+
+
+def _clean_element(station_id: int, data: dict, el: "models.ElementORM | None", db: Session) -> dict:
+    """Type-specific element fields: LC details only on LC gates, the diverging line
+    only on points. Values that don't apply to the type are cleared, not rejected,
+    so changing an element's type in the form never leaves stale data behind."""
+    from ..domain import LC_CLASSES, LC_GATE, LC_MANNING, POINTS
+    etype = data.get("element_type")
+    track = data.get("track_id", el.track_id if el else None)
+    if etype != LC_GATE:
+        for f in ("lc_class", "lc_manning"):
+            if f in data or (el is not None and getattr(el, f) is not None):
+                data[f] = None
+    if etype != POINTS and ("to_track_id" in data or (el is not None and el.to_track_id is not None)):
+        data["to_track_id"] = None
+    if data.get("lc_class") is not None and data["lc_class"] not in LC_CLASSES:
+        raise HTTPException(422, f"lc_class must be one of {LC_CLASSES}")
+    if data.get("lc_manning") is not None and data["lc_manning"] not in LC_MANNING:
+        raise HTTPException(422, f"lc_manning must be one of {LC_MANNING}")
+    _validate_track_ref(station_id, data.get("track_id"), db)
+    _validate_track_ref(station_id, data.get("to_track_id"), db, "to_track_id")
+    to_track = data.get("to_track_id", el.to_track_id if el else None)
+    if to_track is not None and to_track == track:
+        raise HTTPException(422, "Points must lead to a different line from the one they are on")
     return data
 
 
@@ -176,7 +217,7 @@ def add_element(station_id: int, payload: schemas.ElementCreate, db: Session = D
     _require_editable(station)
     _require_register_editor(user, station)
     _validate_source_document(station_id, payload.source_document_id, db)
-    el = models.ElementORM(station_id=station_id, **payload.model_dump())
+    el = models.ElementORM(station_id=station_id, **_clean_element(station_id, payload.model_dump(), None, db))
     db.add(el)
     db.commit()
     db.refresh(el)
@@ -210,7 +251,7 @@ def update_element(
     _require_register_editor(user, station)
     el = _get_element_or_404(station_id, element_id, db)
     _validate_source_document(station_id, payload.source_document_id, db)
-    for field, value in _update_fields(payload).items():
+    for field, value in _clean_element(station_id, _update_fields(payload), el, db).items():
         setattr(el, field, value)
     db.commit()
     db.refresh(el)
@@ -253,6 +294,7 @@ def add_tag(station_id: int, payload: schemas.TagCreate, db: Session = Depends(g
     _require_editable(station)
     _require_register_editor(user, station)
     _validate_source_document(station_id, payload.source_document_id, db)
+    _validate_track_ref(station_id, payload.track_id, db)
     tag = models.TagORM(station_id=station_id, **payload.model_dump())
     db.add(tag)
     db.commit()
@@ -287,6 +329,7 @@ def update_tag(
     _require_register_editor(user, station)
     tag = _get_tag_or_404(station_id, tag_id, db)
     _validate_source_document(station_id, payload.source_document_id, db)
+    _validate_track_ref(station_id, payload.track_id, db)
     for field, value in _update_fields(payload).items():
         setattr(tag, field, value)
     db.commit()
@@ -318,6 +361,7 @@ def add_tin(station_id: int, payload: schemas.TINCreate, db: Session = Depends(g
     _require_editable(station)
     _require_register_editor(user, station)
     _validate_source_document(station_id, payload.source_document_id, db)
+    _validate_track_ref(station_id, payload.track_id, db)
     tin = models.TINORM(station_id=station_id, **payload.model_dump())
     db.add(tin)
     db.commit()
@@ -349,6 +393,7 @@ def update_tin(
     _require_register_editor(user, station)
     tin = _get_tin_or_404(station_id, tin_id, db)
     _validate_source_document(station_id, payload.source_document_id, db)
+    _validate_track_ref(station_id, payload.track_id, db)
     for field, value in _update_fields(payload).items():
         setattr(tin, field, value)
     db.commit()

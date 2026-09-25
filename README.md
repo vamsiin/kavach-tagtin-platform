@@ -353,6 +353,29 @@ already existed before this round of changes; what's new is the `target_username
 field capturing who a submission was assigned to, so the assignment itself is part
 of the permanent record, not just implied by which checker happened to act on it.
 
+## Annexure-H alignment (Sep 2026)
+
+**Step 1 — clause numbers.** Checks now carry the Amdt-5 clause numbers: H2.12 duplicate
+spacing, H2.13 tag-set spacing (split out of H2.12), H2.15 legend shape, H2.23 numbering
+ranges, manual items H2.14 (25 km) and H2.16 (border). Existing checklist rows are renamed in
+place on startup (`rules/store.py: migrate_rules`), keeping edits, responses and history.
+
+**Step 2 — lines, new element types, centre line and borders.**
+- *Lines* (`tracks` table): named lines (DN MAIN, COMMON LOOP, sidings, block lines) with
+  type, extent, direction and KAVACH / non-KAVACH. Elements, tags and TINs carry `track_id`.
+- *New element types*: LC Gate (class, manning), Points / Turnout (`to_track_id`: the line it
+  leads to), Fouling Mark, Marker Board, Axle Counter, Whistle Board (W/L).
+- *Station centre line* (`stations.centre_line_m`) — rule **H2.28** (FAIL if missing, or if it
+  lies outside every line).
+- *Adjacent stations* (`adjacent_stations`): name, KAVACH ID, side, border line location,
+  distance, single/double line — rule **H2.16** (FAIL if none recorded or a border location is
+  missing). Can also be sent with `POST /stations` as `adjacent_stations`.
+- **DATA-TOPOLOGY** (WARN by default): everything placed on a line and within its extent;
+  points join two different lines.
+- Baselines/snapshots include lines and neighbours; the layout report has a
+  "Lines and neighbouring stations" section.
+- API: `/stations/{id}/tracks`, `/stations/{id}/adjacent-stations`, `PUT /stations/{id}/centre-line`.
+
 ## BRD (RTLDVMS v1.0) gap analysis — what's covered, what isn't, and two open decisions
 
 A formal Business Requirements Document was checked against this codebase directly

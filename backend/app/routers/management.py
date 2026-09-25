@@ -199,6 +199,12 @@ def create_baseline(station_id: int, payload: schemas.BaselineCreate,
 
 def _index(snapshot: dict) -> dict[str, dict]:
     out = {}
+    st = snapshot.get("station", {})
+    out["station centre line"] = {"centre_line_m": st.get("centre_line_m")}
+    for t in snapshot.get("tracks", []):
+        out[f"line {t['name']}"] = t
+    for a in snapshot.get("adjacent_stations", []):
+        out[f"adjacent station {a['name']} ({a['side']})"] = a
     for e in snapshot.get("elements", []):
         out[f"element {e['element_ref']}"] = e
     for t in snapshot.get("tags", []):
@@ -209,7 +215,7 @@ def _index(snapshot: dict) -> dict[str, dict]:
 
 
 # Fields that identify rather than describe a row -- never reported as "changed".
-_IGNORE = {"id", "linked_element_id", "source_document_id"}
+_IGNORE = {"id", "linked_element_id", "source_document_id", "track_id", "to_track_id"}
 
 
 @router.get("/stations/{station_id}/baselines/{baseline_id}/diff", response_model=schemas.BaselineDiffOut)

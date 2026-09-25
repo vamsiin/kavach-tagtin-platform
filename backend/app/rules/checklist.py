@@ -62,9 +62,9 @@ TAG_TYPE_OPTS = list(TAG_TYPES)
 BUILTINS: dict[str, dict] = {}
 
 
-def _b(bid, clause, title, description, defaults, schema, fn):
+def _b(bid, clause, title, description, defaults, schema, fn, severity="FAIL"):
     BUILTINS[bid] = {"clause": clause, "title": title, "description": description,
-                     "defaults": defaults, "schema": schema, "fn": fn}
+                     "defaults": defaults, "schema": schema, "fn": fn, "severity": severity}
 
 
 def _register_builtins():
@@ -119,6 +119,16 @@ def _register_builtins():
        lambda st, el, tg, tn, p: E.check_h2_23_numbering_ranges(tg, tn, p))
     _b("h2_21", "H2.21", "Tag notation valid", "Tag type is one of the defined notations.",
        {}, [], lambda st, el, tg, tn, p: E.check_h2_21_tag_notation(tg))
+    _b("h2_16", "H2.16", "Station border location recorded",
+       "Each adjacent station is recorded with the absolute location of the border line.",
+       {}, [], lambda st, el, tg, tn, p: E.check_h2_16_border_locations(st))
+    _b("h2_28", "H2.28", "Station centre line location recorded",
+       "The station centre line absolute location is recorded (and lies on a line of the station).",
+       {}, [], lambda st, el, tg, tn, p: E.check_h2_28_centre_line(st))
+    _b("topology", "DATA-TOPOLOGY", "Placed on a line of the station",
+       "Elements, tags and TINs are placed on a line and within its extent; points join two lines.",
+       {"tolerance_m": 0}, [P("tolerance_m", "number", "Tolerance beyond the line ends (m)", min=0)],
+       lambda st, el, tg, tn, p: E.check_topology(st, el, tg, tn, p), severity="WARN")
     _b("fr004_unique", "FR-004", "Tag ref / number unique", "Tag references and numbers unique within the station.",
        {}, [], lambda st, el, tg, tn, p: E.check_brd_fr004_tag_uniqueness(tg))
     _b("fr004_parity", "FR-004", "Tag number parity by direction",
@@ -254,7 +264,8 @@ def validate_params(kind: str, builtin: str | None, params: dict) -> dict:
 # Defaults
 # ---------------------------------------------------------------------------
 _ORDER = ["data_units", "h2_1", "h2_2", "h2_5", "h2_6", "h2_7", "h2_9", "h2_11", "h2_12", "h2_13",
-          "h2_15", "h2_18", "h2_21", "h2_23", "fr004_unique", "fr004_parity", "br005"]
+          "h2_15", "h2_16", "h2_18", "h2_21", "h2_23", "h2_28", "fr004_unique", "fr004_parity", "br005",
+          "topology"]
 
 
 def _ensure():
@@ -269,7 +280,7 @@ def default_rules() -> list[RuleConfig]:
                         clause=BUILTINS[bid]["clause"], title=BUILTINS[bid]["title"],
                         description=BUILTINS[bid]["description"],
                         params=copy.deepcopy(BUILTINS[bid]["defaults"]),
-                        sort_order=(i + 1) * 10) for i, bid in enumerate(_ORDER)]
+                        severity=BUILTINS[bid]["severity"], sort_order=(i + 1) * 10) for i, bid in enumerate(_ORDER)]
     for j, (clause, text) in enumerate(MANUAL_CLAUSES.items()):
         slug = "".join(c if c.isalnum() else "_" for c in clause.lower()).strip("_")
         rules.append(RuleConfig(key=f"manual.{slug}", kind="manual", clause=clause,

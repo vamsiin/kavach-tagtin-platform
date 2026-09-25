@@ -48,7 +48,7 @@ def h(client):
 def aler(client, h):
     """A realistic Aler-like station (chainage in metres), traced to inputs."""
     d = h["dana"]
-    sid = client.post("/stations", json={
+    sid = client.post("/stations", json={"centre_line_m": 0, "adjacent_stations": [{"name": "ADJ", "side": "Nominal", "border_m": 0}],
         "name": "Aler", "kavach_station_id": "103", "sip_drawing_number": "IBU.1100A",
         "kavach_version": "2", "sip_version": "0", "guideline_version": "3"}, headers=d).json()["id"]
     sip = client.post(f"/stations/{sid}/documents", files={"file": ("sip.pdf", io.BytesIO(b"%PDF"))},

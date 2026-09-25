@@ -189,34 +189,58 @@ def _src(ctx: Ctx, doc_id) -> str:
 # ---------------------------------------------------------------------------
 def build_layout(ctx: Ctx) -> Report:
     r = _new(ctx, "layout")
+    st = ctx.station
+    lines = {t.id: t.name for t in st.tracks}
+    line = lambda tid: lines.get(tid, "-") if tid is not None else "-"
     r.add(Heading("1. Station particulars"), _station_kv(ctx),
           Para("All locations are chainage in metres (e.g. 262910 = km 262.910).", "muted"),
           Heading("2. Design inputs"), _inputs_table(ctx))
-    r.add(Heading(f"3. Element register ({len(ctx.elements)})"),
-          Table(["Ref", "Type", "Chainage (m)", "Dir", "Source", "Remarks"],
-                [[e.element_ref, e.element_type, _fmt_m(e.location_m), e.direction or "-",
-                  _src(ctx, e.source_document_id), e.remarks or ""] for e in ctx.elements],
-                widths=[1, 3, 1.2, 0.8, 1.2, 2.5], empty_text="No elements."))
+    r.add(Heading("3. Lines and neighbouring stations"),
+          KeyValues([("Station centre line (H2.28)",
+                      _fmt_m(st.centre_line_m) if st.centre_line_m is not None else "Not recorded")]),
+          Table(["Line", "Type", "From (m)", "To (m)", "Length (m)", "Direction", "KAVACH"],
+                [[t.name, t.track_type, _fmt_m(t.start_m), _fmt_m(t.end_m), _fmt_m(t.end_m - t.start_m),
+                  t.direction or "-", "Yes" if t.is_kavach is not False else "No (white)"] for t in st.tracks],
+                empty_text="No lines recorded."),
+          Table(["Adjacent station", "KAVACH ID", "Side", "Border line (m) (H2.16)", "Distance (m)", "Section"],
+                [[a.name, a.kavach_station_id or "-", a.side,
+                  _fmt_m(a.border_m) if a.border_m is not None else "Not recorded",
+                  _fmt_m(a.distance_m) if a.distance_m is not None else "-", a.line_config or "-"]
+                 for a in st.adjacent_stations],
+                empty_text="No adjacent stations recorded."))
+
+    def el_detail(e):
+        if e.to_track_id is not None:
+            return f"to {line(e.to_track_id)}"
+        if e.lc_class or e.lc_manning:
+            return ", ".join(x for x in (f"Class {e.lc_class}" if e.lc_class else "", e.lc_manning or "") if x)
+        return ""
+    r.add(Heading(f"4. Element register ({len(ctx.elements)})"),
+          Table(["Ref", "Type", "Chainage (m)", "Line", "Dir", "Details", "Source", "Remarks"],
+                [[e.element_ref, e.element_type, _fmt_m(e.location_m), line(e.track_id), e.direction or "-",
+                  el_detail(e) or "-", _src(ctx, e.source_document_id), e.remarks or ""] for e in ctx.elements],
+                widths=[1, 2.6, 1.1, 1.1, 0.7, 1.3, 1.1, 2], empty_text="No elements."))
     els = ctx.el_by_id
-    r.add(Heading(f"4. Tag register ({len(ctx.tags)})"),
-          Table(["Ref", "No.", "Type", "Chainage (m)", "Dir", "Linked element", "TIN", "Pair grp",
+    r.add(Heading(f"5. Tag register ({len(ctx.tags)})"),
+          Table(["Ref", "No.", "Type", "Chainage (m)", "Line", "Dir", "Linked element", "TIN", "Pair grp",
                  "Dup", "Border", "Legend", "Source"],
                 [[t.tag_ref, str(t.tag_number) if t.tag_number is not None else "-", t.tag_type,
-                  _fmt_m(t.location_m), t.direction or "-",
+                  _fmt_m(t.location_m), line(t.track_id), t.direction or "-",
                   els[t.linked_element_id].element_ref if t.linked_element_id in els else "-",
                   str(t.tin_no) if t.tin_no is not None else "-", t.pair_group_id or "-",
                   "Yes" if t.is_duplicate else "-", "Yes" if t.is_border_tag else "-",
                   t.legend_shape or "-", _src(ctx, t.source_document_id)] for t in ctx.tags],
-                widths=[1, 0.7, 0.6, 1.2, 0.9, 1.3, 0.6, 0.9, 0.6, 0.7, 1, 1.3], empty_text="No tags."))
-    r.add(Heading(f"5. TIN register ({len(ctx.tins)})"),
-          Table(["TIN", "Section", "Colour", "Start (m)", "End (m)", "Length (m)", "Non-KAVACH", "Source"],
-                [[str(n.tin_no), n.section_type, n.color or "-", _fmt_m(n.start_m), _fmt_m(n.end_m),
-                  _fmt_m(abs((n.end_m or 0) - (n.start_m or 0))),
+                widths=[1, 0.6, 0.5, 1.1, 1, 0.8, 1.2, 0.5, 0.8, 0.5, 0.6, 0.9, 1.1], empty_text="No tags."))
+    r.add(Heading(f"6. TIN register ({len(ctx.tins)})"),
+          Table(["TIN", "Section", "Line", "Colour", "Start (m)", "End (m)", "Length (m)", "Non-KAVACH", "Source"],
+                [[str(n.tin_no), n.section_type, line(n.track_id), n.color or "-", _fmt_m(n.start_m),
+                  _fmt_m(n.end_m), _fmt_m(abs((n.end_m or 0) - (n.start_m or 0))),
                   "Yes" if n.is_non_kavach_territory else "No", _src(ctx, n.source_document_id)]
                  for n in ctx.tins], empty_text="No TINs."))
     counts = Counter(t.tag_type for t in ctx.tags)
-    r.add(Heading("6. Summary"), KeyValues(
-        [("Elements", str(len(ctx.elements))), ("Tags", str(len(ctx.tags))),
+    r.add(Heading("7. Summary"), KeyValues(
+        [("Lines", str(len(st.tracks))), ("Adjacent stations", str(len(st.adjacent_stations))),
+         ("Elements", str(len(ctx.elements))), ("Tags", str(len(ctx.tags))),
          ("Tags by type", ", ".join(f"{k}: {v}" for k, v in sorted(counts.items())) or "-"),
          ("TINs", str(len(ctx.tins)))]))
     return r

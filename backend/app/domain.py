@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-ELEMENT_TYPES = [
+SIGNAL_ELEMENT_TYPES = [
     "Distant Signal", "Inner Distant Signal", "IB Distant Signal", "IB Inner Distant Signal",
     "Mainline Starter", "Loopline Starter", "Intermediate Starter", "Advanced Starter Signal",
     "IB Stop Signal", "Gate Stop Signal", "Calling-on Signal", "Gate Distant Signal",
@@ -32,13 +32,26 @@ ELEMENT_TYPES = [
     "Various types of Starter Signals", "Advance Starter-cum-Gate Distant Signal",
     "Other Misc Signals",
 ]
-# NOTE: the previous list included non-signal physical elements -- "LC Gate",
-# "Turnout/Facing Point", "Marker Board", "Fouling Mark", "LSS" -- that are absent
-# from this new signal-focused taxonomy. Nothing in the current rules engine
-# strictly requires them (H2.9's gate-tag check works off the linked_element_id
-# generically, not off an element_type match), but they were meaningful physical
-# elements on a real layout. If dropping them was not intentional, they should be
-# re-added alongside this list rather than instead of it.
+# Physical, non-signal elements a layout must show (Annexure-H H2.9, H2.10, H2.22,
+# H2.27): LC gates, points/turnouts (switch location), fouling marks, IB/other marker
+# boards, axle counters and whistle boards (the W/L alternative in H2.9). BSLB, stop
+# boards and berthing-track ends are already in the list above.
+LC_GATE = "LC Gate"
+POINTS = "Points / Turnout"
+NON_SIGNAL_ELEMENT_TYPES = [
+    LC_GATE, POINTS, "Fouling Mark", "Marker Board", "Axle Counter", "Whistle Board (W/L)",
+]
+ELEMENT_TYPES = SIGNAL_ELEMENT_TYPES + NON_SIGNAL_ELEMENT_TYPES
+
+LC_CLASSES = ["Special", "A", "B", "C", "D"]
+LC_MANNING = ["Manned interlocked", "Manned non-interlocked", "Unmanned"]
+
+# Track / line model (step 2 of the Annexure-H plan). A station's layout is a set
+# of named lines (DN MAIN, UP MAIN, COMMON LOOP, sidings, block lines) joined by
+# points. Elements, tags and TINs are placed on a line.
+TRACK_TYPES = ["Main", "Loop", "Siding", "Block", "Other"]
+LINE_CONFIGS = ["Single", "Double", "Multiple"]
+
 
 TAG_TYPES = ["N", "S", "T", "X", "D", "G", "L", "A"]
 
@@ -129,6 +142,33 @@ class WorkflowEvent:
 
 
 @dataclass
+class Track:
+    id: int
+    name: str                   # as written on the layout, e.g. "DN MAIN", "COMMON LOOP"
+    track_type: str             # one of TRACK_TYPES
+    start_m: float
+    end_m: float
+    direction: str | None = None   # normal direction of travel, if any
+    is_kavach: bool = True         # False = non-KAVACH line (shown white, H2.18)
+    remarks: str = ""
+
+
+@dataclass
+class AdjacentStation:
+    """A neighbouring station on one side of this one: where the border between the
+    two lies (H2.16) and whether the section between them is single or double line
+    (H2.22)."""
+    id: int
+    name: str
+    side: str                        # direction towards it, e.g. "Nominal" / "Reverse"
+    kavach_station_id: str = ""
+    border_m: float | None = None    # absolute location of the station border line
+    distance_m: float | None = None  # centre line to centre line, as on the layout
+    line_config: str | None = None   # one of LINE_CONFIGS
+    remarks: str = ""
+
+
+@dataclass
 class Station:
     id: int | None = None
     name: str = ""
@@ -142,6 +182,9 @@ class Station:
     status: str = "draft"
     created_by: str | None = None  # username of the creator, for self-service deletion
     assigned_checker: str | None = None  # username of the checker this station was submitted to
+    centre_line_m: float | None = None   # station centre line absolute location (H2.4 / H2.28)
+    tracks: list[Track] = field(default_factory=list)
+    adjacent: list[AdjacentStation] = field(default_factory=list)
 
     @property
     def layout_version(self) -> str:
@@ -158,6 +201,10 @@ class Element:
     location_m: float
     direction: str | None = None
     remarks: str = ""
+    track_id: int | None = None
+    to_track_id: int | None = None   # points only: the line the turnout leads to
+    lc_class: str | None = None      # LC gates only
+    lc_manning: str | None = None    # LC gates only
 
 
 @dataclass
@@ -176,6 +223,7 @@ class Tag:
     exit_set: str | None = None
     is_border_tag: bool = False  # BRD BR-005 / Annexure-H H2.16 -- station border marker
     remarks: str = ""
+    track_id: int | None = None
 
 
 @dataclass
@@ -188,6 +236,7 @@ class TIN:
     direction: str | None = None
     is_non_kavach_territory: bool = False
     remarks: str = ""
+    track_id: int | None = None
 
 
 @dataclass

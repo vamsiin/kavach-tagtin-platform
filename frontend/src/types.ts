@@ -2,7 +2,7 @@
 // in sync; the backend independently validates against its own list regardless of
 // what this dropdown offers, so a mismatch here would show an option that then
 // fails on submit with a 422, not silently accept something invalid.
-export const ELEMENT_TYPES = [
+export const SIGNAL_ELEMENT_TYPES = [
   "Distant Signal",
   "Inner Distant Signal",
   "IB Distant Signal",
@@ -46,7 +46,44 @@ export const ELEMENT_TYPES = [
   "Other Misc Signals",
 ] as const;
 
+// Physical, non-signal elements (Annexure-H H2.9, H2.10, H2.22, H2.27).
+export const LC_GATE = "LC Gate";
+export const POINTS = "Points / Turnout";
+export const NON_SIGNAL_ELEMENT_TYPES = [
+  LC_GATE, POINTS, "Fouling Mark", "Marker Board", "Axle Counter", "Whistle Board (W/L)",
+] as const;
+export const ELEMENT_TYPES: readonly string[] = [...SIGNAL_ELEMENT_TYPES, ...NON_SIGNAL_ELEMENT_TYPES];
+
 export const TAG_TYPES = ["N", "S", "T", "X", "D", "G", "L", "A"] as const;
+
+export const LC_CLASSES = ["Special", "A", "B", "C", "D"];
+export const LC_MANNING = ["Manned interlocked", "Manned non-interlocked", "Unmanned"];
+export const TRACK_TYPES = ["Main", "Loop", "Siding", "Block", "Other"];
+export const LINE_CONFIGS = ["Single", "Double", "Multiple"];
+
+export interface Track {
+  id: number;
+  name: string;
+  track_type: string;
+  start_m: number;
+  end_m: number;
+  direction: string | null;
+  is_kavach: boolean;
+  sort_order: number;
+  remarks: string | null;
+  source_document_id?: number | null;
+}
+
+export interface AdjacentStation {
+  id: number;
+  name: string;
+  side: string;
+  kavach_station_id: string | null;
+  border_m: number | null;
+  distance_m: number | null;
+  line_config: string | null;
+  remarks: string | null;
+}
 
 export const TAG_TYPE_LABELS: Record<string, string> = {
   N: "Normal / Inline section tag",
@@ -74,6 +111,7 @@ export interface Station {
   created_by: string | null;
   assigned_checker: string | null;
   assigned_designer?: string | null;
+  centre_line_m?: number | null;
 }
 
 export interface Element {
@@ -84,6 +122,10 @@ export interface Element {
   direction: string | null;
   remarks: string | null;
   source_document_id?: number | null;
+  track_id?: number | null;
+  to_track_id?: number | null;
+  lc_class?: string | null;
+  lc_manning?: string | null;
 }
 
 export interface Tag {
@@ -102,6 +144,7 @@ export interface Tag {
   is_border_tag: boolean;
   remarks: string | null;
   source_document_id?: number | null;
+  track_id?: number | null;
 }
 
 export interface TIN {
@@ -115,6 +158,7 @@ export interface TIN {
   is_non_kavach_territory: boolean;
   remarks: string | null;
   source_document_id?: number | null;
+  track_id?: number | null;
 }
 
 export interface CheckResult {

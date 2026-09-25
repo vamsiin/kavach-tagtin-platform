@@ -31,6 +31,7 @@ class StationORM(Base):
     created_by = Column(String, nullable=True)  # username of the creator
     assigned_checker = Column(String, nullable=True)  # username of the checker this was submitted to
     assigned_designer = Column(String, nullable=True)  # set by a Project Manager (Phase 6); None = any designer
+    centre_line_m = Column(Float, nullable=True)       # station centre line absolute location (H2.4 / H2.28)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     elements = relationship("ElementORM", back_populates="station", cascade="all, delete-orphan")
@@ -48,6 +49,10 @@ class StationORM(Base):
                                        cascade="all, delete-orphan")
     changes = relationship("StationChangeORM", back_populates="station", cascade="all, delete-orphan")
     baselines = relationship("BaselineORM", back_populates="station", cascade="all, delete-orphan")
+    tracks = relationship("TrackORM", back_populates="station", cascade="all, delete-orphan",
+                          order_by="TrackORM.sort_order, TrackORM.id")
+    adjacent_stations = relationship("AdjacentStationORM", back_populates="station",
+                                     cascade="all, delete-orphan", order_by="AdjacentStationORM.id")
 
     def to_domain(self) -> domain.Station:
         return domain.Station(
@@ -59,6 +64,9 @@ class StationORM(Base):
             drawn_to_scale=bool(self.drawn_to_scale),
             not_to_scale_note_present=bool(self.not_to_scale_note_present),
             status=self.status,
+            centre_line_m=self.centre_line_m,
+            tracks=[t.to_domain() for t in self.tracks],
+            adjacent=[a.to_domain() for a in self.adjacent_stations],
         )
 
     @property
@@ -87,6 +95,10 @@ class ElementORM(Base):
     direction = Column(String, nullable=True)
     remarks = Column(Text, nullable=True)
     source_document_id = Column(Integer, ForeignKey("input_documents.id"), nullable=True)
+    track_id = Column(Integer, ForeignKey("tracks.id"), nullable=True)
+    to_track_id = Column(Integer, ForeignKey("tracks.id"), nullable=True)   # points: diverging line
+    lc_class = Column(String, nullable=True)
+    lc_manning = Column(String, nullable=True)
 
     station = relationship("StationORM", back_populates="elements")
 
@@ -94,7 +106,8 @@ class ElementORM(Base):
         return domain.Element(
             id=self.id, element_ref=self.element_ref, element_type=self.element_type,
             location_m=self.location_m, direction=self.direction,
-            remarks=self.remarks or "",
+            remarks=self.remarks or "", track_id=self.track_id, to_track_id=self.to_track_id,
+            lc_class=self.lc_class, lc_manning=self.lc_manning,
         )
 
 
@@ -117,6 +130,7 @@ class TagORM(Base):
     is_border_tag = Column(Boolean, default=False)
     remarks = Column(Text, nullable=True)
     source_document_id = Column(Integer, ForeignKey("input_documents.id"), nullable=True)
+    track_id = Column(Integer, ForeignKey("tracks.id"), nullable=True)
 
     station = relationship("StationORM", back_populates="tags")
 
@@ -128,7 +142,7 @@ class TagORM(Base):
             linked_element_id=self.linked_element_id, is_duplicate=bool(self.is_duplicate),
             pair_group_id=self.pair_group_id, legend_shape=self.legend_shape,
             exit_set=self.exit_set, is_border_tag=bool(self.is_border_tag),
-            remarks=self.remarks or "",
+            remarks=self.remarks or "", track_id=self.track_id,
         )
 
 
@@ -146,6 +160,7 @@ class TINORM(Base):
     is_non_kavach_territory = Column(Boolean, default=False)
     remarks = Column(Text, nullable=True)
     source_document_id = Column(Integer, ForeignKey("input_documents.id"), nullable=True)
+    track_id = Column(Integer, ForeignKey("tracks.id"), nullable=True)
 
     station = relationship("StationORM", back_populates="tins")
 
@@ -154,8 +169,57 @@ class TINORM(Base):
             tin_no=self.tin_no, section_type=self.section_type, color=self.color,
             start_m=self.start_m, end_m=self.end_m, direction=self.direction,
             is_non_kavach_territory=bool(self.is_non_kavach_territory),
-            remarks=self.remarks or "",
+            remarks=self.remarks or "", track_id=self.track_id,
         )
+
+
+class TrackORM(Base):
+    """A named line in the station layout (DN MAIN, UP LOOP, a siding, a block line).
+    Elements, tags and TINs reference the line they sit on; points join two lines."""
+    __tablename__ = "tracks"
+
+    id = Column(Integer, primary_key=True)
+    station_id = Column(Integer, ForeignKey("stations.id"), nullable=False)
+    name = Column(String, nullable=False)
+    track_type = Column(String, nullable=False)
+    start_m = Column(Float, nullable=False)
+    end_m = Column(Float, nullable=False)
+    direction = Column(String, nullable=True)
+    is_kavach = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)
+    remarks = Column(Text, nullable=True)
+    source_document_id = Column(Integer, ForeignKey("input_documents.id"), nullable=True)
+
+    station = relationship("StationORM", back_populates="tracks")
+
+    def to_domain(self) -> domain.Track:
+        return domain.Track(id=self.id, name=self.name, track_type=self.track_type,
+                            start_m=self.start_m, end_m=self.end_m, direction=self.direction,
+                            is_kavach=self.is_kavach is not False, remarks=self.remarks or "")
+
+
+class AdjacentStationORM(Base):
+    """A neighbouring station: border line location (H2.16) and section line
+    configuration (H2.22)."""
+    __tablename__ = "adjacent_stations"
+
+    id = Column(Integer, primary_key=True)
+    station_id = Column(Integer, ForeignKey("stations.id"), nullable=False)
+    name = Column(String, nullable=False)
+    side = Column(String, nullable=False)
+    kavach_station_id = Column(String, nullable=True)
+    border_m = Column(Float, nullable=True)
+    distance_m = Column(Float, nullable=True)
+    line_config = Column(String, nullable=True)
+    remarks = Column(Text, nullable=True)
+
+    station = relationship("StationORM", back_populates="adjacent_stations")
+
+    def to_domain(self) -> domain.AdjacentStation:
+        return domain.AdjacentStation(
+            id=self.id, name=self.name, side=self.side, kavach_station_id=self.kavach_station_id or "",
+            border_m=self.border_m, distance_m=self.distance_m, line_config=self.line_config,
+            remarks=self.remarks or "")
 
 
 class RevisionORM(Base):

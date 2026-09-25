@@ -508,6 +508,94 @@ def check_brd_br005_border_tag_present(tags: list[Tag]) -> list[CheckResult]:
 
 
 # ---------------------------------------------------------------------------
+# H2.28 Station centre line absolute location shown on the layout (H2.4 takes the
+# Station Master's panel centre as the centre line -- that part stays manual).
+# ---------------------------------------------------------------------------
+def check_h2_28_centre_line(station: Station) -> list[CheckResult]:
+    c = station.centre_line_m
+    if c is None:
+        return [CheckResult("H2.28", "Station centre line location recorded", "FAIL",
+                            "Station centre line absolute location is not recorded")]
+    msg = f"Centre line at {c:g} m"
+    if station.tracks and not any(t.start_m <= c <= t.end_m for t in station.tracks):
+        return [CheckResult("H2.28", "Station centre line location recorded", "FAIL",
+                            msg + " -- outside every line recorded for this station")]
+    return [CheckResult("H2.28", "Station centre line location recorded", "PASS", msg)]
+
+
+# ---------------------------------------------------------------------------
+# H2.16 Station border: the absolute location of the border line with each
+# adjacent station must be shown. (Placement of the border tag itself and the
+# H2.16.1 overlapping-signal exception stay manual.)
+# ---------------------------------------------------------------------------
+def check_h2_16_border_locations(station: Station) -> list[CheckResult]:
+    title = "Station border location recorded"
+    if not station.adjacent:
+        return [CheckResult("H2.16", title, "FAIL",
+                            "No adjacent stations recorded -- add each neighbouring station "
+                            "with the absolute location of the border line")]
+    out = []
+    for a in station.adjacent:
+        ok = a.border_m is not None
+        out.append(CheckResult("H2.16", title, "PASS" if ok else "FAIL",
+                               f"Border with {a.name} ({a.side}): "
+                               + (f"{a.border_m:g} m" if ok else "location not recorded"),
+                               subject_ref=a.name))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# DATA-TOPOLOGY: elements, tags and TINs placed on a line of this station and
+# within its extent; points join two different lines. A data-integrity check that
+# the later automated clauses (H2.8, H2.17, H2.19, H2.22) depend on.
+# ---------------------------------------------------------------------------
+def check_topology(station: Station, elements: list[Element], tags: list[Tag], tins: list[TIN],
+                   p: dict | None = None) -> list[CheckResult]:
+    from ..domain import POINTS
+    tol = _params("topology", p)["tolerance_m"]
+    title = "Placed on a line of the station"
+    tracks = {t.id: t for t in station.tracks}
+    if not tracks:
+        return [CheckResult("DATA-TOPOLOGY", title, "FAIL",
+                            "No lines recorded for this station -- add its lines (DN MAIN, UP MAIN, "
+                            "loops, sidings) so elements, tags and TINs can be placed on them")]
+    out: list[CheckResult] = []
+
+    def on_line(ref, track_id, lo, hi, what):
+        if track_id is None:
+            out.append(CheckResult("DATA-TOPOLOGY", title, "FAIL", f"{what} {ref}: not placed on a line",
+                                   subject_ref=ref))
+            return
+        tr = tracks.get(track_id)
+        if tr is None:
+            out.append(CheckResult("DATA-TOPOLOGY", title, "FAIL", f"{what} {ref}: line {track_id} not found",
+                                   subject_ref=ref))
+            return
+        ok = tr.start_m - tol <= lo and hi <= tr.end_m + tol
+        where = f"{lo:g} m" if lo == hi else f"{lo:g}-{hi:g} m"
+        out.append(CheckResult("DATA-TOPOLOGY", title, "PASS" if ok else "FAIL",
+                               f"{what} {ref} at {where} on {tr.name}"
+                               + ("" if ok else f" -- outside the line ({tr.start_m:g}-{tr.end_m:g} m)"),
+                               subject_ref=ref))
+
+    for e in elements:
+        on_line(e.element_ref, e.track_id, e.location_m, e.location_m, "Element")
+        if e.element_type == POINTS:
+            to = tracks.get(e.to_track_id) if e.to_track_id is not None else None
+            ok = to is not None and e.to_track_id != e.track_id
+            out.append(CheckResult("DATA-TOPOLOGY", "Points join two lines", "PASS" if ok else "FAIL",
+                                   f"Points {e.element_ref}: "
+                                   + (f"lead to {to.name}" if ok else "the line they lead to is not recorded"),
+                                   subject_ref=e.element_ref))
+    for t in tags:
+        on_line(t.tag_ref, t.track_id, t.location_m, t.location_m, "Tag")
+    for n in tins:
+        lo, hi = min(n.start_m, n.end_m), max(n.start_m, n.end_m)
+        on_line(f"TIN {n.tin_no}", n.track_id, lo, hi, "")
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Full run
 # ---------------------------------------------------------------------------
 # DATA-UNITS: all locations are chainage in METRES (e.g. 262910 = km 262.910), and

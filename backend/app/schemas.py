@@ -14,6 +14,12 @@ class StationCreate(BaseModel):
     guideline_version: str | None = None
     drawn_to_scale: bool = True
     not_to_scale_note_present: bool = False
+    centre_line_m: float | None = None
+
+
+class StationCreateRequest(StationCreate):
+    """Create payload: may also carry the neighbouring stations (H2.16 border lines)."""
+    adjacent_stations: list["AdjacentStationCreate"] = Field(default_factory=list)
 
 
 class StationOut(StationCreate):
@@ -36,6 +42,10 @@ class ElementCreate(BaseModel):
     remarks: str | None = None
     source_document_id: int | None = Field(
         default=None, description="Input document (SIP/DXF etc.) this row was derived from -- FR-011")
+    track_id: int | None = Field(default=None, description="Line this element sits on")
+    to_track_id: int | None = Field(default=None, description="Points only: the line the turnout leads to")
+    lc_class: str | None = Field(default=None, description="LC gates only: Special / A / B / C / D")
+    lc_manning: str | None = Field(default=None, description="LC gates only")
 
 
 
@@ -63,6 +73,7 @@ class TagCreate(BaseModel):
     remarks: str | None = None
     source_document_id: int | None = Field(
         default=None, description="Input document (SIP/DXF/Allocation Chart) this tag was derived from -- FR-011/BR-001")
+    track_id: int | None = Field(default=None, description="Line this tag sits on")
 
 
     @field_validator("is_duplicate", "is_border_tag", mode="before")
@@ -100,6 +111,7 @@ class TINCreate(BaseModel):
     is_non_kavach_territory: bool = False
     remarks: str | None = None
     source_document_id: int | None = None
+    track_id: int | None = Field(default=None, description="Line this TIN section is on")
 
 
 
@@ -109,6 +121,51 @@ class TINOut(TINCreate):
 
     class Config:
         from_attributes = True
+
+
+class TrackCreate(BaseModel):
+    name: str
+    track_type: str
+    start_m: float
+    end_m: float
+    direction: str | None = None
+    is_kavach: bool = True
+    sort_order: int = 0
+    remarks: str | None = None
+    source_document_id: int | None = None
+
+    @field_validator("is_kavach", mode="before")
+    @classmethod
+    def _none_is_true(cls, v):
+        return True if v is None else bool(v)
+
+
+class TrackOut(TrackCreate):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class AdjacentStationCreate(BaseModel):
+    name: str
+    side: str
+    kavach_station_id: str | None = None
+    border_m: float | None = None
+    distance_m: float | None = None
+    line_config: str | None = None
+    remarks: str | None = None
+
+
+class AdjacentStationOut(AdjacentStationCreate):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class CentreLineUpdate(BaseModel):
+    centre_line_m: float | None = None
 
 
 class CheckResultOut(BaseModel):
@@ -815,3 +872,6 @@ class BaselineDiffOut(BaseModel):
     rows: list[DiffRow]
     inputs_changed: list[str]
     identical: bool
+
+
+StationCreateRequest.model_rebuild()

@@ -153,7 +153,7 @@ def test_deleting_user_preserves_audit_history(client):
     }, headers=admin_headers)
     dana_headers = {"Authorization": f"Bearer {client.post('/auth/login', json={'username': 'dana', 'password': 'danapass123'}).json()['access_token']}"}
 
-    sid = client.post("/stations", json={"name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=dana_headers).json()["id"]
+    sid = client.post("/stations", json={"centre_line_m": 0, "adjacent_stations": [{"name": "ADJ", "side": "Nominal", "border_m": 0}], "name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=dana_headers).json()["id"]
     client.post(f"/stations/{sid}/self-check", json={}, headers=dana_headers)
     client.post(f"/stations/{sid}/submit",
                 json={"assigned_checker_username": "cara", "comment": ""}, headers=dana_headers)
@@ -263,7 +263,7 @@ def test_workflow_event_with_null_comment_does_not_crash(client):
     from app.database import SessionLocal
 
     admin_headers = _admin_headers(client)
-    sid_resp = client.post("/stations", json={"name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=admin_headers)
+    sid_resp = client.post("/stations", json={"centre_line_m": 0, "adjacent_stations": [{"name": "ADJ", "side": "Nominal", "border_m": 0}], "name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=admin_headers)
     sid = sid_resp.json()["id"]
 
     db = SessionLocal()

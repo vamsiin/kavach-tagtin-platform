@@ -58,7 +58,7 @@ def _make_compliant_station(client, designer_headers) -> int:
     unrelated, entirely legitimate compliance failures. Real compliance-content
     testing belongs in test_rules.py; these tests are about the workflow/assignment
     machinery layered on top of verification, not verification itself."""
-    r = client.post("/stations", json={
+    r = client.post("/stations", json={"centre_line_m": 0, "adjacent_stations": [{"name": "ADJ", "side": "Nominal", "border_m": 0}],
         "name": "ALER", "kavach_station_id": "103", "sip_drawing_number": "IPU.1100A",
         "kavach_version": "2", "sip_version": "1", "guideline_version": "0",
     }, headers=designer_headers)

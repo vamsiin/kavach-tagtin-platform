@@ -70,7 +70,7 @@ def _submit(client, sid, headers, checker_username="cara"):
 
 def test_update_element(client):
     admin_headers, headers = _make_admin_and_designer(client)
-    sid = client.post("/stations", json={"name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
+    sid = client.post("/stations", json={"centre_line_m": 0, "adjacent_stations": [{"name": "ADJ", "side": "Nominal", "border_m": 0}], "name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
     eid = client.post(f"/stations/{sid}/elements",
                        json={"element_ref": "SIG-01", "element_type": "Main Home without Junction Route Indicator", "location_m": 120200},
                        headers=headers).json()["id"]
@@ -85,7 +85,7 @@ def test_update_element(client):
 
 def test_delete_element_unlinks_orphaned_tags_rather_than_leaving_dangling_reference(client):
     admin_headers, headers = _make_admin_and_designer(client)
-    sid = client.post("/stations", json={"name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
+    sid = client.post("/stations", json={"centre_line_m": 0, "adjacent_stations": [{"name": "ADJ", "side": "Nominal", "border_m": 0}], "name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
     eid = client.post(f"/stations/{sid}/elements",
                        json={"element_ref": "SIG-01", "element_type": "Main Home without Junction Route Indicator", "location_m": 120200},
                        headers=headers).json()["id"]
@@ -104,7 +104,7 @@ def test_delete_element_unlinks_orphaned_tags_rather_than_leaving_dangling_refer
 
 def test_update_and_delete_tag(client):
     admin_headers, headers = _make_admin_and_designer(client)
-    sid = client.post("/stations", json={"name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
+    sid = client.post("/stations", json={"centre_line_m": 0, "adjacent_stations": [{"name": "ADJ", "side": "Nominal", "border_m": 0}], "name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
     tid = client.post(f"/stations/{sid}/tags",
                        json={"tag_ref": "R-100", "tag_type": "N", "location_m": 100000},
                        headers=headers).json()["id"]
@@ -121,7 +121,7 @@ def test_update_and_delete_tag(client):
 
 def test_update_and_delete_tin(client):
     admin_headers, headers = _make_admin_and_designer(client)
-    sid = client.post("/stations", json={"name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
+    sid = client.post("/stations", json={"centre_line_m": 0, "adjacent_stations": [{"name": "ADJ", "side": "Nominal", "border_m": 0}], "name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
     tinid = client.post(f"/stations/{sid}/tins",
                          json={"tin_no": 10, "section_type": "Station", "start_m": 1000, "end_m": 2000, "color": "Green"},
                          headers=headers).json()["id"]
@@ -137,7 +137,7 @@ def test_update_and_delete_tin(client):
 
 def test_registers_cannot_be_edited_or_deleted_outside_draft(client):
     admin_headers, headers, checker_headers = _make_admin_designer_checker(client)
-    sid = client.post("/stations", json={"name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
+    sid = client.post("/stations", json={"centre_line_m": 0, "adjacent_stations": [{"name": "ADJ", "side": "Nominal", "border_m": 0}], "name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
     eid = client.post(f"/stations/{sid}/elements",
                        json={"element_ref": "SIG-01", "element_type": "Stop Board/Buffer Stop", "location_m": 100000},
                        headers=headers).json()["id"]
@@ -161,7 +161,7 @@ def test_registers_cannot_be_edited_or_deleted_outside_draft(client):
 
 def test_creator_can_delete_own_draft_station(client):
     admin_headers, headers = _make_admin_and_designer(client)
-    sid = client.post("/stations", json={"name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
+    sid = client.post("/stations", json={"centre_line_m": 0, "adjacent_stations": [{"name": "ADJ", "side": "Nominal", "border_m": 0}], "name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
 
     r = client.delete(f"/stations/{sid}", headers=headers)
     assert r.status_code == 204
@@ -177,7 +177,7 @@ def test_non_creator_non_admin_cannot_delete_station(client):
     }, headers=admin_headers)
     other_headers = {"Authorization": f"Bearer {client.post('/auth/login', json={'username': 'other_dana', 'password': 'otherpass123'}).json()['access_token']}"}
 
-    sid = client.post("/stations", json={"name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
+    sid = client.post("/stations", json={"centre_line_m": 0, "adjacent_stations": [{"name": "ADJ", "side": "Nominal", "border_m": 0}], "name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
 
     r = client.delete(f"/stations/{sid}", headers=other_headers)
     assert r.status_code == 403
@@ -190,7 +190,7 @@ def test_non_creator_non_admin_cannot_delete_station(client):
 
 def test_creator_cannot_delete_own_station_once_submitted(client):
     admin_headers, headers, checker_headers = _make_admin_designer_checker(client)
-    sid = client.post("/stations", json={"name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
+    sid = client.post("/stations", json={"centre_line_m": 0, "adjacent_stations": [{"name": "ADJ", "side": "Nominal", "border_m": 0}], "name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
     r = _submit(client, sid, headers)
     assert r.status_code == 200
 
@@ -205,7 +205,7 @@ def test_creator_cannot_delete_own_station_once_submitted(client):
 
 def test_admin_can_delete_any_station_in_any_status(client):
     admin_headers, headers, checker_headers = _make_admin_designer_checker(client)
-    sid = client.post("/stations", json={"name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
+    sid = client.post("/stations", json={"centre_line_m": 0, "adjacent_stations": [{"name": "ADJ", "side": "Nominal", "border_m": 0}], "name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
     r = _submit(client, sid, headers)
     assert r.status_code == 200
     assert r.json()["status"] == "submitted"
@@ -219,7 +219,7 @@ def test_admin_can_delete_any_station_in_any_status(client):
 
 def test_station_records_its_creator(client):
     admin_headers, headers = _make_admin_and_designer(client)
-    r = client.post("/stations", json={"name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers)
+    r = client.post("/stations", json={"centre_line_m": 0, "adjacent_stations": [{"name": "ADJ", "side": "Nominal", "border_m": 0}], "name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers)
     assert r.json()["created_by"] == "dana"
 
 
@@ -232,7 +232,7 @@ def test_station_response_never_silently_drops_a_schema_field(client):
     schema or response builder falls out of sync again."""
     from app import schemas
     admin_headers, headers = _make_admin_and_designer(client)
-    r = client.post("/stations", json={"name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers)
+    r = client.post("/stations", json={"centre_line_m": 0, "adjacent_stations": [{"name": "ADJ", "side": "Nominal", "border_m": 0}], "name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers)
     body = r.json()
     expected_fields = set(schemas.StationOut.model_fields.keys())
     assert expected_fields <= set(body.keys()), \
@@ -241,7 +241,7 @@ def test_station_response_never_silently_drops_a_schema_field(client):
 
 def test_deleting_station_cascades_to_its_registers(client):
     admin_headers, headers = _make_admin_and_designer(client)
-    sid = client.post("/stations", json={"name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
+    sid = client.post("/stations", json={"centre_line_m": 0, "adjacent_stations": [{"name": "ADJ", "side": "Nominal", "border_m": 0}], "name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
     client.post(f"/stations/{sid}/elements",
                 json={"element_ref": "SIG-01", "element_type": "Stop Board/Buffer Stop", "location_m": 100000},
                 headers=headers)
@@ -280,7 +280,7 @@ def test_tag_with_null_boolean_fields_does_not_crash(client):
     from app.database import SessionLocal
 
     admin_headers, headers = _make_admin_and_designer(client)
-    sid = client.post("/stations", json={"name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
+    sid = client.post("/stations", json={"centre_line_m": 0, "adjacent_stations": [{"name": "ADJ", "side": "Nominal", "border_m": 0}], "name": "T", "kavach_station_id": "1", "sip_drawing_number": "SIP-1", "kavach_version": "2", "sip_version": "1", "guideline_version": "0"}, headers=headers).json()["id"]
 
     db = SessionLocal()
     try:

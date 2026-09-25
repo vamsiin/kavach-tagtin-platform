@@ -1,5 +1,5 @@
 import type {
-  Station, Element, Tag, TIN, VerificationReport, ToCCrossValidation,
+  Station, Element, Tag, TIN, Track, AdjacentStation, VerificationReport, ToCCrossValidation,
   User, TokenResponse, WorkflowStatus,
   RailwaySubmission, RailwaySubmitPayload,
   Observation, ObservationSummary, ObservationDraft,
@@ -100,6 +100,24 @@ export const api = {
     request<Station>("/stations", { method: "POST", body: JSON.stringify(payload) }),
   deleteStation: (stationId: number) =>
     request<void>(`/stations/${stationId}`, { method: "DELETE" }),
+
+  // ---- lines, neighbouring stations, centre line (Annexure-H H2.16 / H2.28) ----
+  listTracks: (stationId: number) => request<Track[]>(`/stations/${stationId}/tracks`),
+  addTrack: (stationId: number, payload: Partial<Track>) =>
+    request<Track>(`/stations/${stationId}/tracks`, { method: "POST", body: JSON.stringify(payload) }),
+  updateTrack: (stationId: number, id: number, payload: Partial<Track>) =>
+    request<Track>(`/stations/${stationId}/tracks/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteTrack: (stationId: number, id: number) =>
+    request<void>(`/stations/${stationId}/tracks/${id}`, { method: "DELETE" }),
+  listAdjacent: (stationId: number) => request<AdjacentStation[]>(`/stations/${stationId}/adjacent-stations`),
+  addAdjacent: (stationId: number, payload: Partial<AdjacentStation>) =>
+    request<AdjacentStation>(`/stations/${stationId}/adjacent-stations`, { method: "POST", body: JSON.stringify(payload) }),
+  updateAdjacent: (stationId: number, id: number, payload: Partial<AdjacentStation>) =>
+    request<AdjacentStation>(`/stations/${stationId}/adjacent-stations/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteAdjacent: (stationId: number, id: number) =>
+    request<void>(`/stations/${stationId}/adjacent-stations/${id}`, { method: "DELETE" }),
+  setCentreLine: (stationId: number, centre_line_m: number | null) =>
+    request<Station>(`/stations/${stationId}/centre-line`, { method: "PUT", body: JSON.stringify({ centre_line_m }) }),
 
   listElements: (stationId: number) => request<Element[]>(`/stations/${stationId}/elements`),
   addElement: (stationId: number, payload: Partial<Element>) =>

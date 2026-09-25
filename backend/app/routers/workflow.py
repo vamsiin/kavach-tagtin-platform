@@ -351,20 +351,35 @@ def get_workflow_status(
 
 
 def _layout_snapshot(station: models.StationORM, db: Session) -> str:
-    def rows(model, cols):
-        return [{c: getattr(r, c) for c in cols}
+    def cols(model, skip=("station_id",)):
+        return [c.name for c in model.__table__.columns if c.name not in skip]
+
+    def rows(model, columns):
+        return [{c: getattr(r, c) for c in columns}
                 for r in db.query(model).filter_by(station_id=station.id).order_by(model.id).all()]
+
+    track_names = {t.id: t.name for t in db.query(models.TrackORM).filter_by(station_id=station.id)}
+
+    def with_line(items):
+        # line NAME alongside the id, so a baseline diff reads "track: DN MAIN -> UP LOOP"
+        for it in items:
+            if "track_id" in it:
+                it["track"] = track_names.get(it["track_id"])
+            if "to_track_id" in it:
+                it["to_track"] = track_names.get(it["to_track_id"])
+        return items
+
     return json.dumps({
         "station": {"id": station.id, "name": station.name,
                     "kavach_station_id": station.kavach_station_id,
                     "sip_drawing_number": station.sip_drawing_number,
-                    "layout_version": station.layout_version},
-        "elements": rows(models.ElementORM, [c.name for c in models.ElementORM.__table__.columns
-                                             if c.name != "station_id"]),
-        "tags": rows(models.TagORM, [c.name for c in models.TagORM.__table__.columns
-                                     if c.name != "station_id"]),
-        "tins": rows(models.TINORM, [c.name for c in models.TINORM.__table__.columns
-                                     if c.name != "station_id"]),
+                    "layout_version": station.layout_version,
+                    "centre_line_m": station.centre_line_m},
+        "tracks": rows(models.TrackORM, cols(models.TrackORM)),
+        "adjacent_stations": rows(models.AdjacentStationORM, cols(models.AdjacentStationORM)),
+        "elements": with_line(rows(models.ElementORM, cols(models.ElementORM))),
+        "tags": with_line(rows(models.TagORM, cols(models.TagORM))),
+        "tins": with_line(rows(models.TINORM, cols(models.TINORM))),
     }, default=str)
 
 
