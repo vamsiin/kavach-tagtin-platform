@@ -100,6 +100,10 @@ def delete_station(
     db.commit()
     for d in docs:
         delete_file_quietly(d)
+    # ...and anything else stored for the station (archived reports, Phase 4).
+    import shutil
+    from ..documents.service import upload_dir
+    shutil.rmtree(upload_dir() / f"station_{station_id}", ignore_errors=True)
     return None
 
 

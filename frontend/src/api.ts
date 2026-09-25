@@ -3,6 +3,7 @@ import type {
   User, TokenResponse, WorkflowStatus,
   RailwaySubmission, RailwaySubmitPayload,
   Observation, ObservationSummary, ObservationDraft,
+  ReportType, GeneratedReport, Revision,
   DocType, InputDocument, DxfImportResult, DxfCalibration, DxfCommitPayload, Traceability,
 } from "./types";
 
@@ -45,6 +46,22 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
+}
+
+/** Authenticated file download: fetch as a blob and hand it to the browser, using
+ *  the server's Content-Disposition filename when it provides one. */
+async function downloadBlob(path: string, fallbackName: string): Promise<void> {
+  const token = getToken();
+  const res = await fetch(`${BASE_URL}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
+  const cd = res.headers.get("Content-Disposition") ?? "";
+  const name = /filename="?([^";]+)"?/.exec(cd)?.[1] ?? fallbackName;
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export const api = {
@@ -196,6 +213,20 @@ export const api = {
       `/stations/${stationId}/observations/${obsId}/${action === "comment" ? "comments" : action}`,
       { method: "POST", body: JSON.stringify({ comment }) },
     ),
+
+  // ---- reports (FR-007) ----
+  listReportTypes: () => request<ReportType[]>("/report-types"),
+  downloadReport: (stationId: number, code: string, fmt: "pdf" | "docx") =>
+    downloadBlob(`/stations/${stationId}/reports/${code}?format=${fmt}`, `${code}.${fmt}`),
+  reportLog: (stationId: number, archivedOnly = false) =>
+    request<GeneratedReport[]>(`/stations/${stationId}/report-log?archived_only=${archivedOnly}`),
+  downloadArchivedReport: (stationId: number, logId: number, name: string) =>
+    downloadBlob(`/stations/${stationId}/report-log/${logId}/download`, name),
+  listRevisions: (stationId: number) => request<Revision[]>(`/stations/${stationId}/revisions`),
+  addRevision: (stationId: number, payload: { rev_no: string; date?: string | null; description: string }) =>
+    request<Revision>(`/stations/${stationId}/revisions`, { method: "POST", body: JSON.stringify(payload) }),
+  deleteRevision: (stationId: number, revId: number) =>
+    request<void>(`/stations/${stationId}/revisions/${revId}`, { method: "DELETE" }),
 
   // ---- workflow ----
   getStation: (stationId: number) => request<Station>(`/stations/${stationId}`),

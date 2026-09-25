@@ -215,6 +215,7 @@ class WorkflowEventOut(BaseModel):
     verification_fail_count: int | None = None
     target_username: str | None = None
     input_snapshot: list[dict] | None = None
+    layout_version: str | None = None
 
     @field_validator("input_snapshot", mode="before")
     @classmethod
@@ -499,3 +500,67 @@ class ObservationOut(BaseModel):
 class ObservationListOut(BaseModel):
     observations: list[ObservationOut]
     summary: dict
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: revisions, reports
+# ---------------------------------------------------------------------------
+class RevisionCreate(BaseModel):
+    rev_no: str = Field(min_length=1)
+    date: str | None = None
+    description: str = Field(min_length=1)
+
+    @field_validator("date")
+    @classmethod
+    def _iso(cls, v):
+        if v in (None, ""):
+            return None
+        from datetime import date
+        try:
+            return date.fromisoformat(v.strip()).isoformat()
+        except ValueError:
+            raise ValueError("date must be YYYY-MM-DD")
+
+
+class RevisionOut(BaseModel):
+    id: int
+    rev_no: str
+    date: str | None = None
+    description: str
+    layout_version: str | None = None
+    created_by: str | None = None
+    created_at: str | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class ReportTypeOut(BaseModel):
+    code: str
+    title: str
+    description: str
+    formats: list[str]
+
+
+class GeneratedReportOut(BaseModel):
+    id: int
+    report_type: str
+    report_id: str
+    fmt: str
+    generated_by: str
+    generated_at: str
+    layout_version: str | None = None
+    station_status: str | None = None
+    sha256: str
+    size_bytes: int
+    archived: bool = False
+    workflow_event_id: int | None = None
+    trigger: str | None = None
+
+    @field_validator("archived", mode="before")
+    @classmethod
+    def _b(cls, v):
+        return bool(v)
+
+    class Config:
+        from_attributes = True

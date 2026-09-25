@@ -14,6 +14,7 @@ import { UsersPanel } from "./components/UsersPanel";
 import { InputsPanel } from "./components/InputsPanel";
 import { TraceabilityPanel } from "./components/TraceabilityPanel";
 import { ObservationsPanel } from "./components/ObservationsPanel";
+import { ReportsPanel } from "./components/ReportsPanel";
 import "./styles.css";
 
 export default function App() {
@@ -54,7 +55,7 @@ function MainContent() {
   const [elements, setElements] = useState<Element[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [tins, setTins] = useState<TIN[]>([]);
-  const [tab, setTab] = useState<"inputs" | "registers" | "verify" | "observations" | "trace" | "workflow" | "users">("registers")
+  const [tab, setTab] = useState<"inputs" | "registers" | "verify" | "observations" | "trace" | "reports" | "workflow" | "users">("registers")
   const [obsDraft, setObsDraft] = useState<ObservationDraft | null>(null);
   const [obsSummary, setObsSummary] = useState<ObservationSummary | null>(null);
 
@@ -136,6 +137,9 @@ function MainContent() {
             <button className={tab === "trace" ? "active" : ""} onClick={() => setTab("trace")}>
               Traceability
             </button>
+            <button className={tab === "reports" ? "active" : ""} onClick={() => setTab("reports")}>
+              Reports
+            </button>
             <button className={tab === "workflow" ? "active" : ""} onClick={() => setTab("workflow")}>
               Workflow
             </button>
@@ -152,6 +156,8 @@ function MainContent() {
           )}
 
           {tab === "trace" && <TraceabilityPanel stationId={selected.id} />}
+
+          {tab === "reports" && <ReportsPanel stationId={selected.id} stationStatus={selected.status} />}
 
           {tab === "observations" && (
             <ObservationsPanel stationId={selected.id} stationStatus={selected.status}

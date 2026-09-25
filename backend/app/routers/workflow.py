@@ -122,12 +122,16 @@ def _do_transition(
         verification_fail_count=event.verification_fail_count,
         target_username=event.target_username,
         input_snapshot=snapshot_current_inputs(db, station_id),
+        layout_version=station.layout_version,
     )
     db.add(event_orm)
     if before_commit is not None:
         db.flush()
         before_commit(station, event_orm)
     db.commit()
+    # FR-007: freeze the verification report as it stood at this step (never blocks).
+    from .reports import archive_verification_report
+    archive_verification_report(db, station_id, event_orm, user)
     db.refresh(station)
     return station, state  # also return the PRE-transition state (for from_status/emails)
 

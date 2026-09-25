@@ -457,10 +457,31 @@ were already metres). Verification includes a `DATA-UNITS` check that WARNs (nev
 when a station's values look like km — all within 50 units of each other and carrying
 decimals.
 
+**Phase 4 — done (FR-007 / Section 11 reports):**
+- All eight report types, each in **PDF and Word**: Layout, Verification, Compliance,
+  Observation, Approval Status, Audit Trail, Traceability Matrix, Revision History.
+  `GET /report-types`; `GET /stations/{id}/reports/{type}?format=pdf|docx`.
+- Each report is built once as a format-neutral model (`app/reports/model.py`,
+  `builders.py`) and rendered by `render_pdf.py` (reportlab) or `render_docx.py`
+  (python-docx), so PDF and Word never drift apart. Every page carries the station,
+  layout version, a unique report ID (`KVR-<station>-<type>-<timestamp>`), who generated
+  it, when, and "Uncontrolled when printed".
+- Every generation is logged (`generated_reports`: who, when, format, SHA-256).
+  `GET /stations/{id}/report-log`.
+- **Verification reports are archived automatically** at each self-check, check,
+  approval and Railway submission, linked to that workflow event, and kept on disk as
+  the frozen evidence for that step (`…/report-log/{id}/download`). Archiving never
+  blocks the workflow — a failure is logged and skipped.
+- The drawing revision table (`RevisionORM`, previously unused) is now wired:
+  `GET/POST/DELETE /stations/{id}/revisions` (designer/admin, draft only), feeding the
+  Revision History report. Workflow events now also record the layout version.
+- UI: **Reports** tab. **Requires `pip install -r requirements.txt`** (adds `reportlab`);
+  without it Word output still works and PDF returns a clear 503.
+
 **Not yet built:** FR-001 does not *parse* the RFID Allocation Chart yet (BR-001
 still enforces range/uniqueness, not "matches the chart"); no submit gate on
 missing inputs (reported as gaps only); FR-006 configurable checklist engine;
-FR-007 / Section 11 report documents (PDF/Word); FR-008 observation tracking;
+FR-008 observation tracking;
 Project Manager /
 Configuration Manager roles; Alembic migrations (schema upgrades still go through
 the SQLite-only `ensure_schema_up_to_date`).

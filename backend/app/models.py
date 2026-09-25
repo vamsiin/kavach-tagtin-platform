@@ -41,6 +41,8 @@ class StationORM(Base):
                                        cascade="all, delete-orphan")
     observations = relationship("ObservationORM", back_populates="station",
                                 cascade="all, delete-orphan")
+    generated_reports = relationship("GeneratedReportORM", back_populates="station",
+                                     cascade="all, delete-orphan")
 
     def to_domain(self) -> domain.Station:
         return domain.Station(
@@ -157,8 +159,13 @@ class RevisionORM(Base):
     id = Column(Integer, primary_key=True)
     station_id = Column(Integer, ForeignKey("stations.id"), nullable=False)
     rev_no = Column(String, nullable=False)
-    date = Column(String, nullable=True)
+    date = Column(String, nullable=True)          # revision date as written on the drawing (YYYY-MM-DD)
     description = Column(Text, nullable=False)
+    # Phase 4: previously dead code, now wired (routers/revisions.py). Who recorded the
+    # entry, when, and the layout X.Y.Z it applied to.
+    layout_version = Column(String, nullable=True)
+    created_by = Column(String, nullable=True)
+    created_at = Column(String, nullable=True)
 
     station = relationship("StationORM", back_populates="revisions")
 
@@ -203,6 +210,7 @@ class WorkflowEventORM(Base):
     # Site Survey / Allocation Chart revision it was based on, even after newer
     # revisions of those inputs are uploaded later.
     input_snapshot = Column(Text, nullable=True)
+    layout_version = Column(String, nullable=True)  # X.Y.Z at the moment of the transition
 
     def to_domain(self) -> domain.WorkflowEvent:
         return domain.WorkflowEvent(
@@ -329,3 +337,28 @@ class ObservationCommentORM(Base):
     created_at = Column(String, nullable=False)
 
     observation = relationship("ObservationORM", back_populates="comments")
+
+
+class GeneratedReportORM(Base):
+    """FR-007: log of every report generated, and the stored file for reports archived
+    automatically at workflow steps (so the verification evidence behind a check or an
+    approval is kept exactly as it was, not regenerated from today's data)."""
+    __tablename__ = "generated_reports"
+
+    id = Column(Integer, primary_key=True)
+    station_id = Column(Integer, ForeignKey("stations.id"), nullable=False, index=True)
+    report_type = Column(String, nullable=False)
+    report_id = Column(String, nullable=False)
+    fmt = Column(String, nullable=False)                # pdf | docx
+    generated_by = Column(String, nullable=False)
+    generated_at = Column(String, nullable=False)
+    layout_version = Column(String, nullable=True)
+    station_status = Column(String, nullable=True)
+    sha256 = Column(String, nullable=False)
+    size_bytes = Column(Integer, nullable=False)
+    archived = Column(Boolean, default=False)           # file kept on disk?
+    stored_path = Column(String, nullable=True)         # relative to UPLOAD_DIR, when archived
+    workflow_event_id = Column(Integer, nullable=True)  # set for auto-archived reports
+    trigger = Column(String, nullable=True)             # e.g. "self_check", "approve", "manual"
+
+    station = relationship("StationORM", back_populates="generated_reports")

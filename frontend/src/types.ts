@@ -398,3 +398,37 @@ export interface ObservationDraft {
   subject_id?: number | null;
   subject_ref?: string | null;
 }
+
+// ---- Phase 4: reports & revisions ----
+export interface ReportType {
+  code: string;
+  title: string;
+  description: string;
+  formats: string[];
+}
+
+export interface GeneratedReport {
+  id: number;
+  report_type: string;
+  report_id: string;
+  fmt: string;
+  generated_by: string;
+  generated_at: string;
+  layout_version: string | null;
+  station_status: string | null;
+  sha256: string;
+  size_bytes: number;
+  archived: boolean;
+  workflow_event_id: number | null;
+  trigger: string | null;
+}
+
+export interface Revision {
+  id: number;
+  rev_no: string;
+  date: string | null;
+  description: string;
+  layout_version: string | null;
+  created_by: string | null;
+  created_at: string | null;
+}
