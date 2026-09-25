@@ -1,6 +1,7 @@
 import type {
   Station, Element, Tag, TIN, VerificationReport, ToCCrossValidation,
   User, TokenResponse, WorkflowStatus,
+  DocType, InputDocument, DxfImportResult, DxfCalibration, DxfCommitPayload, Traceability,
 } from "./types";
 
 // Defaults to the SAME host the browser used to load this page, on port 8000 --
@@ -125,6 +126,60 @@ export const api = {
       method: "POST", body: form,
     });
   },
+
+  // ---- design inputs (FR-001) ----
+  listDocTypes: () => request<DocType[]>("/document-types"),
+  listDocuments: (stationId: number) =>
+    request<InputDocument[]>(`/stations/${stationId}/documents`),
+  uploadDocument: (stationId: number, file: File, docType: string, versionLabel = "", notes = "") => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("doc_type", docType);
+    if (versionLabel) form.append("version_label", versionLabel);
+    if (notes) form.append("notes", notes);
+    return request<InputDocument>(`/stations/${stationId}/documents`, { method: "POST", body: form });
+  },
+  deleteDocument: (stationId: number, docId: number) =>
+    request<void>(`/stations/${stationId}/documents/${docId}`, { method: "DELETE" }),
+  // Download needs the bearer token, so it can't be a plain <a href> -- fetch the
+  // blob and hand it to the browser as an object URL.
+  downloadDocument: async (stationId: number, doc: InputDocument) => {
+    const token = getToken();
+    const res = await fetch(`${BASE_URL}/stations/${stationId}/documents/${doc.id}/download`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = doc.original_filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
+
+  // ---- DXF import (FR-002) ----
+  importDxf: (stationId: number, file: File, docType: string, versionLabel: string, cal: DxfCalibration) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("doc_type", docType);
+    if (versionLabel) form.append("version_label", versionLabel);
+    for (const [k, v] of Object.entries(cal)) if (v !== undefined && !Number.isNaN(v)) form.append(k, String(v));
+    return request<DxfImportResult>(`/stations/${stationId}/import-dxf`, { method: "POST", body: form });
+  },
+  dxfCandidates: (stationId: number, docId: number, cal: DxfCalibration) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(cal)) if (v !== undefined && !Number.isNaN(v)) qs.set(k, String(v));
+    return request<DxfImportResult>(`/stations/${stationId}/documents/${docId}/dxf-candidates?${qs}`);
+  },
+  dxfCommit: (stationId: number, docId: number, payload: DxfCommitPayload) =>
+    request<{ elements_created: number; tags_created: number }>(
+      `/stations/${stationId}/documents/${docId}/dxf-commit`,
+      { method: "POST", body: JSON.stringify(payload) },
+    ),
+
+  // ---- traceability (FR-011) ----
+  getTraceability: (stationId: number) =>
+    request<Traceability>(`/stations/${stationId}/traceability`),
 
   // ---- workflow ----
   getWorkflowStatus: (stationId: number) =>

@@ -388,18 +388,35 @@ project's change history, not repeated here:
    that mapping is backwards, every tag will get a false FAIL or false PASS on
    this specific check — confirm it, and the fix is a one-line change to that map.
 
-**Not yet built** (larger items, listed so nothing here is presented as done that
-isn't): FR-001's SIP/site-survey/allocation-chart/adjacent-layout uploads as
-first-class tracked entities (only ToC upload and the uncalibrated DXF-import stub
-exist); FR-002 auto-generating a layout from those inputs; FR-006's *configurable*
-checklist engine (checks are fixed Python code, not admin-editable); FR-007's
-exportable report documents (PDF/Word) — results are currently JSON/UI only;
-FR-008's dedicated per-item observation tracking (workflow has a comment per
-transition, not a resolvable observation list); FR-009's "Self Check" as a
-recorded formal step and "Railway Submission" as a distinct terminal state beyond
-"Approved"; the 8 report types in BRD Section 11; and the BRD's Project
-Manager / Configuration Manager roles (this platform has designer/checker/
-approver/admin, not a 1:1 match to the BRD's 5-role list).
+**Phase 1 — done (inputs, DXF import, traceability):**
+- **FR-001 design inputs** as first-class, versioned entities (`input_documents`
+  table, `app/documents/service.py`, `app/routers/documents.py`). Types: SIP,
+  SITE_SURVEY, RFID_ALLOCATION_CHART, ADJACENT_LAYOUT, TOC, OTHER — each with its
+  own allowed extensions. Every upload is an **immutable revision** (re-upload =
+  rev N+1; old revisions kept), with SHA-256, uploader and timestamp. Files live
+  under `UPLOAD_DIR` (default `./uploads`, max `MAX_UPLOAD_MB`, default 50).
+  Designer/admin only, draft only. Delete is refused if any tag/element/TIN
+  traces to the document or it was part of a recorded workflow snapshot.
+  UI: **Inputs** tab.
+- **FR-002 DXF import is now reachable**: `POST /stations/{id}/import-dxf` stores
+  the .dxf as a SIP/Adjacent-Layout revision and returns review candidates;
+  `GET …/documents/{doc}/dxf-candidates` re-parses with an optional chainage
+  calibration (`ref_x`, `ref_km`, `units_per_km`); `POST …/dxf-commit` writes the
+  reviewed rows **all-or-nothing**, stamped with `source_document_id`. Still no
+  auto-commit, and the layer heuristics still need real Quadrant DXFs.
+- **FR-011 traceability**: `source_document_id` on Tags/Elements/TINs (editable in
+  the API; a PUT that omits it keeps the existing link); every workflow event now
+  stores an `input_snapshot` of the current input revisions (id, rev, SHA-256).
+  `GET /stations/{id}/traceability` returns the matrix plus gaps (missing required
+  inputs, untraced tags, rows on superseded revisions). UI: **Traceability** tab.
+
+**Not yet built:** FR-001 does not *parse* the RFID Allocation Chart yet (BR-001
+still enforces range/uniqueness, not "matches the chart"); no submit gate on
+missing inputs (reported as gaps only); FR-006 configurable checklist engine;
+FR-007 / Section 11 report documents (PDF/Word); FR-008 observation tracking;
+FR-009 "Self Check" and "Railway Submission" states; Project Manager /
+Configuration Manager roles; Alembic migrations (schema upgrades still go through
+the SQLite-only `ensure_schema_up_to_date`).
 
 ## Honest limitations (read before demoing this to anyone)
 

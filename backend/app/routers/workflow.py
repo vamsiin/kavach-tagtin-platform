@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from .. import models, schemas
 from ..auth.deps import get_current_user
+from ..documents.service import snapshot_current_inputs
 from ..rules.engine import run_all_checks
 from ..notifications.email import (
     notify_checker_assigned, notify_designer_of_check_result, notify_of_approval_result,
@@ -83,6 +84,7 @@ def _do_transition(
         actor_role=event.actor_role, comment=event.comment, timestamp=event.timestamp,
         verification_fail_count=event.verification_fail_count,
         target_username=event.target_username,
+        input_snapshot=snapshot_current_inputs(db, station_id),
     ))
     db.commit()
     db.refresh(station)

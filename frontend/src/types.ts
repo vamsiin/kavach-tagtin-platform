@@ -82,6 +82,7 @@ export interface Element {
   location_km: number;
   direction: string | null;
   remarks: string | null;
+  source_document_id?: number | null;
 }
 
 export interface Tag {
@@ -99,6 +100,7 @@ export interface Tag {
   exit_set: string | null;
   is_border_tag: boolean;
   remarks: string | null;
+  source_document_id?: number | null;
 }
 
 export interface TIN {
@@ -111,6 +113,7 @@ export interface TIN {
   direction: string | null;
   is_non_kavach_territory: boolean;
   remarks: string | null;
+  source_document_id?: number | null;
 }
 
 export interface CheckResult {
@@ -182,6 +185,7 @@ export interface WorkflowEvent {
   timestamp: string;
   verification_fail_count: number | null;
   target_username: string | null;
+  input_snapshot?: InputSnapshotItem[] | null;
 }
 
 export interface WorkflowStatus {
@@ -207,3 +211,97 @@ export const ACTION_LABELS: Record<string, string> = {
   request_changes: "Request changes",
   reopen: "Reopen",
 };
+
+
+// ---- Phase 1: design inputs, DXF import, traceability ----
+export interface DocType {
+  code: string;
+  label: string;
+  extensions: string[];
+  required: boolean;
+}
+
+export interface InputDocument {
+  id: number;
+  station_id: number;
+  doc_type: string;
+  revision: number;
+  version_label: string | null;
+  original_filename: string;
+  content_type: string | null;
+  size_bytes: number;
+  sha256: string;
+  uploaded_by: string;
+  uploaded_at: string;
+  notes: string | null;
+  is_current: boolean;
+}
+
+export interface InputSnapshotItem {
+  id: number;
+  doc_type: string;
+  revision: number;
+  version_label: string | null;
+  sha256: string;
+  original_filename: string;
+}
+
+export interface DxfCandidate {
+  index: number;
+  text: string;
+  layer: string;
+  x: number;
+  y: number;
+  kind: "tag" | "element" | "unclassified";
+  suggested_location_km: number | null;
+}
+
+export interface DxfImportResult {
+  document: InputDocument;
+  candidates: DxfCandidate[];
+  warnings: string[];
+  layers: string[];
+}
+
+export interface DxfCalibration {
+  ref_x?: number;
+  ref_km?: number;
+  units_per_km?: number;
+}
+
+export interface DxfCommitPayload {
+  elements: Partial<Element>[];
+  tags: (Partial<Tag> & { linked_element_ref?: string | null })[];
+}
+
+export interface TraceDocRef {
+  id: number;
+  doc_type: string;
+  revision: number;
+  version_label: string | null;
+  original_filename: string;
+  is_current: boolean;
+}
+
+export interface TraceRow {
+  kind: "tag" | "element" | "tin";
+  id: number;
+  ref: string;
+  type: string | null;
+  location_km: number | null;
+  source: TraceDocRef | null;
+  source_outdated: boolean;
+  linked_element_ref: string | null;
+}
+
+export interface Traceability {
+  station_id: number;
+  station_name: string;
+  layout_version: string;
+  status: string;
+  inputs: InputDocument[];
+  rows: TraceRow[];
+  workflow: WorkflowEvent[];
+  gaps: string[];
+  summary: Record<string, number>;
+}

@@ -36,6 +36,7 @@ class StationORM(Base):
     tags = relationship("TagORM", back_populates="station", cascade="all, delete-orphan")
     tins = relationship("TINORM", back_populates="station", cascade="all, delete-orphan")
     revisions = relationship("RevisionORM", back_populates="station", cascade="all, delete-orphan")
+    documents = relationship("InputDocumentORM", back_populates="station", cascade="all, delete-orphan")
 
     def to_domain(self) -> domain.Station:
         return domain.Station(
@@ -74,6 +75,7 @@ class ElementORM(Base):
     location_km = Column(Float, nullable=False)
     direction = Column(String, nullable=True)
     remarks = Column(Text, nullable=True)
+    source_document_id = Column(Integer, ForeignKey("input_documents.id"), nullable=True)
 
     station = relationship("StationORM", back_populates="elements")
 
@@ -103,6 +105,7 @@ class TagORM(Base):
     exit_set = Column(String, nullable=True)
     is_border_tag = Column(Boolean, default=False)
     remarks = Column(Text, nullable=True)
+    source_document_id = Column(Integer, ForeignKey("input_documents.id"), nullable=True)
 
     station = relationship("StationORM", back_populates="tags")
 
@@ -131,6 +134,7 @@ class TINORM(Base):
     direction = Column(String, nullable=True)
     is_non_kavach_territory = Column(Boolean, default=False)
     remarks = Column(Text, nullable=True)
+    source_document_id = Column(Integer, ForeignKey("input_documents.id"), nullable=True)
 
     station = relationship("StationORM", back_populates="tins")
 
@@ -189,6 +193,12 @@ class WorkflowEventORM(Base):
     timestamp = Column(String, nullable=False)
     verification_fail_count = Column(Integer, nullable=True)
     target_username = Column(String, nullable=True)  # e.g. checker a submission was assigned to
+    # FR-011 traceability: JSON list of the CURRENT input document revisions
+    # ({id, doc_type, revision, sha256, original_filename}) at the moment of this
+    # transition. This is what lets an approval be traced back to the exact SIP /
+    # Site Survey / Allocation Chart revision it was based on, even after newer
+    # revisions of those inputs are uploaded later.
+    input_snapshot = Column(Text, nullable=True)
 
     def to_domain(self) -> domain.WorkflowEvent:
         return domain.WorkflowEvent(
@@ -200,3 +210,32 @@ class WorkflowEventORM(Base):
             target_username=self.target_username,
         )
 
+
+
+class InputDocumentORM(Base):
+    """FR-001: a design input attached to a station -- SIP drawing, Site Survey,
+    RFID Tag Allocation Chart, Adjacent Station Layout, Table of Control, or other.
+
+    Each upload is an immutable revision: re-uploading the same doc_type creates
+    revision N+1 rather than overwriting, so anything traced to revision N (a Tag
+    imported from it, a workflow snapshot that recorded it) keeps pointing at the
+    exact bytes it was derived from. sha256 is stored so that integrity can be
+    re-verified later against the file on disk.
+    """
+    __tablename__ = "input_documents"
+
+    id = Column(Integer, primary_key=True)
+    station_id = Column(Integer, ForeignKey("stations.id"), nullable=False, index=True)
+    doc_type = Column(String, nullable=False)
+    revision = Column(Integer, nullable=False)
+    version_label = Column(String, nullable=True)  # the drawing's own rev label, e.g. "SIP Rev-3"
+    original_filename = Column(String, nullable=False)
+    stored_path = Column(String, nullable=False)  # relative to UPLOAD_DIR
+    content_type = Column(String, nullable=True)
+    size_bytes = Column(Integer, nullable=False)
+    sha256 = Column(String, nullable=False)
+    uploaded_by = Column(String, nullable=False)
+    uploaded_at = Column(String, nullable=False)  # ISO-8601 UTC, same convention as WorkflowEventORM
+    notes = Column(Text, nullable=True)
+
+    station = relationship("StationORM", back_populates="documents")

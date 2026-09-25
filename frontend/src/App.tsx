@@ -11,6 +11,8 @@ import { VerificationPanel } from "./components/VerificationPanel";
 import { TocPanel } from "./components/TocPanel";
 import { WorkflowPanel } from "./components/WorkflowPanel";
 import { UsersPanel } from "./components/UsersPanel";
+import { InputsPanel } from "./components/InputsPanel";
+import { TraceabilityPanel } from "./components/TraceabilityPanel";
 import "./styles.css";
 
 export default function App() {
@@ -51,7 +53,7 @@ function MainContent() {
   const [elements, setElements] = useState<Element[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [tins, setTins] = useState<TIN[]>([]);
-  const [tab, setTab] = useState<"registers" | "verify" | "workflow" | "users">("registers");
+  const [tab, setTab] = useState<"inputs" | "registers" | "verify" | "trace" | "workflow" | "users">("registers");
 
   useEffect(() => {
     api.listStations().then(setStations).catch(console.error);
@@ -99,11 +101,17 @@ function MainContent() {
       {selected && (
         <>
           <nav className="tabs">
+            <button className={tab === "inputs" ? "active" : ""} onClick={() => setTab("inputs")}>
+              Inputs
+            </button>
             <button className={tab === "registers" ? "active" : ""} onClick={() => setTab("registers")}>
               Registers
             </button>
             <button className={tab === "verify" ? "active" : ""} onClick={() => setTab("verify")}>
               Verification
+            </button>
+            <button className={tab === "trace" ? "active" : ""} onClick={() => setTab("trace")}>
+              Traceability
             </button>
             <button className={tab === "workflow" ? "active" : ""} onClick={() => setTab("workflow")}>
               Workflow
@@ -114,6 +122,13 @@ function MainContent() {
               </button>
             )}
           </nav>
+
+          {tab === "inputs" && (
+            <InputsPanel stationId={selected.id} readOnly={readOnly} existingElements={elements}
+              onRegistersChanged={async () => { await reloadElements(); await reloadTags(); }} />
+          )}
+
+          {tab === "trace" && <TraceabilityPanel stationId={selected.id} />}
 
           {tab === "registers" && (
             <>

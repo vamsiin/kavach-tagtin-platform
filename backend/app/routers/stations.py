@@ -92,8 +92,14 @@ def delete_station(
             "still in Draft), can delete it.",
         )
 
+    # Input-document FILES live on disk, not in the DB -- the cascade removes the
+    # rows, so collect the files first and remove them after a successful commit.
+    from ..documents.service import delete_file_quietly
+    docs = list(station.documents)
     db.delete(station)
     db.commit()
+    for d in docs:
+        delete_file_quietly(d)
     return None
 
 
@@ -102,6 +108,28 @@ def _get_station_or_404(station_id: int, db: Session) -> models.StationORM:
     if not station:
         raise HTTPException(404, "Station not found")
     return station
+
+
+def _validate_source_document(station_id: int, doc_id: int | None, db: Session) -> None:
+    """source_document_id must point at an input document of THIS station --
+    otherwise a tag could claim provenance from another station's SIP."""
+    if doc_id is None:
+        return
+    doc = db.query(models.InputDocumentORM).filter_by(id=doc_id, station_id=station_id).first()
+    if not doc:
+        raise HTTPException(422, f"source_document_id {doc_id} is not an input document "
+                                 f"of this station")
+
+
+def _update_fields(payload) -> dict:
+    """PUT semantics for register rows, with one exception: source_document_id is
+    only changed when the client explicitly sends it. Older clients that don't
+    know about the field must not silently wipe a row's traceability link on
+    every edit."""
+    data = payload.model_dump()
+    if "source_document_id" not in payload.model_fields_set:
+        data.pop("source_document_id", None)
+    return data
 
 
 def _require_editable(station: models.StationORM) -> None:
@@ -129,6 +157,7 @@ def add_element(station_id: int, payload: schemas.ElementCreate, db: Session = D
         raise HTTPException(422, f"element_type must be one of {ELEMENT_TYPES}")
     station = _get_station_or_404(station_id, db)
     _require_editable(station)
+    _validate_source_document(station_id, payload.source_document_id, db)
     el = models.ElementORM(station_id=station_id, **payload.model_dump())
     db.add(el)
     db.commit()
@@ -161,7 +190,8 @@ def update_element(
     station = _get_station_or_404(station_id, db)
     _require_editable(station)
     el = _get_element_or_404(station_id, element_id, db)
-    for field, value in payload.model_dump().items():
+    _validate_source_document(station_id, payload.source_document_id, db)
+    for field, value in _update_fields(payload).items():
         setattr(el, field, value)
     db.commit()
     db.refresh(el)
@@ -201,6 +231,7 @@ def add_tag(station_id: int, payload: schemas.TagCreate, db: Session = Depends(g
         raise HTTPException(422, f"tag_type must be one of {TAG_TYPES}")
     station = _get_station_or_404(station_id, db)
     _require_editable(station)
+    _validate_source_document(station_id, payload.source_document_id, db)
     tag = models.TagORM(station_id=station_id, **payload.model_dump())
     db.add(tag)
     db.commit()
@@ -233,7 +264,8 @@ def update_tag(
     station = _get_station_or_404(station_id, db)
     _require_editable(station)
     tag = _get_tag_or_404(station_id, tag_id, db)
-    for field, value in payload.model_dump().items():
+    _validate_source_document(station_id, payload.source_document_id, db)
+    for field, value in _update_fields(payload).items():
         setattr(tag, field, value)
     db.commit()
     db.refresh(tag)
@@ -261,6 +293,7 @@ def add_tin(station_id: int, payload: schemas.TINCreate, db: Session = Depends(g
     user: models.UserORM = Depends(get_current_user)):
     station = _get_station_or_404(station_id, db)
     _require_editable(station)
+    _validate_source_document(station_id, payload.source_document_id, db)
     tin = models.TINORM(station_id=station_id, **payload.model_dump())
     db.add(tin)
     db.commit()
@@ -290,7 +323,8 @@ def update_tin(
     station = _get_station_or_404(station_id, db)
     _require_editable(station)
     tin = _get_tin_or_404(station_id, tin_id, db)
-    for field, value in payload.model_dump().items():
+    _validate_source_document(station_id, payload.source_document_id, db)
+    for field, value in _update_fields(payload).items():
         setattr(tin, field, value)
     db.commit()
     db.refresh(tin)

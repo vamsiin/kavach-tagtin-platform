@@ -1,3 +1,5 @@
+import json
+
 from pydantic import BaseModel, Field, field_validator
 from .domain import ELEMENT_TYPES, TAG_TYPES
 
@@ -30,6 +32,8 @@ class ElementCreate(BaseModel):
     location_km: float
     direction: str | None = None
     remarks: str | None = None
+    source_document_id: int | None = Field(
+        default=None, description="Input document (SIP/DXF etc.) this row was derived from -- FR-011")
 
 
 class ElementOut(ElementCreate):
@@ -53,6 +57,8 @@ class TagCreate(BaseModel):
     exit_set: str | None = None
     is_border_tag: bool = False
     remarks: str | None = None
+    source_document_id: int | None = Field(
+        default=None, description="Input document (SIP/DXF/Allocation Chart) this tag was derived from -- FR-011/BR-001")
 
     @field_validator("is_duplicate", "is_border_tag", mode="before")
     @classmethod
@@ -87,6 +93,7 @@ class TINCreate(BaseModel):
     direction: str | None = None
     is_non_kavach_territory: bool = False
     remarks: str | None = None
+    source_document_id: int | None = None
 
 
 class TINOut(TINCreate):
@@ -200,6 +207,17 @@ class WorkflowEventOut(BaseModel):
     timestamp: str
     verification_fail_count: int | None = None
     target_username: str | None = None
+    input_snapshot: list[dict] | None = None
+
+    @field_validator("input_snapshot", mode="before")
+    @classmethod
+    def _parse_snapshot(cls, v):
+        if v is None or isinstance(v, list):
+            return v
+        try:
+            return json.loads(v)
+        except (ValueError, TypeError):
+            return None
 
     @field_validator("comment", mode="before")
     @classmethod
@@ -241,3 +259,100 @@ class ResetPasswordRequest(BaseModel):
 
 class AdminResetPasswordRequest(BaseModel):
     new_password: str
+
+
+# ---------------------------------------------------------------------------
+# Phase 1: input documents, DXF import, traceability
+# ---------------------------------------------------------------------------
+class InputDocumentOut(BaseModel):
+    id: int
+    station_id: int
+    doc_type: str
+    revision: int
+    version_label: str | None = None
+    original_filename: str
+    content_type: str | None = None
+    size_bytes: int
+    sha256: str
+    uploaded_by: str
+    uploaded_at: str
+    notes: str | None = None
+    is_current: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+class DocTypeOut(BaseModel):
+    code: str
+    label: str
+    extensions: list[str]
+    required: bool
+
+
+class DxfCandidateOut(BaseModel):
+    index: int
+    text: str
+    layer: str
+    x: float
+    y: float
+    kind: str
+    suggested_location_km: float | None = None
+
+
+class DxfImportOut(BaseModel):
+    document: InputDocumentOut
+    candidates: list[DxfCandidateOut]
+    warnings: list[str]
+    layers: list[str]
+
+
+class DxfCommitTag(TagCreate):
+    # Lets a tag in the same commit batch link to an element by its ref (the
+    # element may be created in this very batch, so it has no id yet).
+    linked_element_ref: str | None = None
+
+
+class DxfCommitRequest(BaseModel):
+    elements: list[ElementCreate] = []
+    tags: list[DxfCommitTag] = []
+
+
+class DxfCommitOut(BaseModel):
+    document_id: int
+    elements_created: int
+    tags_created: int
+    element_ids: list[int]
+    tag_ids: list[int]
+
+
+class TraceDocRef(BaseModel):
+    id: int
+    doc_type: str
+    revision: int
+    version_label: str | None = None
+    original_filename: str
+    is_current: bool
+
+
+class TraceRow(BaseModel):
+    kind: str  # tag | element | tin
+    id: int
+    ref: str
+    type: str | None = None
+    location_km: float | None = None
+    source: TraceDocRef | None = None
+    source_outdated: bool = False
+    linked_element_ref: str | None = None
+
+
+class TraceabilityOut(BaseModel):
+    station_id: int
+    station_name: str
+    layout_version: str
+    status: str
+    inputs: list[InputDocumentOut]
+    rows: list[TraceRow]
+    workflow: list[WorkflowEventOut]
+    gaps: list[str]
+    summary: dict

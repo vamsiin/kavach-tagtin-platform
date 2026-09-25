@@ -183,3 +183,12 @@ body { margin: 0; background: #fafbfc; }
 .station-chip-wrap { display: inline-flex; align-items: center; gap: 0.3rem; }
 .station-chip-wrap .station-chip { margin: 0; }
 .station-chip-wrap.active .station-chip { background: var(--navy); color: white; border-color: var(--navy); }
+
+/* ---- Phase 1: inputs / DXF review / traceability ---- */
+.input-checklist { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0 0.75rem; }
+.register-table tr.row-superseded td { color: #8b8f97; }
+.register-table tr.row-warn td { background: #fdf6e3; }
+.row-actions { white-space: nowrap; }
+.row-actions .link-btn + .link-btn { margin-left: 0.6rem; }
+.link-btn.danger { color: var(--red); }
+.status-banner.warn { background: #fdf1cf; color: #8a6116; }
