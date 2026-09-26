@@ -8,3 +8,6 @@ dist/
 .env
 *.log
 uploads/
+
+# server data (DB, uploads, backups)
+data/

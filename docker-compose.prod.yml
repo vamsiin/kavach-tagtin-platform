@@ -1,0 +1,27 @@
+# Production: nginx (built frontend + /api proxy) on port 80, backend on the
+# internal Docker network only. Data (SQLite DB + uploaded files) lives in ./data
+# on the server so it can be copied in, backed up and inspected directly.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+services:
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - DATABASE_URL=sqlite:////app/data/kavach.db
+      - UPLOAD_DIR=/app/data/uploads
+    volumes:
+      - ./data:/app/data
+    expose:
+      - "8000"
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
