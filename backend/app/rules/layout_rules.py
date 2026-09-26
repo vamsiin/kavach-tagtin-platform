@@ -195,7 +195,7 @@ def _line_travel(track_id, tags, station) -> str | None:
 def check_h2_22_block_tin_extent(station: Station, elements: list[Element], tins: list[TIN],
                                  p: dict | None = None, tags: list[Tag] | None = None) -> list[CheckResult]:
     p = _params("h2_22", p)
-    title = "Block TIN extended to BSLB / Advance Starter"
+    title = "Block TIN from Advanced Starter to Home / BSLB"
     blocks = [n for n in tins if (n.section_type or "").lower() == "block" and not n.is_non_kavach_territory]
     if not blocks:
         return []
@@ -221,27 +221,35 @@ def check_h2_22_block_tin_extent(station: Station, elements: list[Element], tins
                                    f"TIN {n.tin_no}: single/double line not recorded for the adjacent station "
                                    f"on the {'lower' if below else 'higher'} km side", subject_ref=str(n.tin_no)))
             continue
-        # Double line: trains ARRIVING through the block section are received up to
-        # the BSLB, trains DEPARTING enter it at the Advanced Starter (Aler: TIN 222
-        # ends at the DN BSLB 261.978, TIN 217 starts at the DN Advanced Starter S6).
-        # Which one faces the station depends on the line's direction of travel
-        # (Nominal = increasing km). Unknown direction -> BSLB, as before.
+        # One TIN per block section: it starts at the Advanced Starter (last stop signal)
+        # of the dispatching station and ends at the Home signal or BSLB of the
+        # receiving station (QFTL, 26.09.2026). So the station-side end is the Home/BSLB
+        # where trains ARRIVE through it and the Advanced Starter where they DEPART.
+        # Aler: TIN 222 ends at the DN BSLB 261.978, TIN 217 starts at S6, TIN 221 at S25.
+        # Which applies depends on the line's direction of travel (Nominal = increasing
+        # km); when that is unknown, fall back to BSLB/Home (double) or Advance Starter
+        # (single line), as before.
         travel = _line_travel(n.track_id, tags, station)
         arriving = None if travel is None else (travel == "Nominal") == below
-        if cfg in ("Double", "Multiple"):
-            want = "Advance" if arriving is False else "BSLB"
+        if arriving is None:
+            arriving = cfg in ("Double", "Multiple")
+            side = ""
         else:
-            want = "Advance"
-        cands = [e for e in elements if e.track_id == n.track_id and want in e.element_type
-                 and (want != "Advance" or "Starter" in e.element_type)]
+            side = ", arrival end" if arriving else ", departure end"
+        if arriving:
+            cands = [e for e in elements if e.track_id == n.track_id
+                     and ("BSLB" in e.element_type or "Home" in e.element_type)]
+            target = "Home signal / BSLB"
+        else:
+            cands = [e for e in elements if e.track_id == n.track_id
+                     and "Advance" in e.element_type and "Starter" in e.element_type]
+            target = "Advanced Starter"
         best = min(cands, key=lambda e: abs(e.location_m - inner), default=None)
         ok = best is not None and abs(best.location_m - inner) <= tol
-        target = "BSLB" if want == "BSLB" else "Advanced Starter"
-        side = "" if arriving is None else (", arrival end" if arriving else ", departure end")
         out.append(CheckResult(
             "H2.22", title, "PASS" if ok else "FAIL",
             f"TIN {n.tin_no} ({cfg.lower()} line{side}) ends at {inner:g} m; "
-            + (f"{target} {best.element_ref} at {best.location_m:g} m" if best else f"no {target} recorded on this line")
+            + (f"{best.element_type} {best.element_ref} at {best.location_m:g} m" if best else f"no {target} recorded on this line")
             + ("" if ok or best is None else f" -- more than {tol:g} m apart"),
             subject_ref=str(n.tin_no)))
     return out

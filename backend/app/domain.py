@@ -30,7 +30,7 @@ SIGNAL_ELEMENT_TYPES = [
     "IB Signal-cum-Gate Inner Distant Signal", "IB Signal-cum-Distant Signal",
     "Advanced Starter-cum-IB Distant", "Starter-cum-IB Distant Signal",
     "Various types of Starter Signals", "Advance Starter-cum-Gate Distant Signal",
-    "Other Misc Signals",
+    "Shunt Signal", "Other Misc Signals",
 ]
 # Physical, non-signal elements a layout must show (Annexure-H H2.9, H2.10, H2.22,
 # H2.27): LC gates, points/turnouts (switch location), fouling marks, IB/other marker
@@ -84,7 +84,9 @@ def requires_signal_foot_tag(element_type: str) -> bool:
     Rule of thumb applied: Home signals, Starter signals (including every
     "...-cum-Starter..." combination signal, since the Starter function is itself
     a stop signal even when combined with a Distant function), Stop signals,
-    Calling-on signals, Auto/Semi-Automatic signals, Stop Board/Buffer Stop, BSLB,
+    Calling-on signals, Shunt signals (QFTL 26.09.2026: every signal, stop board and
+    shunt signal has its own S tag; a dependent shunt signal shares its main signal's),
+    Auto/Semi-Automatic signals, Stop Board/Buffer Stop, BSLB,
     and Berthing Track End are treated as requiring a foot tag (they function as
     stop/authority-limit signals). Pure Distant-signal types (including Gate/IB
     Distant combinations that do NOT also include a Starter/Home/Stop function) are
@@ -96,7 +98,7 @@ def requires_signal_foot_tag(element_type: str) -> bool:
     t = element_type
     keywords = ("Home", "Starter", "Stop Signal", "Stop Board", "Buffer Stop",
                 "Berthing Track End", "BSLB", "Calling-on", "Calling on",
-                "Auto Signal", "Semi-Automatic", "Semi Automatic")
+                "Auto Signal", "Semi-Automatic", "Semi Automatic", "Shunt")
     return any(k in t for k in keywords)
 
 

@@ -204,7 +204,14 @@ def test_h2_22_double_line_arrival_and_departure():
     assert res["222"].status == "PASS" and "arrival end" in res["222"].message and "BSLB" in res["222"].message
     assert res["217"].status == "PASS" and "departure end" in res["217"].message and "S6" in res["217"].message
     assert res["221"].status == "PASS" and "S25" in res["221"].message
-    assert res["218"].status == "FAIL" and "no BSLB recorded" in res["218"].message
+    assert res["218"].status == "FAIL" and "no Home signal / BSLB recorded" in res["218"].message
+    # a Home signal at the arrival end also closes the block section
+    els.append(Element(id=4, element_ref="S29", element_type="Main Home without Junction Route Indicator",
+                       location_m=263145, track_id=2))
+    r = {x.subject_ref: x for x in check_h2_22_block_tin_extent(
+        Station(id=1, name="Aler", kavach_station_id="103", centre_line_m=262750, tracks=[dn, up], adjacent=adj),
+        els, tins, None, tags)}["218"]
+    assert r.status == "PASS" and "S29" in r.message
 
 
 def test_h2_6_calling_on_shares_home_post():

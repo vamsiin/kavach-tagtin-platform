@@ -43,6 +43,7 @@ export const SIGNAL_ELEMENT_TYPES = [
   "Starter-cum-IB Distant Signal",
   "Various types of Starter Signals",
   "Advance Starter-cum-Gate Distant Signal",
+  "Shunt Signal",
   "Other Misc Signals",
 ] as const;
 

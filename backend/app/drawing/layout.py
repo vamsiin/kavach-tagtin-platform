@@ -236,11 +236,11 @@ def _plan(s: Scene, d: DrawingData) -> None:
             unknown.add(n.color or "(blank)")
             rgb = (190, 190, 190)
         xa, xb = ax(min(n.start_m, n.end_m)), ax(max(n.start_m, n.end_m))
-        label = f"TIN {n.tin_no}" + (" Block" if (n.section_type or "").lower() == "block" else "") \
+        label = f"N-{n.tin_no}" + (" Block" if (n.section_type or "").lower() == "block" else "") \
             + f" ({'White' if n.non_kavach else n.color or '-'})"
         # full caption when it fits between the boundary tags, else just the number
         if len(label) * 0.62 * 1.9 > xb - xa - 5:
-            label = f"TIN {n.tin_no}"
+            label = f"N-{n.tin_no}"
         s.add(Rect(xa, y - BAND / 2, xb - xa, BAND, "TINS", stroke=INK, fill=rgb, width=0.15),
               Text((xa + xb) / 2, y + 2.4, label, 1.9, "TINS", anchor="middle", bold=True))
     if unknown:

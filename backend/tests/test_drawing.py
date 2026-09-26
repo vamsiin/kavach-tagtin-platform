@@ -62,7 +62,7 @@ def test_sheet_content():
     assert drawing_number(aler()) == "RFID_TAG_LAYOUT_ALER_2.0.3" and "RFID_TAG_LAYOUT_ALER_2.0.3" in joined
     assert any(x.startswith("R-862 / R-863") for x in t)            # co-located pair: one symbol, one label
     assert not any(x.startswith("R-863 ") for x in t)
-    assert any("TIN 222" in x for x in t)
+    assert any("N-222" in x for x in t)
     assert any("not recognised" in x and "Mauve-ish" in x for x in t)
     assert any("Not placed on a line" in x and "R-999" in x for x in t)
     assert "SIP Down = Nominal, SIP Up = Reverse" in joined
@@ -132,7 +132,7 @@ def test_drawing_endpoint(client, h):
     r = client.get(f"/stations/{sid}/drawing", headers=h["dana"])
     assert r.status_code == 200 and r.headers["content-type"].startswith("image/svg+xml")
     svg = r.text
-    assert "R-793" in svg and "TIN 171" in svg and "Dana D" in svg        # self-check -> "Prepared"
+    assert "R-793" in svg and "N-171" in svg and "Dana D" in svg        # self-check -> "Prepared"
     assert "content-disposition" not in r.headers                         # preview, not a download
     r = client.get(f"/stations/{sid}/drawing", params={"format": "pdf"}, headers=h["dana"])
     assert r.status_code == 200 and r.content[:5] == b"%PDF-"

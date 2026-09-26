@@ -26,7 +26,8 @@ def build_data(db: Session, st: models.StationORM, user: models.UserORM) -> Draw
         station_name=st.name, kavach_station_id=st.kavach_station_id,
         sip_drawing_number=st.sip_drawing_number or "", layout_version=st.layout_version,
         zone=f"{ws.code} - {ws.name}" if ws is not None else "", dn_direction=ws.dn_direction if ws else "Nominal",
-        drawn_to_scale=bool(st.drawn_to_scale), centre_line_m=st.centre_line_m,
+        drawn_to_scale=False,   # the generated sheet's chainage axis is always compressed (H2.26)
+        centre_line_m=st.centre_line_m,
         generated_at=datetime.now(timezone.utc).isoformat(), generated_by=user.full_name or user.username)
     d.tracks = [DTrack(t.id, t.name, t.start_m, t.end_m, t.is_kavach is not False) for t in st.tracks]
     d.tins = [DTin(n.tin_no, n.start_m, n.end_m, n.track_id, n.color, n.section_type,
