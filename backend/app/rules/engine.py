@@ -115,9 +115,12 @@ def check_h2_5_normal_tag_spacing(tags: list[Tag], p: dict | None = None) -> lis
         [t for t in tags if t.tag_type in p["tag_types"]],
         key=lambda t: (t.direction or "", t.location_m),
     )
-    by_dir: dict[str, list[Tag]] = {}
+    # Consecutive along one line and direction: a loop's tags are not "between" a main
+    # line's (Aler: R-835 on the common loop is not followed by R-885 on DN MAIN).
+    # Tags with no line recorded keep the old per-direction grouping.
+    by_dir: dict[tuple, list[Tag]] = {}
     for t in normals:
-        by_dir.setdefault(t.direction or "?", []).append(t)
+        by_dir.setdefault((getattr(t, "track_id", None), t.direction or "?"), []).append(t)
 
     for direction, group in by_dir.items():
         for prev, curr in zip(group, group[1:]):

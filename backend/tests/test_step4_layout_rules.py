@@ -165,3 +165,18 @@ def test_h2_22_side_by_midpoint_aler():
                                 tin(217, 263275, 265279, 1, "Black", section="Block")])}
     assert res["222"].status == "PASS" and "ends at 262910" in res["222"].message
     assert res["217"].status == "PASS" and "ends at 263275" in res["217"].message
+
+
+def test_h2_5_spacing_per_line():
+    """Aler: R-835 on the common loop and R-885 on DN MAIN are both Nominal but are not
+    consecutive tags -- spacing is measured along each line."""
+    from app.rules.engine import check_h2_5_normal_tag_spacing
+    tags = [tag(1, "R-835", "N", 263026, track=2, direction="Nominal"),
+            tag(2, "R-885", "N", 264074, track=1, direction="Nominal"),
+            tag(3, "R-883", "N", 263574, track=1, direction="Nominal")]
+    res = check_h2_5_normal_tag_spacing(tags)
+    assert [(r.subject_ref, r.status) for r in res] == [("R-885", "PASS")]
+    # no line recorded -> grouped by direction as before
+    loose = [tag(1, "R-835", "N", 263026, track=None, direction="Nominal"),
+             tag(2, "R-885", "N", 264100, track=None, direction="Nominal")]
+    assert [r.status for r in check_h2_5_normal_tag_spacing(loose)] == ["FAIL"]

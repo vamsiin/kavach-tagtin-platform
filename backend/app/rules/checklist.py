@@ -77,7 +77,7 @@ def _register_builtins():
        {}, [], lambda st, el, tg, tn, p: E.check_h2_1_version_control(st))
     _b("h2_2", "H2.2", "Station identifiers present", "Stationary KAVACH ID and SIP drawing number present.",
        {}, [], lambda st, el, tg, tn, p: E.check_h2_2_identifiers(st))
-    _b("h2_5", "H2.5", "Normal tag spacing", "Maximum gap between consecutive Normal tags, per direction.",
+    _b("h2_5", "H2.5", "Normal tag spacing", "Maximum gap between consecutive Normal tags, per line and direction.",
        {"max_gap_m": 1000, "tag_types": ["N"]},
        [P("max_gap_m", "number", "Maximum gap (m)", min=0),
         P("tag_types", "tag_types", "Tag types", options=TAG_TYPE_OPTS)],
