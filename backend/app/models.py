@@ -99,6 +99,8 @@ class StationORM(Base):
     changes = relationship("StationChangeORM", back_populates="station", cascade="all, delete-orphan")
     baselines = relationship("BaselineORM", back_populates="station", cascade="all, delete-orphan")
     workspace = relationship("WorkspaceORM")
+    deviations = relationship("CheckDeviationORM", back_populates="station", cascade="all, delete-orphan",
+                              order_by="CheckDeviationORM.id")
     tracks = relationship("TrackORM", back_populates="station", cascade="all, delete-orphan",
                           order_by="TrackORM.sort_order, TrackORM.id")
     adjacent_stations = relationship("AdjacentStationORM", back_populates="station",
@@ -620,6 +622,29 @@ class ChecklistResponseORM(Base):
     layout_version = Column(String, nullable=True)
 
     station = relationship("StationORM", back_populates="checklist_responses")
+
+
+class CheckDeviationORM(Base):
+    """An automated check result accepted as a station-specific deviation. Station
+    designs and TIN allocations follow the station's Signal Interlocking Plan (SIP) and
+    LC gate arrangements, so a general Annexure-H / New-TAN rule can legitimately not
+    fit one location (Aler: block TIN 218 ends at 263.145, not at the S29 home). The
+    designer records why, with the SIP / LC reference; the result then shows as
+    DEVIATION instead of FAIL and no longer blocks self-check. The checker and approver
+    see every deviation in the verification results and reports."""
+    __tablename__ = "check_deviations"
+
+    id = Column(Integer, primary_key=True)
+    station_id = Column(Integer, ForeignKey("stations.id"), nullable=False, index=True)
+    clause = Column(String, nullable=False)
+    subject_ref = Column(String, nullable=True)      # None = a station-level result
+    reason = Column(Text, nullable=False)
+    reference = Column(String, nullable=True)        # SIP / LC document reference
+    created_by = Column(String, nullable=False)
+    created_by_role = Column(String, nullable=False)
+    created_at = Column(String, nullable=False)
+
+    station = relationship("StationORM", back_populates="deviations")
 
 
 class StationChangeORM(Base):

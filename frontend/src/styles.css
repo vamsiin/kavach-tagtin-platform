@@ -74,6 +74,8 @@ body { margin: 0; background: #fafbfc; }
 .badge.fail { background: #fbdcd7; color: var(--red); }
 .badge.warn { background: #fdf1cf; color: #8a6116; }
 .badge.na { background: #e5e7eb; color: #555; }
+.badge.deviation { background: #e8e1f7; color: #5b3fa0; }
+.row-deviation td { background: #faf8fe; }
 
 .status-banner {
   padding: 0.6rem 0.9rem; border-radius: 6px; font-weight: 600; margin: 0.75rem 0; font-size: 0.9rem;

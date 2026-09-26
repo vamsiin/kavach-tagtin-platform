@@ -261,7 +261,7 @@ function MainContent() {
 
           {tab === "verify" && (
             <>
-              <VerificationPanel stationId={selected.id}
+              <VerificationPanel stationId={selected.id} canRecordDeviations={!readOnly}
                 onRaiseObservation={isReviewer && selected.status !== "railway_submitted" ? raiseFromCheck : undefined} />
               <ManualChecklistPanel stationId={selected.id} stationStatus={selected.status} />
               <TocPanel stationId={selected.id} />

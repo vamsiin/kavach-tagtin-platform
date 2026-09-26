@@ -98,7 +98,10 @@ def _run_verification(station_id: int, db: Session):
     tags = [t.to_domain() for t in db.query(models.TagORM).filter_by(station_id=station_id).all()]
     tins = [t.to_domain() for t in db.query(models.TINORM).filter_by(station_id=station_id).all()]
     from ..rules.store import active_rules
-    return run_all_checks(station_orm.to_domain(), elements, tags, tins, rules=active_rules(db, station_orm.workspace_id))
+    from ..deviations import apply as apply_deviations
+    report = run_all_checks(station_orm.to_domain(), elements, tags, tins, rules=active_rules(db, station_orm.workspace_id))
+    apply_deviations(report, list(station_orm.deviations))
+    return report
 
 
 def _user_email(username: str | None, db: Session) -> str:
@@ -393,6 +396,7 @@ def _layout_snapshot(station: models.StationORM, db: Session) -> str:
         "elements": with_line(rows(models.ElementORM, cols(models.ElementORM))),
         "tags": with_line(rows(models.TagORM, cols(models.TagORM))),
         "tins": with_line(rows(models.TINORM, cols(models.TINORM))),
+        "deviations": rows(models.CheckDeviationORM, cols(models.CheckDeviationORM)),
     }, default=str)
 
 

@@ -20,7 +20,7 @@ from ..domain import (
     requires_signal_foot_tag, is_starter_signal_eligible_for_h2_7_exception,
 )
 
-Status = Literal["PASS", "FAIL", "WARN", "NA"]
+Status = Literal["PASS", "FAIL", "WARN", "NA", "DEVIATION"]
 
 
 @dataclass
@@ -59,6 +59,7 @@ class VerificationReport:
             "total_checks": len(self.results),
             "fail_count": self.fail_count,
             "warn_count": self.warn_count,
+            "deviation_count": sum(1 for r in self.results if r.status == "DEVIATION"),
             "clauses_checked": sorted(by_clause.keys()),
             "clauses_failing": sorted(c for c, rs in by_clause.items()
                                        if any(r.status == "FAIL" for r in rs)),

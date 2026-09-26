@@ -80,6 +80,8 @@ def dashboard(workspace_id: int | None = None, db: Session = Depends(get_db),
         rep = run_all_checks(st.to_domain(),
                              [e.to_domain() for e in st.elements], [t.to_domain() for t in st.tags],
                              [n.to_domain() for n in st.tins], rules=rules)
+        from ..deviations import apply as apply_deviations
+        apply_deviations(rep, list(st.deviations))
         blocking = obsrules.blocking_counts([(o.status, o.severity) for o in st.observations])
         current = docsvc.current_documents(db, st.id)
         missing = [c for c in docsvc.REQUIRED_DOC_TYPES if c not in current]
@@ -199,6 +201,8 @@ def create_baseline(station_id: int, payload: schemas.BaselineCreate,
     rep = run_all_checks(st.to_domain(), [e.to_domain() for e in st.elements],
                          [t.to_domain() for t in st.tags], [n.to_domain() for n in st.tins],
                          rules=active_rules(db, st.workspace_id))
+    from ..deviations import apply as apply_deviations
+    apply_deviations(rep, list(st.deviations))
     row = models.BaselineORM(
         station_id=st.id, label=label, layout_version=st.layout_version, station_status=st.status,
         notes=(payload.notes or "").strip() or None, layout_snapshot=_layout_snapshot(st, db),
@@ -218,12 +222,21 @@ def _index(snapshot: dict) -> dict[str, dict]:
         out[f"line {t['name']}"] = t
     for a in snapshot.get("adjacent_stations", []):
         out[f"adjacent station {a['name']} ({a['side']})"] = a
-    for e in snapshot.get("elements", []):
-        out[f"element {e['element_ref']}"] = e
+    def keyed(rows, label, field):
+        # the same name can sit on two lines (Aler: TIN 169 on DN MAIN and COMMON LOOP,
+        # stop board SB on UP MAIN and UP LOOP) -- then the line is part of the key
+        seen = {}
+        for r in rows:
+            seen[r[field]] = seen.get(r[field], 0) + 1
+        for r in rows:
+            k = f"{label} {r[field]}" + (f" on {r.get('track') or '-'}" if seen[r[field]] > 1 else "")
+            out[k] = r
+    keyed(snapshot.get("elements", []), "element", "element_ref")
     for t in snapshot.get("tags", []):
         out[f"tag {t['tag_ref']}"] = t
-    for n in snapshot.get("tins", []):
-        out[f"TIN {n['tin_no']}"] = n
+    keyed(snapshot.get("tins", []), "TIN", "tin_no")
+    for d in snapshot.get("deviations", []):
+        out[f"deviation {d['clause']} {d.get('subject_ref') or '(station)'}"] = d
     return out
 
 

@@ -329,6 +329,25 @@ class VerificationReportOut(BaseModel):
     manual_clauses: dict[str, str]
     checklist_version: int | None = None   # FR-006 configuration version used
     rules_disabled: list[str] = []         # automated rules switched off by an admin
+    deviations_unused: list[str] = []      # recorded deviations that no longer match a failing check
+
+
+class DeviationIn(BaseModel):
+    clause: str = Field(min_length=1)
+    subject_ref: str | None = None
+    reason: str = Field(min_length=5, description="Why the rule does not fit this station")
+    reference: str | None = Field(default=None, description="SIP / LC document reference")
+
+
+class DeviationOut(DeviationIn):
+    id: int
+    created_by: str
+    created_by_role: str
+    created_at: str
+    in_use: bool = True
+
+    class Config:
+        from_attributes = True
 
 
 class ChainCheckResultOut(BaseModel):

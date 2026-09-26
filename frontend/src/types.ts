@@ -176,9 +176,22 @@ export interface TIN {
 export interface CheckResult {
   clause: string;
   title: string;
-  status: "PASS" | "FAIL" | "WARN" | "NA";
+  status: "PASS" | "FAIL" | "WARN" | "NA" | "DEVIATION";
   message: string;
   subject_ref: string | null;
+}
+
+/** A failing automated check accepted as fitting this station's SIP / LC arrangement. */
+export interface CheckDeviation {
+  id: number;
+  clause: string;
+  subject_ref: string | null;
+  reason: string;
+  reference: string | null;
+  created_by: string;
+  created_by_role: string;
+  created_at: string;
+  in_use: boolean;
 }
 
 export interface VerificationReport {
@@ -187,12 +200,14 @@ export interface VerificationReport {
     total_checks: number;
     fail_count: number;
     warn_count: number;
+    deviation_count?: number;
     clauses_checked: string[];
     clauses_failing: string[];
   };
   manual_clauses: Record<string, string>;
   checklist_version?: number | null;
   rules_disabled?: string[];
+  deviations_unused?: string[];
 }
 
 export interface ChainCheckResult {

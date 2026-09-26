@@ -1,7 +1,7 @@
 import type {
   Station, Element, Tag, TIN, Track, AdjacentStation,
   Workspace,
-  AllotmentChart, AllotmentChartDetail, AllotmentParse, AllotmentRow, StationAllotment, VerificationReport, ToCCrossValidation,
+  AllotmentChart, AllotmentChartDetail, AllotmentParse, AllotmentRow, StationAllotment, VerificationReport, CheckDeviation, ToCCrossValidation,
   User, TokenResponse, WorkflowStatus,
   RailwaySubmission, RailwaySubmitPayload,
   Observation, ObservationSummary, ObservationDraft,
@@ -186,6 +186,12 @@ export const api = {
 
   verifyStation: (stationId: number) =>
     request<VerificationReport>(`/stations/${stationId}/verify`),
+  listDeviations: (stationId: number) =>
+    request<CheckDeviation[]>(`/stations/${stationId}/deviations`),
+  addDeviation: (stationId: number, payload: { clause: string; subject_ref: string | null; reason: string; reference: string | null }) =>
+    request<CheckDeviation>(`/stations/${stationId}/deviations`, { method: "POST", body: JSON.stringify(payload) }),
+  deleteDeviation: (stationId: number, devId: number) =>
+    request<void>(`/stations/${stationId}/deviations/${devId}`, { method: "DELETE" }),
 
   verifyAgainstToc: (stationId: number, file: File) => {
     const form = new FormData();

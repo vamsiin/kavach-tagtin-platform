@@ -40,6 +40,8 @@ def verify_station(station_id: int, db: Session = Depends(get_db),
     st_orm = db.get(models.StationORM, station_id)
     rules = store.active_rules(db, st_orm.workspace_id if st_orm else None)
     report = run_all_checks(station, elements, tags, tins, rules=rules)
+    from ..deviations import apply as apply_deviations
+    unused = apply_deviations(report, list(st_orm.deviations)) if st_orm else []
     manual = {r.clause: r.description or r.title for r in rules if r.kind == "manual" and r.enabled}
     return schemas.VerificationReportOut(
         results=[schemas.CheckResultOut(**vars(r)) for r in report.results],
@@ -47,6 +49,7 @@ def verify_station(station_id: int, db: Session = Depends(get_db),
         manual_clauses=manual,
         checklist_version=store.config_version(db),
         rules_disabled=[f"{r.clause} {r.title}" for r in rules if not r.enabled and r.kind != "manual"],
+        deviations_unused=[f"{d.clause} {d.subject_ref or ''}".strip() for d in unused],
     )
 
 

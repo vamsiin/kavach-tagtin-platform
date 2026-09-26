@@ -124,9 +124,12 @@ def _new(ctx: Ctx, code: str) -> Report:
 
 
 def _verify(ctx: Ctx):
-    return run_all_checks(ctx.station.to_domain(), [e.to_domain() for e in ctx.elements],
-                          [t.to_domain() for t in ctx.tags], [n.to_domain() for n in ctx.tins],
-                          rules=ctx.rules)
+    from ..deviations import apply as apply_deviations
+    rep = run_all_checks(ctx.station.to_domain(), [e.to_domain() for e in ctx.elements],
+                         [t.to_domain() for t in ctx.tags], [n.to_domain() for n in ctx.tins],
+                         rules=ctx.rules)
+    apply_deviations(rep, list(ctx.station.deviations))
+    return rep
 
 
 def _manual_rows(ctx: Ctx) -> list[list[str]]:
@@ -257,6 +260,7 @@ def build_verification(ctx: Ctx) -> Report:
     ok = rep.fail_count == 0
     r.add(Banner(f"All {s['total_checks']} automated checks passed"
                  + (f" ({rep.warn_count} warning(s))" if rep.warn_count else "")
+                 + (f"; {s['deviation_count']} accepted as station deviation(s)" if s.get("deviation_count") else "")
                  if ok else f"{rep.fail_count} of {s['total_checks']} automated checks FAILED "
                  f"- clauses {', '.join(s['clauses_failing'])}", "ok" if ok and not rep.warn_count
                  else "warn" if ok else "fail"))
@@ -264,6 +268,7 @@ def build_verification(ctx: Ctx) -> Report:
         ("Standard", "RDSO/SPN/196/2020 Annexure-H (Amdt-5) and BRD FR-004"),
         ("Checks run", str(s["total_checks"])),
         ("Failures / warnings", f"{rep.fail_count} / {rep.warn_count}"),
+        ("Accepted station deviations", str(s.get("deviation_count", 0))),
         ("Clauses checked", ", ".join(s["clauses_checked"]) or "-"),
         ("Registers", f"{len(ctx.elements)} elements, {len(ctx.tags)} tags, {len(ctx.tins)} TINs"),
         ("Checklist configuration", f"version {ctx.checklist_version}"),
@@ -302,7 +307,8 @@ def build_compliance(ctx: Ctx) -> Report:
     rows = []
     for clause in sorted(by):
         c = by[clause]
-        verdict = "FAIL" if c["FAIL"] else "WARN" if c["WARN"] else "PASS"
+        verdict = ("FAIL" if c["FAIL"] else "WARN" if c["WARN"] else
+                   "DEVIATION" if c.get("DEVIATION") else "PASS")
         rows.append([clause, c["title"], verdict, str(c["PASS"]), str(c["FAIL"]), str(c["WARN"])])
     for i in ctx.manual:
         mr, resp = i["rule"], i["response"]
