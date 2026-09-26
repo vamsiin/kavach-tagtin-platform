@@ -135,13 +135,20 @@ def test_new_tan_rules():
     l_unlinked = tag(4, "L-2", "L", 5100)
     res = check_tan_adjacent_line_tag([l_ok, l_unlinked], [lss])
     assert [r.status for r in res] == ["PASS", "FAIL"] and "link it" in res[1].message
-    # Aler: next two tags 75 m after the A tag (0.5 x 130 + 10 = 75)
-    a = tag(5, "R-862", "A", 261144, direction="Nominal")
-    n1, n2 = tag(6, "R-864", "N", 261180, direction="Nominal"), tag(7, "R-866", "N", 261219, direction="Nominal")
-    r = check_tan_after_adjustment([a, n1, n2])[0]
-    assert r.status == "PASS" and "within 75 m" in r.title
-    assert check_tan_after_adjustment([a, n1])[0].status == "FAIL"
-    assert check_tan_after_adjustment([a, n1, n2], {"max_speed_kmph": 110, "normal_tags": 2})[0].status == "FAIL"
+    # Aler (QFTL 26.09.2026): R-862 at ABS-1 261.083 (UP, towards decreasing km);
+    # R-864 follows 14 m on, R-866 75 m after that -- each within 0.5 x 130 + 10 = 75 m
+    a = tag(5, "R-862", "A", 261083, direction="Reverse")
+    n1, n2 = tag(6, "R-864", "N", 261069, direction="Reverse"), tag(7, "R-866", "N", 260994, direction="Reverse")
+    behind = tag(8, "R-860", "L", 261724, direction="Reverse")     # before the A tag: ignored
+    r = check_tan_after_adjustment([a, n1, n2, behind])[0]
+    assert r.status == "PASS" and "R-864 +14 m, R-866 +75 m" in r.message
+    assert check_tan_after_adjustment([a, n1])[0].status == "FAIL"          # only one tag follows
+    r = check_tan_after_adjustment([a, n1, n2], {"max_speed_kmph": 110, "normal_tags": 2})[0]
+    assert r.status == "FAIL" and "R-866 is 75 m after R-864" in r.message   # reach 65 m
+    # Aler-PBP IB: R-917 75 m after R-915, but R-919 500 m after R-917
+    pa = tag(9, "R-915", "A", 267525, direction="Nominal")
+    assert check_tan_after_adjustment([pa, tag(10, "R-917", "N", 267600, direction="Nominal"),
+                                       tag(11, "R-919", "N", 268100, direction="Nominal")])[0].status == "FAIL"
 
 
 def test_registered_and_run_by_default():

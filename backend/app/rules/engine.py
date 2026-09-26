@@ -104,12 +104,12 @@ def check_h2_2_identifiers(station: Station) -> list[CheckResult]:
 
 
 # ---------------------------------------------------------------------------
-# H2.5 Normal tag spacing <= 1000m between consecutive Normal tags
+# H2.5 Tag spacing <= 1000m between consecutive en-route tags (all types by default)
 # ---------------------------------------------------------------------------
 def check_h2_5_normal_tag_spacing(tags: list[Tag], p: dict | None = None) -> list[CheckResult]:
     p = _params("h2_5", p)
     mx = p["max_gap_m"]
-    title = f"Normal tag spacing <= {mx:g}m"
+    title = f"Tag spacing <= {mx:g}m"
     results = []
     normals = sorted(
         [t for t in tags if t.tag_type in p["tag_types"]],

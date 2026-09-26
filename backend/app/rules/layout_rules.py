@@ -318,23 +318,41 @@ def check_tan_adjacent_line_tag(tags: list[Tag], elements: list[Element], p: dic
 
 
 def check_tan_after_adjustment(tags: list[Tag], p: dict | None = None) -> list[CheckResult]:
+    """After an adjustment (A) tag, the next tags in the direction of travel must follow
+    at no more than (0.5 x max section speed + 10) m each: the first within that
+    distance of the A tag, each later one within that distance of the one before
+    (QFTL 26.09.2026 -- Aler: R-862 at 261.083 (ABS-1, the physical location),
+    R-864 14 m on, R-866 75 m after that). All tag types count."""
     p = _params("tan_after_a", p)
     reach = 0.5 * p["max_speed_kmph"] + 10
     need = int(p["normal_tags"])
-    title = f"{need} Normal tags within {reach:g} m of an adjustment tag"
+    title = f"Next {need} tags each within {reach:g} m after an adjustment tag"
     out = []
     for a in tags:
         if a.tag_type != "A":
             continue
-        near = [t for t in tags if t.tag_type == "N" and t.id != a.id
+        same = [t for t in tags if t.id != a.id
                 and (a.track_id is None or t.track_id in (None, a.track_id))
-                and (a.direction is None or t.direction in (None, a.direction))
-                and 0 < abs(t.location_m - a.location_m) <= reach]
-        ok = len(near) >= need
+                and (a.direction is None or t.direction in (None, a.direction))]
+        if a.direction == "Reverse":        # travel towards decreasing km
+            ahead = sorted((t for t in same if t.location_m < a.location_m), key=lambda t: -t.location_m)
+        elif a.direction == "Nominal":
+            ahead = sorted((t for t in same if t.location_m > a.location_m), key=lambda t: t.location_m)
+        else:
+            ahead = sorted((t for t in same if t.location_m != a.location_m),
+                           key=lambda t: abs(t.location_m - a.location_m))
+        chain, prev, bad = [], a, None
+        for t in ahead[:need]:
+            gap = abs(t.location_m - prev.location_m)
+            chain.append(f"{t.tag_ref} +{gap:g} m")
+            if gap > reach and bad is None:
+                bad = f"{t.tag_ref} is {gap:g} m after {prev.tag_ref}"
+            prev = t
+        ok = len(chain) >= need and bad is None
+        why = bad or ("" if len(chain) >= need else f"only {len(chain)} tag(s) follow it on this line")
         out.append(CheckResult("TAN-3", title, "PASS" if ok else "FAIL",
-                               f"{a.tag_ref}: {len(near)} Normal tag(s) within {reach:g} m"
-                               + (f" ({', '.join(t.tag_ref for t in near[:4])})" if near else ""),
-                               subject_ref=a.tag_ref))
+                               f"{a.tag_ref}: " + (", ".join(chain) if chain else "no tags follow it")
+                               + (f" -- {why}" if why else ""), subject_ref=a.tag_ref))
     return out
 
 

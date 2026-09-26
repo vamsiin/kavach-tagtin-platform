@@ -77,8 +77,9 @@ def _register_builtins():
        {}, [], lambda st, el, tg, tn, p: E.check_h2_1_version_control(st))
     _b("h2_2", "H2.2", "Station identifiers present", "Stationary KAVACH ID and SIP drawing number present.",
        {}, [], lambda st, el, tg, tn, p: E.check_h2_2_identifiers(st))
-    _b("h2_5", "H2.5", "Normal tag spacing", "Maximum gap between consecutive Normal tags, per line and direction.",
-       {"max_gap_m": 1000, "tag_types": ["N"]},
+    _b("h2_5", "H2.5", "Tag spacing", "Maximum gap between consecutive en-route tags of all types, per line "
+       "and direction (QFTL 26.09.2026).",
+       {"max_gap_m": 1000, "tag_types": list(TAG_TYPES)},
        [P("max_gap_m", "number", "Maximum gap (m)", min=0),
         P("tag_types", "tag_types", "Tag types", options=TAG_TYPE_OPTS)],
        lambda st, el, tg, tn, p: E.check_h2_5_normal_tag_spacing(tg, p))
@@ -164,11 +165,12 @@ def _register_builtins():
        {"min_m": 90, "max_m": 110},
        [P("min_m", "number", "Minimum (m)", min=0), P("max_m", "number", "Maximum (m)", min=0)],
        lambda st, el, tg, tn, p: L.check_tan_adjacent_line_tag(tg, el, p))
-    _b("tan_after_a", "TAN-3", "Normal tags after an adjustment tag",
-       "New-TAN rule: Normal tags within (0.5 x max section speed + 10) m of each adjustment (A) tag.",
+    _b("tan_after_a", "TAN-3", "Tags after an adjustment tag",
+       "New-TAN rule: after each adjustment (A) tag, the next tags follow at no more than "
+       "(0.5 x max section speed + 10) m each (A tag at its ABS-1 physical location).",
        {"max_speed_kmph": 130, "normal_tags": 2},
        [P("max_speed_kmph", "number", "Max section speed (km/h)", min=1),
-        P("normal_tags", "int", "Normal tags required", min=1)],
+        P("normal_tags", "int", "Tags required after the A tag", min=1)],
        lambda st, el, tg, tn, p: L.check_tan_after_adjustment(tg, p))
     _b("dir_conv", "DIR-CONV", "Tag direction matches its signal",
        "A tag linked to a signal runs in the signal's direction, using the workspace's convention "
