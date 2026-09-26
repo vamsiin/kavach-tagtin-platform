@@ -237,7 +237,7 @@ def check_h2_22_block_tin_extent(station: Station, elements: list[Element], tins
         best = min(cands, key=lambda e: abs(e.location_m - inner), default=None)
         ok = best is not None and abs(best.location_m - inner) <= tol
         target = "BSLB" if want == "BSLB" else "Advanced Starter"
-        side = "" if arriving is None else (" (arrival end)" if arriving else " (departure end)")
+        side = "" if arriving is None else (", arrival end" if arriving else ", departure end")
         out.append(CheckResult(
             "H2.22", title, "PASS" if ok else "FAIL",
             f"TIN {n.tin_no} ({cfg.lower()} line{side}) ends at {inner:g} m; "
