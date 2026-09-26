@@ -205,3 +205,16 @@ def test_h2_22_double_line_arrival_and_departure():
     assert res["217"].status == "PASS" and "departure end" in res["217"].message and "S6" in res["217"].message
     assert res["221"].status == "PASS" and "S25" in res["221"].message
     assert res["218"].status == "FAIL" and "no BSLB recorded" in res["218"].message
+
+
+def test_h2_6_calling_on_shares_home_post():
+    from app.rules.engine import check_h2_6_signal_foot_tags
+    els = [Element(id=1, element_ref="S1", element_type="Main Home without Junction Route Indicator",
+                   location_m=261789, track_id=1),
+           Element(id=2, element_ref="S1A", element_type="Calling-on Signal", location_m=261789, track_id=1),
+           Element(id=3, element_ref="S29A", element_type="Calling-on Signal", location_m=263325, track_id=2)]
+    res = {r.subject_ref: r for r in check_h2_6_signal_foot_tags(
+        els, [tag(1, "R-783", "S", 261789, linked_element_id=1)])}
+    assert res["S1"].status == "PASS"
+    assert res["S1A"].status == "PASS" and "S1 on the same post" in res["S1A"].message
+    assert res["S29A"].status == "FAIL"

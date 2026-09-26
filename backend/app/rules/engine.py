@@ -146,14 +146,21 @@ def check_h2_5_normal_tag_spacing(tags: list[Tag], p: dict | None = None) -> lis
 def check_h2_6_signal_foot_tags(elements: list[Element], tags: list[Tag]) -> list[CheckResult]:
     results = []
     linked_element_ids = {t.linked_element_id for t in tags if t.tag_type == "S" and t.linked_element_id}
+    linked = [e for e in elements if e.id in linked_element_ids]
     for el in elements:
         if not requires_signal_foot_tag(el.element_type):
             continue
         ok = el.id in linked_element_ids
+        # a calling-on signal on the home signal's post shares its foot tag (Aler: S1A
+        # with S1 at 261.789, S29A with S29 at 263.325)
+        post = None if ok else next((e for e in linked if e.id != el.id and e.track_id == el.track_id
+                                     and abs(e.location_m - el.location_m) < 1), None)
+        msg = ("has a linked Signal Foot Tag" if ok else
+               f"shares the Signal Foot Tag of {post.element_ref} on the same post" if post else
+               "has NO linked Signal Foot Tag")
         results.append(CheckResult(
-            "H2.6", "Signal Foot Tag present", "PASS" if ok else "FAIL",
-            f"{el.element_type} '{el.element_ref}' "
-            + ("has a linked Signal Foot Tag" if ok else "has NO linked Signal Foot Tag"),
+            "H2.6", "Signal Foot Tag present", "PASS" if ok or post else "FAIL",
+            f"{el.element_type} '{el.element_ref}' " + msg,
             subject_ref=el.element_ref,
         ))
     return results
