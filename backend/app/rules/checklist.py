@@ -148,9 +148,9 @@ def _register_builtins():
        {"max_distance_m": 300}, [P("max_distance_m", "number", "Exit tag within (m) of the points", min=0)],
        lambda st, el, tg, tn, p: L.check_h2_20_exit_at_sidings(st, el, tg, p))
     _b("h2_22", "H2.22", "Block TIN extent",
-       "Block TIN extends to the BSLB (double line) or the Advance Starter (single line).",
+       "Block TIN extends to the BSLB (double line, arrival end), the Advanced Starter (double line, departure end) or the Advance Starter (single line).",
        {"tolerance_m": 20}, [P("tolerance_m", "number", "TIN end within (m) of the board / signal", min=0)],
-       lambda st, el, tg, tn, p: L.check_h2_22_block_tin_extent(st, el, tn, p))
+       lambda st, el, tg, tn, p: L.check_h2_22_block_tin_extent(st, el, tn, p, tg))
     _b("h2_26", "H2.26", "'Not drawn to scale' note",
        "A layout not drawn to scale carries the note.", {}, [],
        lambda st, el, tg, tn, p: L.check_h2_26_not_to_scale(st))

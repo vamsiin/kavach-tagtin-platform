@@ -179,8 +179,21 @@ def _side_config(station: Station, below_centre: bool) -> str | None:
     return configs.pop() if len(configs) == 1 else None
 
 
+def _line_travel(track_id, tags, station) -> str | None:
+    """Direction of travel on a line: the track's own direction if recorded, else the
+    direction most of its tags carry (Nominal / Reverse)."""
+    tr = next((t for t in station.tracks if t.id == track_id), None)
+    if tr is not None and tr.direction in ("Nominal", "Reverse"):
+        return tr.direction
+    votes = [t.direction for t in tags or [] if t.track_id == track_id and t.direction in ("Nominal", "Reverse")]
+    if not votes:
+        return None
+    nom = votes.count("Nominal")
+    return None if nom * 2 == len(votes) else ("Nominal" if nom * 2 > len(votes) else "Reverse")
+
+
 def check_h2_22_block_tin_extent(station: Station, elements: list[Element], tins: list[TIN],
-                                 p: dict | None = None) -> list[CheckResult]:
+                                 p: dict | None = None, tags: list[Tag] | None = None) -> list[CheckResult]:
     p = _params("h2_22", p)
     title = "Block TIN extended to BSLB / Advance Starter"
     blocks = [n for n in tins if (n.section_type or "").lower() == "block" and not n.is_non_kavach_territory]
@@ -208,16 +221,27 @@ def check_h2_22_block_tin_extent(station: Station, elements: list[Element], tins
                                    f"TIN {n.tin_no}: single/double line not recorded for the adjacent station "
                                    f"on the {'lower' if below else 'higher'} km side", subject_ref=str(n.tin_no)))
             continue
-        want = "BSLB" if cfg in ("Double", "Multiple") else "Advance"
+        # Double line: trains ARRIVING through the block section are received up to
+        # the BSLB, trains DEPARTING enter it at the Advanced Starter (Aler: TIN 222
+        # ends at the DN BSLB 261.978, TIN 217 starts at the DN Advanced Starter S6).
+        # Which one faces the station depends on the line's direction of travel
+        # (Nominal = increasing km). Unknown direction -> BSLB, as before.
+        travel = _line_travel(n.track_id, tags, station)
+        arriving = None if travel is None else (travel == "Nominal") == below
+        if cfg in ("Double", "Multiple"):
+            want = "Advance" if arriving is False else "BSLB"
+        else:
+            want = "Advance"
         cands = [e for e in elements if e.track_id == n.track_id and want in e.element_type
                  and (want != "Advance" or "Starter" in e.element_type)]
         best = min(cands, key=lambda e: abs(e.location_m - inner), default=None)
         ok = best is not None and abs(best.location_m - inner) <= tol
-        target = "the BSLB" if want == "BSLB" else "the Advance Starter"
+        target = "BSLB" if want == "BSLB" else "Advanced Starter"
+        side = "" if arriving is None else (" (arrival end)" if arriving else " (departure end)")
         out.append(CheckResult(
             "H2.22", title, "PASS" if ok else "FAIL",
-            f"TIN {n.tin_no} ({cfg.lower()} line) ends at {inner:g} m; "
-            + (f"{best.element_ref} at {best.location_m:g} m" if best else f"no {target} recorded on this line")
+            f"TIN {n.tin_no} ({cfg.lower()} line{side}) ends at {inner:g} m; "
+            + (f"{target} {best.element_ref} at {best.location_m:g} m" if best else f"no {target} recorded on this line")
             + ("" if ok or best is None else f" -- more than {tol:g} m apart"),
             subject_ref=str(n.tin_no)))
     return out

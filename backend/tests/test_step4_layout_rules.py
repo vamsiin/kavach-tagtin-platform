@@ -180,3 +180,28 @@ def test_h2_5_spacing_per_line():
     loose = [tag(1, "R-835", "N", 263026, track=None, direction="Nominal"),
              tag(2, "R-885", "N", 264100, track=None, direction="Nominal")]
     assert [r.status for r in check_h2_5_normal_tag_spacing(loose)] == ["FAIL"]
+
+
+def test_h2_22_double_line_arrival_and_departure():
+    """Aler (double line both sides): arriving block TINs end at the BSLB, departing
+    ones start at the Advanced Starter. DN is Nominal (km increasing), UP Reverse."""
+    dn = Track(id=1, name="DN MAIN", track_type="Main", start_m=259740, end_m=265279)
+    up = Track(id=2, name="UP MAIN", track_type="Main", start_m=258024, end_m=266417)
+    adj = [AdjacentStation(id=1, name="Aler-WP-IB", side="Lower km", line_config="Double"),
+           AdjacentStation(id=2, name="Aler-PBP-IB", side="Higher km", line_config="Double")]
+    els = [Element(id=1, element_ref="BSLB", element_type="BSLB Board", location_m=261978, track_id=1),
+           Element(id=2, element_ref="S6", element_type="Advanced Starter Signal", location_m=263275, track_id=1),
+           Element(id=3, element_ref="S25", element_type="Advanced Starter Signal", location_m=261824, track_id=2)]
+    tags = [tag(1, "R-785", "S", 261978, track=1, direction="Nominal"),
+            tag(2, "R-802", "S", 261824, track=2, direction="Reverse")]
+    tins = [tin(222, 259740, 261978, 1, "Orange", section="Block"),   # DN arrival -> BSLB
+            tin(217, 263275, 265279, 1, "Dark Green", section="Block"),  # DN departure -> S6
+            tin(221, 258024, 261824, 2, "Light Green", section="Block"),  # UP departure -> S25
+            tin(218, 263145, 266417, 2, "Orange", section="Block")]      # UP arrival -> no UP BSLB
+    res = {r.subject_ref: r for r in check_h2_22_block_tin_extent(
+        Station(id=1, name="Aler", kavach_station_id="103", centre_line_m=262750, tracks=[dn, up], adjacent=adj),
+        els, tins, None, tags)}
+    assert res["222"].status == "PASS" and "arrival end" in res["222"].message and "BSLB" in res["222"].message
+    assert res["217"].status == "PASS" and "departure end" in res["217"].message and "S6" in res["217"].message
+    assert res["221"].status == "PASS" and "S25" in res["221"].message
+    assert res["218"].status == "FAIL" and "no BSLB recorded" in res["218"].message
