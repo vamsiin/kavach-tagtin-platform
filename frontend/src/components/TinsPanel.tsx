@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { TIN, Track } from "../types";
 import { RegisterTable, type ColumnDef } from "./RegisterTable";
 import { LineSelect, lineName } from "./ElementsPanel";
+import { SectionEndpoints, directionText, normaliseEndpoints } from "./SectionEndpoints";
 
 interface Props {
   tins: TIN[];
@@ -19,8 +20,9 @@ export function TinsPanel({ tins, tracks, onAdd, onUpdate, onDelete, readOnly, l
     { key: "section_type", label: "Section" },
     { key: "track_id", label: "Line", render: (t) => lineName(tracks, t.track_id) },
     { key: "color", label: "Color" },
-    { key: "start_m", label: "Start (m)" },
-    { key: "end_m", label: "End (m)" },
+    { key: "start_m", label: "From / Start (m)" },
+    { key: "end_m", label: "To / End (m)" },
+    { key: "direction", label: "Direction", render: (t) => directionText(t.direction) },
     { key: "is_non_kavach_territory", label: "Non-KAVACH", render: (t) => t.is_non_kavach_territory ? "Yes" : "No" },
   ];
   return (
@@ -53,15 +55,18 @@ function TinForm({ tracks, initial, onSubmit, onCancel, submitting }: {
   const [color, setColor] = useState(initial?.color ?? "");
   const [startM, setStartM] = useState(initial ? String(initial.start_m) : "");
   const [endM, setEndM] = useState(initial ? String(initial.end_m) : "");
+  const [dir, setDir] = useState(initial?.direction ?? "");
+  const ends = normaliseEndpoints(startM, endM);
   const [nonKavach, setNonKavach] = useState(initial?.is_non_kavach_territory ?? false);
   const [track, setTrack] = useState(initial?.track_id != null ? String(initial.track_id) : "");
 
   return (
-    <form className="inline-form" onSubmit={(e) => {
+    <form className="inline-form wrap" onSubmit={(e) => {
       e.preventDefault();
+      if (ends.error) return;
       onSubmit({
         tin_no: parseInt(tinNo), section_type: sectionType, color: color || null,
-        start_m: parseFloat(startM), end_m: parseFloat(endM),
+        start_m: ends.lo, end_m: ends.hi, direction: dir || null,
         is_non_kavach_territory: nonKavach, track_id: track ? parseInt(track) : null,
       });
     }}>
@@ -72,13 +77,13 @@ function TinForm({ tracks, initial, onSubmit, onCancel, submitting }: {
       </select>
       <LineSelect tracks={tracks} value={track} onChange={setTrack} />
       <input placeholder="Color" value={color} onChange={(e) => setColor(e.target.value)} style={{ width: 100 }} />
-      <input type="number" step="0.001" placeholder="Start (m)" value={startM} onChange={(e) => setStartM(e.target.value)} required style={{ width: 110 }} />
-      <input type="number" step="0.001" placeholder="End (m)" value={endM} onChange={(e) => setEndM(e.target.value)} required style={{ width: 110 }} />
+      <SectionEndpoints a={startM} b={endM} direction={dir}
+        onChange={(a, b, d) => { setStartM(a); setEndM(b); setDir(d); }} />
       <label className="checkbox-label">
         <input type="checkbox" checked={nonKavach} onChange={(e) => setNonKavach(e.target.checked)} />
         Non-KAVACH territory
       </label>
-      <button type="submit" disabled={submitting}>
+      <button type="submit" disabled={submitting || !!ends.error}>
         {submitting ? "Saving…" : initial ? "Save" : "Add"}
       </button>
       {onCancel && <button type="button" className="secondary" onClick={onCancel}>Cancel</button>}

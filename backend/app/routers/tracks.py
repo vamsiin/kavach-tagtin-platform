@@ -45,8 +45,9 @@ def _validate_track(station_id: int, payload: schemas.TrackCreate, db: Session, 
     name = payload.name.strip()
     if not name:
         raise HTTPException(422, "Track name is required")
-    if payload.start_m >= payload.end_m:
-        raise HTTPException(422, "Start must be less than end: enter the lower chainage as the start")
+    from ..chainage import normalise_section
+    payload.start_m, payload.end_m, _ = normalise_section(payload.start_m, payload.end_m, payload.direction,
+                                                          f"Line '{name}'")
     clash = [t for t in db.query(models.TrackORM).filter_by(station_id=station_id).all()
              if t.name.strip().lower() == name.lower() and t.id != track_id]
     if clash:

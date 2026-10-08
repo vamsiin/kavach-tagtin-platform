@@ -19,7 +19,10 @@ async def lifespan(app: FastAPI):
     from .workspaces.service import ensure_initial_workspace
     with SessionLocal() as db:
         seed_rules(db)
-        ensure_initial_workspace(db)   # data from before workspaces -> 'SCR'; no-op afterwards   # renames rows seeded under older clause numbers, then adds new defaults
+        ensure_initial_workspace(db)
+        from .chainage import normalise_existing
+        if (n := normalise_existing(db)):
+            print(f"[chainage] {n} line/TIN section(s) re-saved with the lower chainage first")   # data from before workspaces -> 'SCR'; no-op afterwards   # renames rows seeded under older clause numbers, then adds new defaults
     yield
 
 

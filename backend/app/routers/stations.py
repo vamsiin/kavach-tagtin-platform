@@ -369,6 +369,14 @@ def delete_tag(
 # ---------------------------------------------------------------------------
 # TINs
 # ---------------------------------------------------------------------------
+def _normalise_tin(payload: schemas.TINCreate) -> None:
+    """REQ-TAGTIN-DIR-001/004/005: lower chainage stored as start, higher as end,
+    independent of direction; equal / negative endpoints rejected."""
+    from ..chainage import normalise_section
+    payload.start_m, payload.end_m, _ = normalise_section(payload.start_m, payload.end_m, payload.direction,
+                                                          f"TIN {payload.tin_no}")
+
+
 @router.post("/{station_id}/tins", response_model=schemas.TINOut)
 def add_tin(station_id: int, payload: schemas.TINCreate, db: Session = Depends(get_db),
     user: models.UserORM = Depends(get_current_user)):
@@ -377,6 +385,7 @@ def add_tin(station_id: int, payload: schemas.TINCreate, db: Session = Depends(g
     _require_register_editor(user, station)
     _validate_source_document(station_id, payload.source_document_id, db)
     _validate_track_ref(station_id, payload.track_id, db)
+    _normalise_tin(payload)
     tin = models.TINORM(station_id=station_id, **payload.model_dump())
     db.add(tin)
     db.commit()
@@ -409,6 +418,7 @@ def update_tin(
     tin = _get_tin_or_404(station_id, tin_id, db)
     _validate_source_document(station_id, payload.source_document_id, db)
     _validate_track_ref(station_id, payload.track_id, db)
+    _normalise_tin(payload)
     for field, value in _update_fields(payload).items():
         setattr(tin, field, value)
     db.commit()

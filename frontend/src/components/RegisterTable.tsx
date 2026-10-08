@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Pencil, Trash2, Check, X } from "lucide-react";
 
 export interface ColumnDef<T> {
-  key: keyof T;
+  key: keyof T | `_${string}`;   // "_name" = computed column, needs render
   label: string;
   render?: (row: T) => ReactNode;
 }
@@ -118,7 +118,7 @@ export function RegisterTable<T extends { id: number }>({
             ) : (
               <tr key={row.id}>
                 {columns.map((c) => (
-                  <td key={String(c.key)}>{c.render ? c.render(row) : String(row[c.key] ?? "")}</td>
+                  <td key={String(c.key)}>{c.render ? c.render(row) : String(row[c.key as keyof T] ?? "")}</td>
                 ))}
                 {!readOnly && (
                   <td className="actions-col">

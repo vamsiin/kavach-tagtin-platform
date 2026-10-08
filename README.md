@@ -606,6 +606,22 @@ still enforces range/uniqueness, not "matches the chart"); no submit gate on mis
 inputs (reported as gaps only); Alembic migrations (schema upgrades still go through
 `ensure_schema_up_to_date`: add-column on SQLite, plus the `*_km` -> `*_m` column renames).
 
+## Chainage order and movement direction (REQ-TAGTIN-DIR-001..007, Oct 2026)
+
+Test-team observation: sections must keep a fixed chainage order, with direction as a separate attribute.
+
+| Requirement | Implementation | Test |
+|---|---|---|
+| DIR-001 From/Start = lower, To/End = higher | Lines and TINs are saved lower-first whatever order the endpoints are typed in (`app/chainage.py`, used by the line and TIN endpoints); rows saved before this are re-ordered once at start-up | `test_chainage_direction.py` |
+| DIR-002 / 003 Nominal = lower to higher, Reverse = higher to lower | `chainage.movement()`; shown as "Movement (km)" in the Lines register and the layout report | `test_movement_interpretation` |
+| DIR-004 direction never swaps endpoints | direction is stored on its own; changing it leaves start/end untouched | `test_track_api_normalises_and_keeps_direction` |
+| DIR-005 reject missing / non-numeric / negative / equal | 422 with a message; negative allowed only with `ALLOW_NEGATIVE_CHAINAGE=true`; direction must be Nominal, Reverse, Both or blank | `test_normalise_section_rules` |
+| DIR-006 persistence | saved and reloaded unchanged | same test (reload) |
+| DIR-007 data exchange | layout report and approval snapshots carry lower/higher endpoints plus an explicit direction | `test_layout_report_shows_direction_and_movement` |
+
+UI: the line and TIN forms take "Endpoint A", "Endpoint B" and a direction, and show before saving how the
+section will be stored ("Saved as From / Start 258024 · To / End 266417 · movement 266.417 -> 258.024").
+
 ## Honest limitations (read before demoing this to anyone)
 
 

@@ -150,7 +150,7 @@ def test_tracks_crud_and_validation(client, h):
                        "start_m": 1, "end_m": 2}, headers=h["dana"]).status_code == 422
     r = client.post(f"/stations/{sid}/tracks", json={"name": "X", "track_type": "Loop",
                     "start_m": 5, "end_m": 5}, headers=h["dana"])
-    assert r.status_code == 422 and "lower chainage" in r.json()["detail"]
+    assert r.status_code == 422 and "endpoints are equal" in r.json()["detail"]   # REQ-TAGTIN-DIR-005
     r = client.put(f"/stations/{sid}/tracks/{dn}", json={"name": "DN MAIN", "track_type": "Main",
                    "start_m": 259000, "end_m": 265000, "is_kavach": False}, headers=h["dana"])
     assert r.status_code == 200 and r.json()["start_m"] == 259000 and r.json()["is_kavach"] is False

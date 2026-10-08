@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from .. import models
+from ..chainage import movement_text
 from ..documents import service as docsvc
 from ..observations import rules as obsrules
 from ..rules import store
@@ -203,9 +204,14 @@ def build_layout(ctx: Ctx) -> Report:
     r.add(Heading("3. Lines and neighbouring stations"),
           KeyValues([("Station centre line (H2.28)",
                       _fmt_m(st.centre_line_m) if st.centre_line_m is not None else "Not recorded")]),
-          Table(["Line", "Type", "From (m)", "To (m)", "Length (m)", "Direction", "KAVACH"],
+          Para("From / Start is always the lower chainage and To / End the higher one; the direction "
+               "of movement is given separately (Nominal = lower to higher, Reverse = higher to lower).",
+               "muted"),
+          Table(["Line", "Type", "From / Start (m)", "To / End (m)", "Length (m)", "Direction", "Movement (km)",
+                 "KAVACH"],
                 [[t.name, t.track_type, _fmt_m(t.start_m), _fmt_m(t.end_m), _fmt_m(t.end_m - t.start_m),
-                  t.direction or "-", "Yes" if t.is_kavach is not False else "No (white)"] for t in st.tracks],
+                  t.direction or "-", movement_text(t.start_m, t.end_m, t.direction),
+                  "Yes" if t.is_kavach is not False else "No (white)"] for t in st.tracks],
                 empty_text="No lines recorded."),
           Table(["Adjacent station", "KAVACH ID", "Side", "Border line (m) (H2.16)", "Distance (m)", "Section"],
                 [[a.name, a.kavach_station_id or "-", a.side,
@@ -239,9 +245,10 @@ def build_layout(ctx: Ctx) -> Report:
                   t.legend_shape or "-", _src(ctx, t.source_document_id)] for t in ctx.tags],
                 widths=[1, 0.6, 0.5, 1.1, 1, 0.8, 1.2, 0.5, 0.8, 0.5, 0.6, 0.9, 1.1], empty_text="No tags."))
     r.add(Heading(f"6. TIN register ({len(ctx.tins)})"),
-          Table(["TIN", "Section", "Line", "Colour", "Start (m)", "End (m)", "Length (m)", "Non-KAVACH", "Source"],
+          Table(["TIN", "Section", "Line", "Colour", "From / Start (m)", "To / End (m)", "Length (m)", "Direction",
+                 "Non-KAVACH", "Source"],
                 [[str(n.tin_no), n.section_type, line(n.track_id), n.color or "-", _fmt_m(n.start_m),
-                  _fmt_m(n.end_m), _fmt_m(abs((n.end_m or 0) - (n.start_m or 0))),
+                  _fmt_m(n.end_m), _fmt_m(abs((n.end_m or 0) - (n.start_m or 0))), n.direction or "-",
                   "Yes" if n.is_non_kavach_territory else "No", _src(ctx, n.source_document_id)]
                  for n in ctx.tins], empty_text="No TINs."))
     counts = Counter(t.tag_type for t in ctx.tags)

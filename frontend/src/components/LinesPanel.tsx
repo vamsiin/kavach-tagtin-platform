@@ -3,6 +3,7 @@ import type { AdjacentStation, Station, StationBorder, Track } from "../types";
 import { LINE_CONFIGS, TRACK_TYPES } from "../types";
 import { api } from "../api";
 import { RegisterTable, type ColumnDef } from "./RegisterTable";
+import { SectionEndpoints, directionText, movementText, normaliseEndpoints } from "./SectionEndpoints";
 
 interface Props {
   station: Station;
@@ -40,9 +41,10 @@ export function LinesPanel({ station, tracks, adjacent, readOnly, lockReason, on
   const trackCols: ColumnDef<Track>[] = [
     { key: "name", label: "Line" },
     { key: "track_type", label: "Type" },
-    { key: "start_m", label: "From (m)" },
-    { key: "end_m", label: "To (m)" },
-    { key: "direction", label: "Dir", render: (t) => t.direction ?? "—" },
+    { key: "start_m", label: "From / Start (m)" },
+    { key: "end_m", label: "To / End (m)" },
+    { key: "direction", label: "Direction", render: (t) => directionText(t.direction) },
+    { key: "_movement", label: "Movement (km)", render: (t) => movementText(t.start_m, t.end_m, t.direction) },
     { key: "is_kavach", label: "KAVACH", render: (t) => (t.is_kavach ? "Yes" : "No (white)") },
     { key: "remarks", label: "Remarks" },
   ];
@@ -121,33 +123,27 @@ function TrackForm({ initial, onSubmit, onCancel, submitting }: {
   const [start, setStart] = useState(initial ? String(initial.start_m) : "");
   const [end, setEnd] = useState(initial ? String(initial.end_m) : "");
   const [dir, setDir] = useState(initial?.direction ?? "");
+  const ends = normaliseEndpoints(start, end);
   const [kavach, setKavach] = useState(initial?.is_kavach ?? true);
   const [remarks, setRemarks] = useState(initial?.remarks ?? "");
   return (
     <form className="inline-form wrap" onSubmit={(e) => {
       e.preventDefault();
-      onSubmit({ name, track_type: type, start_m: parseFloat(start), end_m: parseFloat(end),
+      if (ends.error) return;
+      onSubmit({ name, track_type: type, start_m: ends.lo, end_m: ends.hi,
         direction: dir || null, is_kavach: kavach, remarks: remarks || null });
     }}>
       <input placeholder="Name (e.g. DN MAIN)" value={name} onChange={(e) => setName(e.target.value)} required />
       <select value={type} onChange={(e) => setType(e.target.value)}>
         {TRACK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
       </select>
-      <input type="number" step="0.001" placeholder="From (m)" value={start} required style={{ width: 120 }}
-        onChange={(e) => setStart(e.target.value)} title="Lower chainage of the line, in metres" />
-      <input type="number" step="0.001" placeholder="To (m)" value={end} required style={{ width: 120 }}
-        onChange={(e) => setEnd(e.target.value)} title="Higher chainage of the line, in metres" />
-      <select value={dir} onChange={(e) => setDir(e.target.value)}>
-        <option value="">Dir —</option>
-        <option value="Nominal">Nominal</option>
-        <option value="Reverse">Reverse</option>
-        <option value="Both">Both</option>
-      </select>
+      <SectionEndpoints a={start} b={end} direction={dir}
+        onChange={(a, b, d) => { setStart(a); setEnd(b); setDir(d); }} />
       <label className="checkbox-label">
         <input type="checkbox" checked={kavach} onChange={(e) => setKavach(e.target.checked)} /> KAVACH line
       </label>
       <input placeholder="Remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} />
-      <button type="submit" disabled={submitting}>{submitting ? "Saving…" : initial ? "Save" : "Add"}</button>
+      <button type="submit" disabled={submitting || !!ends.error}>{submitting ? "Saving…" : initial ? "Save" : "Add"}</button>
       {onCancel && <button type="button" className="secondary" onClick={onCancel}>Cancel</button>}
     </form>
   );
