@@ -622,6 +622,17 @@ Test-team observation: sections must keep a fixed chainage order, with direction
 UI: the line and TIN forms take "Endpoint A", "Endpoint B" and a direction, and show before saving how the
 section will be stored ("Saved as From / Start 258024 · To / End 266417 · movement 266.417 -> 258.024").
 
+### Line type (Oct 2026)
+
+Every line has a **Line type**: `UP MAIN`, `DN MAIN`, `UP LOOP`, `DN LOOP`, `COMMON LOOP`, or `OTHER` for
+sidings and all other lines. When it is not given it is taken from the line's name (`DN.MAIN` and `DN MAIN`
+give DN MAIN, `Up Loop 2` gives UP LOOP, `SIDING 1` gives OTHER); existing lines are filled in this way at
+start-up. The existing **Kind** (Main / Loop / Siding / Block / Other) stays, because the sidings rule (H2.20)
+and IB block lines rely on it. In the form, picking a line type suggests the kind and, if no direction is set, the
+direction the zone's convention gives it (SCR: DN lines Nominal, UP lines Reverse, COMMON LOOP both). A line
+whose direction contradicts its type is flagged by the DIR-CONV check (warning). The layout report lists the line
+type for every line.
+
 ## Honest limitations (read before demoing this to anyone)
 
 

@@ -95,9 +95,9 @@ def test_legacy_rows_normalised_on_startup(tmp_path, monkeypatch):
                                direction="Reverse"))
         db.add(models.TINORM(station_id=st.id, tin_no=218, section_type="Block", start_m=266417, end_m=263145))
         db.commit()
-        assert normalise_existing(db) == 2
+        assert normalise_existing(db) == 3        # 2 sections re-ordered + 1 line type filled in
         tr = db.query(models.TrackORM).one()
-        assert (tr.start_m, tr.end_m, tr.direction) == (258024, 266417, "Reverse")
+        assert (tr.start_m, tr.end_m, tr.direction, tr.line_type) == (258024, 266417, "Reverse", "OTHER")
         assert normalise_existing(db) == 0
 
 
@@ -112,3 +112,44 @@ def test_layout_report_shows_direction_and_movement(client):
     import docx
     text = "\n".join(c.text for t in docx.Document(io.BytesIO(r.content)).tables for row in t.rows for c in row.cells)
     assert "From / Start (m)" in text and "Movement (km)" in text and "266.417 -> 258.024" in text
+
+
+# ---------------------------------------------------------------------------
+# Line type: UP MAIN, DN MAIN, UP LOOP, DN LOOP, COMMON LOOP, everything else OTHER
+# ---------------------------------------------------------------------------
+def test_guess_line_type():
+    from app.domain import guess_line_type
+    cases = {"DN MAIN": "DN MAIN", "DN.MAIN": "DN MAIN", "Up Loop 2": "UP LOOP", "DOWN LOOP": "DN LOOP",
+             "COMMON LOOP": "COMMON LOOP", "UP MAIN LINE": "UP MAIN", "SIDING 1": "OTHER",
+             "TOWER WAGON SHED": "OTHER", "GOODS LINE": "OTHER"}
+    assert {k: guess_line_type(k) for k in cases} == cases
+
+
+def test_line_type_api(client):
+    _, des = _make_admin_and_designer(client)
+    sid = client.post("/stations", json=STATION, headers=des).json()["id"]
+    def add(**kw):
+        body = {"name": "X", "track_type": "Main", "start_m": 1000, "end_m": 2000, **kw}
+        return client.post(f"/stations/{sid}/tracks", json=body, headers=des)
+    assert add(name="DN MAIN").json()["line_type"] == "DN MAIN"                  # from the name
+    assert add(name="SIDING FOR SUB STATION", track_type="Siding").json()["line_type"] == "OTHER"
+    r = add(name="LOOP 3", track_type="Loop", line_type="dn loop")              # explicit, case-insensitive
+    assert r.json()["line_type"] == "DN LOOP"
+    assert add(name="Y", line_type="SIDING").status_code == 422                  # not a line type
+    t = r.json()
+    r = client.put(f"/stations/{sid}/tracks/{t['id']}", json={**t, "line_type": "COMMON LOOP"}, headers=des)
+    assert r.json()["line_type"] == "COMMON LOOP"
+
+
+def test_line_direction_vs_line_type():
+    from app.domain import Station, Track
+    from app.rules.layout_rules import check_direction_convention
+    tr = [Track(id=1, name="DN MAIN", track_type="Main", start_m=1, end_m=2, direction="Nominal", line_type="DN MAIN"),
+          Track(id=2, name="UP MAIN", track_type="Main", start_m=1, end_m=2, direction="Nominal", line_type="UP MAIN"),
+          Track(id=3, name="SIDING", track_type="Siding", start_m=1, end_m=2, direction="Nominal", line_type="OTHER")]
+    res = {r.subject_ref: r.status for r in check_direction_convention(Station(id=1, name="S", kavach_station_id="1",
+                                                                                tracks=tr), [], [])}
+    assert res == {"DN MAIN": "PASS", "UP MAIN": "FAIL"}            # SCR: DN = Nominal, so UP = Reverse
+    ecr = check_direction_convention(Station(id=1, name="S", kavach_station_id="1", tracks=tr[:1],
+                                             dn_direction="Reverse"), [], [])
+    assert ecr[0].status == "FAIL"                                   # ECR: DN = Reverse

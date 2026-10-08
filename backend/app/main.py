@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
         ensure_initial_workspace(db)
         from .chainage import normalise_existing
         if (n := normalise_existing(db)):
-            print(f"[chainage] {n} line/TIN section(s) re-saved with the lower chainage first")   # data from before workspaces -> 'SCR'; no-op afterwards   # renames rows seeded under older clause numbers, then adds new defaults
+            print(f"[chainage] {n} line/TIN row(s) normalised (lower chainage first / line type filled in)")   # data from before workspaces -> 'SCR'; no-op afterwards   # renames rows seeded under older clause numbers, then adds new defaults
     yield
 
 

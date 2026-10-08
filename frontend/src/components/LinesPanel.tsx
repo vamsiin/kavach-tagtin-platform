@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AdjacentStation, Station, StationBorder, Track } from "../types";
-import { LINE_CONFIGS, TRACK_TYPES } from "../types";
+import { KIND_FOR_LINE_TYPE, LINE_CONFIGS, LINE_TYPES, TRACK_TYPES, expectedLineDirection, guessLineType } from "../types";
+import { useWorkspace } from "../workspace/WorkspaceContext";
 import { api } from "../api";
 import { RegisterTable, type ColumnDef } from "./RegisterTable";
 import { SectionEndpoints, directionText, movementText, normaliseEndpoints } from "./SectionEndpoints";
@@ -35,12 +36,15 @@ export function LinesPanel({ station, tracks, adjacent, readOnly, lockReason, on
     catch (e) { setError(String(e)); } finally { setSaving(false); }
   }
 
+  const { byId } = useWorkspace();
+  const dnDirection = byId(station.workspace_id)?.dn_direction ?? "Nominal";
   const dirty = (station.centre_line_m ?? null) !== num(centre);
   const reason = readOnly ? (lockReason ?? "Registers are locked while this station is not in Draft.") : undefined;
 
   const trackCols: ColumnDef<Track>[] = [
     { key: "name", label: "Line" },
-    { key: "track_type", label: "Type" },
+    { key: "line_type", label: "Line type", render: (t) => t.line_type ?? guessLineType(t.name) },
+    { key: "track_type", label: "Kind" },
     { key: "start_m", label: "From / Start (m)" },
     { key: "end_m", label: "To / End (m)" },
     { key: "direction", label: "Direction", render: (t) => directionText(t.direction) },
@@ -91,9 +95,9 @@ export function LinesPanel({ station, tracks, adjacent, readOnly, lockReason, on
         onAdd={async (p) => { await api.addTrack(station.id, p); await onTracksChanged(); }}
         onUpdate={async (id, p) => { await api.updateTrack(station.id, id, p); await onTracksChanged(); }}
         onDelete={async (id) => { await api.deleteTrack(station.id, id); await onTracksChanged(); }}
-        renderForm={(submit, submitting) => <TrackForm onSubmit={submit} submitting={submitting} />}
+        renderForm={(submit, submitting) => <TrackForm dnDirection={dnDirection} onSubmit={submit} submitting={submitting} />}
         renderEditForm={(row, submit, cancel, submitting) => (
-          <TrackForm initial={row} onSubmit={submit} onCancel={cancel} submitting={submitting} />
+          <TrackForm dnDirection={dnDirection} initial={row} onSubmit={submit} onCancel={cancel} submitting={submitting} />
         )}
       />
 
@@ -115,30 +119,48 @@ export function LinesPanel({ station, tracks, adjacent, readOnly, lockReason, on
   );
 }
 
-function TrackForm({ initial, onSubmit, onCancel, submitting }: {
+function TrackForm({ initial, onSubmit, onCancel, submitting, dnDirection }: {
   initial?: Track; onSubmit: (p: Partial<Track>) => void; onCancel?: () => void; submitting: boolean;
+  dnDirection: "Nominal" | "Reverse";
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [type, setType] = useState(initial?.track_type ?? "Main");
+  const [lineType, setLineType] = useState(initial?.line_type ?? (initial ? guessLineType(initial.name) : ""));
+  // until the user picks a line type, follow the name ("DN MAIN" -> DN MAIN)
+  const [lineTypeTouched, setLineTypeTouched] = useState(!!initial);
   const [start, setStart] = useState(initial ? String(initial.start_m) : "");
   const [end, setEnd] = useState(initial ? String(initial.end_m) : "");
   const [dir, setDir] = useState(initial?.direction ?? "");
   const ends = normaliseEndpoints(start, end);
+  function pickLineType(lt: string) {
+    setLineType(lt);
+    if (KIND_FOR_LINE_TYPE[lt] && type !== "Block") setType(KIND_FOR_LINE_TYPE[lt]);
+    if (!dir) setDir(expectedLineDirection(lt, dnDirection));
+  }
+  const expected = expectedLineDirection(lineType, dnDirection);
   const [kavach, setKavach] = useState(initial?.is_kavach ?? true);
   const [remarks, setRemarks] = useState(initial?.remarks ?? "");
   return (
     <form className="inline-form wrap" onSubmit={(e) => {
       e.preventDefault();
       if (ends.error) return;
-      onSubmit({ name, track_type: type, start_m: ends.lo, end_m: ends.hi,
+      onSubmit({ name, track_type: type, line_type: lineType || guessLineType(name), start_m: ends.lo, end_m: ends.hi,
         direction: dir || null, is_kavach: kavach, remarks: remarks || null });
     }}>
-      <input placeholder="Name (e.g. DN MAIN)" value={name} onChange={(e) => setName(e.target.value)} required />
-      <select value={type} onChange={(e) => setType(e.target.value)}>
+      <input placeholder="Name (e.g. DN MAIN)" value={name} required
+        onChange={(e) => { setName(e.target.value); if (!lineTypeTouched) pickLineType(guessLineType(e.target.value)); }} />
+      <select value={lineType || "OTHER"} title="Line type: the five running lines; sidings and all other lines are OTHER"
+        onChange={(e) => { setLineTypeTouched(true); pickLineType(e.target.value); }}>
+        {LINE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+      </select>
+      <select value={type} onChange={(e) => setType(e.target.value)} title="Kind of line (Siding marks sidings for H2.20)">
         {TRACK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
       </select>
       <SectionEndpoints a={start} b={end} direction={dir}
         onChange={(a, b, d) => { setStart(a); setEnd(b); setDir(d); }} />
+      {expected && dir && dir !== expected && (
+        <span className="small" style={{ color: "#8a6116" }}>{lineType} lines normally run {expected} in this zone</span>
+      )}
       <label className="checkbox-label">
         <input type="checkbox" checked={kavach} onChange={(e) => setKavach(e.target.checked)} /> KAVACH line
       </label>

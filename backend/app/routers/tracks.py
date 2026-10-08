@@ -45,6 +45,12 @@ def _validate_track(station_id: int, payload: schemas.TrackCreate, db: Session, 
     name = payload.name.strip()
     if not name:
         raise HTTPException(422, "Track name is required")
+    from ..domain import LINE_TYPES, guess_line_type
+    if payload.line_type is None or not str(payload.line_type).strip():
+        payload.line_type = guess_line_type(name)
+    payload.line_type = str(payload.line_type).strip().upper()
+    if payload.line_type not in LINE_TYPES:
+        raise HTTPException(422, f"line_type must be one of {', '.join(LINE_TYPES)}")
     from ..chainage import normalise_section
     payload.start_m, payload.end_m, _ = normalise_section(payload.start_m, payload.end_m, payload.direction,
                                                           f"Line '{name}'")

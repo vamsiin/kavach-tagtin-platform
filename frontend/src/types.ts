@@ -60,6 +60,30 @@ export const TAG_TYPES = ["N", "S", "T", "X", "D", "G", "L", "A"] as const;
 export const LC_CLASSES = ["Special", "A", "B", "C", "D"];
 export const LC_MANNING = ["Manned interlocked", "Manned non-interlocked", "Unmanned"];
 export const TRACK_TYPES = ["Main", "Loop", "Siding", "Block", "Other"];
+/** Line-type classification: the five running lines; everything else (sidings, misc lines) is OTHER. */
+export const LINE_TYPES = ["UP MAIN", "DN MAIN", "UP LOOP", "DN LOOP", "COMMON LOOP", "OTHER"];
+
+/** Line type from a name as written on the layout ("DN.MAIN", "Up Loop 2") -- mirrors the backend. */
+export function guessLineType(name: string): string {
+  let n = name.toUpperCase().replace(/[\s._-]+/g, " ").trim().replace(/^DOWN /, "DN ").replace(/ LINE$/, "");
+  for (const lt of LINE_TYPES.slice(0, -1)) {
+    if (n === lt || new RegExp(`^${lt}( ?(NO\\.? ?)?\\d+)?$`).test(n)) return lt;
+  }
+  return "OTHER";
+}
+
+/** Direction a line of this type normally runs under the zone's convention. */
+export function expectedLineDirection(lineType: string, dnDirection: "Nominal" | "Reverse" = "Nominal"): string {
+  const other = dnDirection === "Nominal" ? "Reverse" : "Nominal";
+  if (lineType === "DN MAIN" || lineType === "DN LOOP") return dnDirection;
+  if (lineType === "UP MAIN" || lineType === "UP LOOP") return other;
+  if (lineType === "COMMON LOOP") return "Both";
+  return "";
+}
+
+export const KIND_FOR_LINE_TYPE: Record<string, string> = {
+  "UP MAIN": "Main", "DN MAIN": "Main", "UP LOOP": "Loop", "DN LOOP": "Loop", "COMMON LOOP": "Loop",
+};
 export const LINE_CONFIGS = ["Single", "Double", "Multiple"];
 
 export interface Track {
@@ -69,6 +93,7 @@ export interface Track {
   start_m: number;
   end_m: number;
   direction: string | null;
+  line_type?: string | null;
   is_kavach: boolean;
   sort_order: number;
   remarks: string | null;

@@ -88,6 +88,11 @@ def normalise_existing(db) -> int:
         for row in db.query(model).filter(model.start_m > model.end_m).all():
             row.start_m, row.end_m = row.end_m, row.start_m
             n += 1
+    # line types for lines saved before the classification existed (from the name)
+    from .domain import guess_line_type
+    for tr in db.query(models.TrackORM).filter(models.TrackORM.line_type.is_(None)).all():
+        tr.line_type = guess_line_type(tr.name)
+        n += 1
     if n:
         db.commit()
     return n

@@ -50,6 +50,37 @@ LC_MANNING = ["Manned interlocked", "Manned non-interlocked", "Unmanned"]
 # of named lines (DN MAIN, UP MAIN, COMMON LOOP, sidings, block lines) joined by
 # points. Elements, tags and TINs are placed on a line.
 TRACK_TYPES = ["Main", "Loop", "Siding", "Block", "Other"]
+
+# Line-type classification (QFTL requirement, Oct 2026): the five running lines get
+# their own class; every other line -- sidings, goods / tower-wagon lines, IB block
+# lines that are not one of the five -- is OTHER.
+LINE_TYPES = ["UP MAIN", "DN MAIN", "UP LOOP", "DN LOOP", "COMMON LOOP", "OTHER"]
+
+
+def guess_line_type(name: str | None) -> str:
+    """Line type from a line's name as written on the layout: 'DN MAIN', 'DN.MAIN',
+    'Up Loop 2', 'DOWN MAIN' ... -> the class; anything else -> OTHER."""
+    import re
+    n = re.sub(r"[\s._\-]+", " ", (name or "").upper()).strip()
+    n = re.sub(r"^DOWN ", "DN ", n)
+    n = re.sub(r" LINE$", "", n)
+    for lt in LINE_TYPES[:-1]:
+        if n == lt or re.match(rf"^{lt}( ?(NO\.? ?)?\d+)?$", n):
+            return lt
+    return "OTHER"
+
+
+def expected_line_direction(line_type: str | None, dn_direction: str = "Nominal") -> str | None:
+    """Direction a line of this type normally runs, by the zone's convention
+    (SCR: DN = Nominal; ECR: DN = Reverse). COMMON LOOP runs both ways; OTHER: none."""
+    other = "Reverse" if dn_direction == "Nominal" else "Nominal"
+    if line_type in ("DN MAIN", "DN LOOP"):
+        return dn_direction
+    if line_type in ("UP MAIN", "UP LOOP"):
+        return other
+    if line_type == "COMMON LOOP":
+        return "Both"
+    return None
 LINE_CONFIGS = ["Single", "Double", "Multiple"]
 
 
@@ -153,6 +184,7 @@ class Track:
     direction: str | None = None   # normal direction of travel, if any
     is_kavach: bool = True         # False = non-KAVACH line (shown white, H2.18)
     remarks: str = ""
+    line_type: str = "OTHER"       # one of LINE_TYPES
 
 
 @dataclass

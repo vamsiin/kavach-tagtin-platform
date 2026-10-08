@@ -391,6 +391,18 @@ def check_direction_convention(station: Station, elements: list[Element], tags: 
             "DIR-CONV", title, "PASS" if ok else "FAIL",
             f"{t.tag_ref} ({t.direction}) linked to {el.element_ref} ({el.direction})"
             + ("" if ok else f" -- expected {want} ({conv})"), subject_ref=t.tag_ref))
+    # a line's direction against its line type (DN MAIN / DN LOOP run the zone's DN
+    # direction, UP lines the other one, COMMON LOOP both ways)
+    from ..domain import expected_line_direction
+    for tr in station.tracks:
+        want = expected_line_direction(getattr(tr, "line_type", None), station.dn_direction)
+        if want is None or not tr.direction:
+            continue
+        ok = tr.direction == want
+        out.append(CheckResult(
+            "DIR-CONV", "Line direction matches its line type", "PASS" if ok else "FAIL",
+            f"{tr.name} ({tr.line_type}) runs {tr.direction}"
+            + ("" if ok else f" -- a {tr.line_type} line normally runs {want} ({conv})"), subject_ref=tr.name))
     return out
 
 

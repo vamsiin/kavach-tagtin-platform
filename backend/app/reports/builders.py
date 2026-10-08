@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..chainage import movement_text
+from ..domain import guess_line_type
 from ..documents import service as docsvc
 from ..observations import rules as obsrules
 from ..rules import store
@@ -207,9 +208,9 @@ def build_layout(ctx: Ctx) -> Report:
           Para("From / Start is always the lower chainage and To / End the higher one; the direction "
                "of movement is given separately (Nominal = lower to higher, Reverse = higher to lower).",
                "muted"),
-          Table(["Line", "Type", "From / Start (m)", "To / End (m)", "Length (m)", "Direction", "Movement (km)",
-                 "KAVACH"],
-                [[t.name, t.track_type, _fmt_m(t.start_m), _fmt_m(t.end_m), _fmt_m(t.end_m - t.start_m),
+          Table(["Line", "Line type", "Kind", "From / Start (m)", "To / End (m)", "Length (m)", "Direction",
+                 "Movement (km)", "KAVACH"],
+                [[t.name, t.line_type or guess_line_type(t.name), t.track_type, _fmt_m(t.start_m), _fmt_m(t.end_m), _fmt_m(t.end_m - t.start_m),
                   t.direction or "-", movement_text(t.start_m, t.end_m, t.direction),
                   "Yes" if t.is_kavach is not False else "No (white)"] for t in st.tracks],
                 empty_text="No lines recorded."),

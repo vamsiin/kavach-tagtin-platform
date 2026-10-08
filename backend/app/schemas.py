@@ -133,6 +133,8 @@ class TrackCreate(BaseModel):
     start_m: float
     end_m: float
     direction: str | None = None
+    line_type: str | None = Field(default=None, description="UP MAIN, DN MAIN, UP LOOP, DN LOOP, COMMON LOOP "
+                                  "or OTHER; taken from the name when left out")
     is_kavach: bool = True
     sort_order: int = 0
     remarks: str | None = None

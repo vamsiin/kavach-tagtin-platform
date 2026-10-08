@@ -250,6 +250,7 @@ class TrackORM(Base):
     start_m = Column(Float, nullable=False)
     end_m = Column(Float, nullable=False)
     direction = Column(String, nullable=True)
+    line_type = Column(String, nullable=True)      # LINE_TYPES; filled from the name when not given
     is_kavach = Column(Boolean, default=True)
     sort_order = Column(Integer, default=0)
     remarks = Column(Text, nullable=True)
@@ -260,7 +261,8 @@ class TrackORM(Base):
     def to_domain(self) -> domain.Track:
         return domain.Track(id=self.id, name=self.name, track_type=self.track_type,
                             start_m=self.start_m, end_m=self.end_m, direction=self.direction,
-                            is_kavach=self.is_kavach is not False, remarks=self.remarks or "")
+                            is_kavach=self.is_kavach is not False, remarks=self.remarks or "",
+                            line_type=self.line_type or domain.guess_line_type(self.name))
 
 
 class AdjacentStationORM(Base):
