@@ -15,6 +15,7 @@ interface Props {
   onDelete: (id: number) => Promise<void>;
   readOnly?: boolean;
   lockReason?: string;
+  headerExtra?: ReactNode;
 }
 
 const km = (m: number) => (m / 1000).toFixed(3);
@@ -29,7 +30,7 @@ function elementLabel(e: Element, tracks: Track[]): string {
   return `${e.element_ref} · ${e.element_type} · ${line}${to} · km ${km(e.location_m)}`;
 }
 
-export function TagsPanel({ tags, elements, tracks, nextFree, dnDirection, onAdd, onUpdate, onDelete, readOnly, lockReason }: Props) {
+export function TagsPanel({ tags, elements, tracks, nextFree, dnDirection, onAdd, onUpdate, onDelete, readOnly, lockReason, headerExtra }: Props) {
   const columns: ColumnDef<Tag>[] = [
     { key: "tag_ref", label: "Tag ID" },
     { key: "tag_number", label: "No." },
@@ -81,6 +82,7 @@ export function TagsPanel({ tags, elements, tracks, nextFree, dnDirection, onAdd
       onUpdate={updateTag}
       onDelete={onDelete}
       readOnly={readOnly}
+      headerExtra={headerExtra}
       readOnlyReason={readOnly ? (lockReason ?? "Registers are locked while this station is not in Draft. Use 'Request changes' to reopen for editing.") : undefined}
       renderForm={(submit, submitting) => form(undefined, submit, submitting)}
       renderEditForm={(row, submit, cancel, submitting) => form(row, submit, submitting, cancel)}

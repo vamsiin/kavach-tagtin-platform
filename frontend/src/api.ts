@@ -68,7 +68,30 @@ async function downloadBlob(path: string, fallbackName: string): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+export interface ImportRow { row: number; key: string; action: "add" | "update" | "error"; errors: string[]; warnings: string[] }
+export interface ImportPreview {
+  kind: string; columns: Record<string, string>; ignored_columns: string[];
+  counts: { add: number; update: number; error: number }; can_apply: boolean; rows: ImportRow[]; applied?: boolean;
+}
+
+/** Preview (apply=false) or apply a CSV / .xlsx file for a register. A refused apply
+ *  (rows with errors) comes back as a preview rather than an exception. */
+async function importRegister(stationId: number, kind: string, file: File, apply: boolean, updateExisting: boolean): Promise<ImportPreview> {
+  const token = getToken();
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE_URL}/stations/${stationId}/registers/${kind}/import?apply=${apply}&update_existing=${updateExisting}`,
+    { method: "POST", body: form, headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  const body = await res.json().catch(() => null);
+  if (res.ok) return body as ImportPreview;
+  if (res.status === 422 && body?.detail?.preview) return body.detail.preview as ImportPreview;
+  throw new Error(typeof body?.detail === "string" ? body.detail : `${res.status} ${res.statusText}`);
+}
+
 export const api = {
+  importRegister,
+  downloadRegisterTemplate: (stationId: number, kind: string) =>
+    downloadBlob(`/stations/${stationId}/registers/${kind}/template`, `${kind}-template.csv`),
   // ---- auth ----
   login: (username: string, password: string) =>
     request<TokenResponse>("/auth/login", {

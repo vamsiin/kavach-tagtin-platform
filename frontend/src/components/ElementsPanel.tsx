@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { Element, Track } from "../types";
 import { ELEMENT_TYPES, LC_CLASSES, LC_GATE, LC_MANNING, POINTS } from "../types";
 import { RegisterTable, type ColumnDef } from "./RegisterTable";
@@ -12,6 +12,7 @@ interface Props {
   onDelete: (id: number) => Promise<void>;
   readOnly?: boolean;
   lockReason?: string;
+  headerExtra?: ReactNode;
 }
 
 export function lineName(tracks: Track[], id: number | null | undefined) {
@@ -29,7 +30,7 @@ export function LineSelect({ tracks, value, onChange, placeholder = "Line —" }
   );
 }
 
-export function ElementsPanel({ elements, tracks, dnDirection, onAdd, onUpdate, onDelete, readOnly, lockReason }: Props) {
+export function ElementsPanel({ elements, tracks, dnDirection, onAdd, onUpdate, onDelete, readOnly, lockReason, headerExtra }: Props) {
   const columns: ColumnDef<Element>[] = [
     { key: "element_ref", label: "Ref" },
     { key: "element_type", label: "Type" },
@@ -54,6 +55,7 @@ export function ElementsPanel({ elements, tracks, dnDirection, onAdd, onUpdate, 
       onUpdate={onUpdate}
       onDelete={onDelete}
       readOnly={readOnly}
+      headerExtra={headerExtra}
       readOnlyReason={readOnly ? (lockReason ?? "Registers are locked while this station is not in Draft. Use 'Request changes' to reopen for editing.") : undefined}
       renderForm={(submit, submitting) => <ElementForm tracks={tracks} onSubmit={submit} submitting={submitting} />}
       renderEditForm={(row, submit, cancel, submitting) => (

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { TIN, Track } from "../types";
 import { RegisterTable, type ColumnDef } from "./RegisterTable";
 import { LineSelect, lineName } from "./ElementsPanel";
@@ -12,9 +12,10 @@ interface Props {
   onDelete: (id: number) => Promise<void>;
   readOnly?: boolean;
   lockReason?: string;
+  headerExtra?: ReactNode;
 }
 
-export function TinsPanel({ tins, tracks, onAdd, onUpdate, onDelete, readOnly, lockReason }: Props) {
+export function TinsPanel({ tins, tracks, onAdd, onUpdate, onDelete, readOnly, lockReason, headerExtra }: Props) {
   const columns: ColumnDef<TIN>[] = [
     { key: "tin_no", label: "TIN No" },
     { key: "section_type", label: "Section" },
@@ -34,6 +35,7 @@ export function TinsPanel({ tins, tracks, onAdd, onUpdate, onDelete, readOnly, l
       onUpdate={onUpdate}
       onDelete={onDelete}
       readOnly={readOnly}
+      headerExtra={headerExtra}
       readOnlyReason={readOnly ? (lockReason ?? "Registers are locked while this station is not in Draft. Use 'Request changes' to reopen for editing.") : undefined}
       renderForm={(submit, submitting) => <TinForm tracks={tracks} onSubmit={submit} submitting={submitting} />}
       renderEditForm={(row, submit, cancel, submitting) => (

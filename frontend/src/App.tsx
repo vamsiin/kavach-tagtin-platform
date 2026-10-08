@@ -7,6 +7,7 @@ import { StationPanel } from "./components/StationPanel";
 import { ElementsPanel } from "./components/ElementsPanel";
 import { TagsPanel } from "./components/TagsPanel";
 import { TinsPanel } from "./components/TinsPanel";
+import { RegisterImport } from "./components/RegisterImport";
 import { LinesPanel } from "./components/LinesPanel";
 import { AllotmentChartsPanel } from "./components/AllotmentChartsPanel";
 import { StationAllotmentPanel } from "./components/StationAllotmentPanel";
@@ -242,6 +243,7 @@ function MainContent() {
               <StationAllotmentPanel data={allotment} />
               <ElementsPanel elements={elements} tracks={tracks}
                 dnDirection={byId(selected.workspace_id)?.dn_direction} readOnly={readOnly} lockReason={lockReason}
+                headerExtra={<RegisterImport stationId={selected.id} kind="elements" onDone={async () => { await reloadElements(); await reloadTags(); }} />}
                 onAdd={async (p) => { await api.addElement(selected.id, p); await reloadElements(); }}
                 onUpdate={async (id, p) => { await api.updateElement(selected.id, id, p); await reloadElements(); }}
                 onDelete={async (id) => { await api.deleteElement(selected.id, id); await reloadElements(); await reloadTags(); }} />
@@ -249,10 +251,12 @@ function MainContent() {
                 dnDirection={byId(selected.workspace_id)?.dn_direction}
                 nextFree={allotment?.tags ? { odd: allotment.tags.next_free_odd, even: allotment.tags.next_free_even } : undefined}
                 readOnly={readOnly} lockReason={lockReason}
+                headerExtra={<RegisterImport stationId={selected.id} kind="tags" onDone={async () => { await reloadTags(); await reloadAllotment(); }} />}
                 onAdd={async (p) => { await api.addTag(selected.id, p); await reloadTags(); }}
                 onUpdate={async (id, p) => { await api.updateTag(selected.id, id, p); await reloadTags(); }}
                 onDelete={async (id) => { await api.deleteTag(selected.id, id); await reloadTags(); }} />
               <TinsPanel tins={tins} tracks={tracks} readOnly={readOnly} lockReason={lockReason}
+                headerExtra={<RegisterImport stationId={selected.id} kind="tins" onDone={reloadTins} />}
                 onAdd={async (p) => { await api.addTin(selected.id, p); await reloadTins(); }}
                 onUpdate={async (id, p) => { await api.updateTin(selected.id, id, p); await reloadTins(); }}
                 onDelete={async (id) => { await api.deleteTin(selected.id, id); await reloadTins(); }} />

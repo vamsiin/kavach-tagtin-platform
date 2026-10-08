@@ -26,10 +26,12 @@ interface Props<T> {
   onDelete: (id: number) => Promise<void>;
   readOnly?: boolean;
   readOnlyReason?: string;
+  /** Extra controls next to "+ Add" (e.g. Upload CSV); shown only when editable. */
+  headerExtra?: ReactNode;
 }
 
 export function RegisterTable<T extends { id: number }>({
-  title, rows, columns, renderForm, renderEditForm, onAdd, onUpdate, onDelete, readOnly, readOnlyReason,
+  title, rows, columns, renderForm, renderEditForm, onAdd, onUpdate, onDelete, readOnly, readOnlyReason, headerExtra,
 }: Props<T>) {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -80,9 +82,14 @@ export function RegisterTable<T extends { id: number }>({
     <div className="panel">
       <div className="panel-header">
         <h3>{title} <span className="muted">({rows.length})</span></h3>
-        {!readOnly && <button onClick={() => { setShowForm(!showForm); setEditingId(null); }}>
-          {showForm ? "Cancel" : "+ Add"}
-        </button>}
+        {!readOnly && (
+          <div className="inline-form">
+            {headerExtra}
+            <button onClick={() => { setShowForm(!showForm); setEditingId(null); }}>
+              {showForm ? "Cancel" : "+ Add"}
+            </button>
+          </div>
+        )}
       </div>
 
       {readOnly && readOnlyReason && <div className="muted small">{readOnlyReason}</div>}

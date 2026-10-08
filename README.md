@@ -653,6 +653,18 @@ The linked-element list shows suitable elements first (points for a T tag), near
 linked element must belong to the station; DATA-TOPOLOGY warns when a tag is linked to an unsuitable element or a
 turnout tag has no points.
 
+### Upload CSV for Elements, Tags and TINs (Oct 2026)
+
+Each of the three registers has an **Upload CSV** button next to **+ Add** (a .xlsx file works too). The file is
+checked first: every row is shown as *add*, *update* or *error*, with the reasons, using the same rules as the entry
+forms (types, lines by name, chainage in m or km, endpoints in either order for TINs, points' diverging line, LC
+details, the element a tag is placed for, the partner tag of a pair). Nothing is saved while any row has an error;
+"Import" then writes the whole file in one go and records it in the station's change history. Rows that already exist
+(same element ref + line, tag ID, or TIN number + line) are reported unless "Update rows that already exist" is
+ticked. "Download template" gives a CSV with the expected columns and example rows. Import elements before tags that
+refer to them. API: `POST /stations/{id}/registers/{elements|tags|tins}/import?apply=&update_existing=`,
+`GET .../template`.
+
 ## Honest limitations (read before demoing this to anyone)
 
 
