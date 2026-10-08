@@ -290,7 +290,8 @@ class AdjacentStationORM(Base):
             border_m=self.border_m, distance_m=self.distance_m, line_config=self.line_config,
             remarks=self.remarks or "",
             borders=[domain.StationBorder(line_label=b.line_label, border_m=b.border_m,
-                                          border_tag_ref=b.border_tag_ref or "", track_id=b.track_id)
+                                          border_tag_ref=b.border_tag_ref or "", track_id=b.track_id,
+                                          neighbour_line=b.neighbour_line or "")
                      for b in self.borders])
 
 
@@ -301,7 +302,8 @@ class StationBorderORM(Base):
     id = Column(Integer, primary_key=True)
     adjacent_station_id = Column(Integer, ForeignKey("adjacent_stations.id"), nullable=False)
     line_label = Column(String, nullable=False)
-    track_id = Column(Integer, ForeignKey("tracks.id"), nullable=True)
+    track_id = Column(Integer, ForeignKey("tracks.id"), nullable=True)      # this station's line
+    neighbour_line = Column(String, nullable=True)   # the line it continues as at the neighbour
     border_m = Column(Float, nullable=False)
     border_tag_ref = Column(String, nullable=True)
 

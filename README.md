@@ -633,6 +633,26 @@ direction the zone's convention gives it (SCR: DN lines Nominal, UP lines Revers
 whose direction contradicts its type is flagged by the DIR-CONV check (warning). The layout report lists the line
 type for every line.
 
+### Line-wise border mapping (Oct 2026)
+
+Adjacent stations are no longer described as "Single / Double / Multiple line". Each neighbour has one row per line of
+this station that crosses the border: **this station's line**, the **line it continues as at the neighbour** (e.g.
+DN MAIN -> DN MAIN), the **border chainage** and the **border tag**. Single / Double / Multiple (used by H2.22) is
+derived from the number of mapped lines. "Map main lines" fills a row for each UP MAIN / DN MAIN with the line's end on
+that side. H2.16 now also warns when a main line has no border towards a neighbour, a border lies off its line, a
+border is not linked to a line, or a border tag that is in the tag register is not at the border on that line.
+
+### Tag placement form (Oct 2026)
+
+The tag form is grouped into four steps with plain field names and help text: 1. which tag (Tag ID, Tag number with
+next free numbers, Tag type), 2. where (line, chainage with km, direction of travel), 3. what it is placed for (the
+linked element, named per type: points / turnout for T tags, signal or board for S, LC gate for G, last stop signal for
+L), 4. main + duplicate pair: pick the partner tag instead of typing a group ID; the pair ID, the partner's
+main/duplicate role and the legend shape (Rectangle when co-located, Triangle otherwise) are filled in for both tags.
+The linked-element list shows suitable elements first (points for a T tag), nearest first, with type, line and km. A
+linked element must belong to the station; DATA-TOPOLOGY warns when a tag is linked to an unsuitable element or a
+turnout tag has no points.
+
 ## Honest limitations (read before demoing this to anyone)
 
 

@@ -389,7 +389,7 @@ def _layout_snapshot(station: models.StationORM, db: Session) -> str:
         "tracks": rows(models.TrackORM, cols(models.TrackORM)),
         "adjacent_stations": [
             {**a, "borders": [{"line": b.line_label, "border_m": b.border_m, "tag": b.border_tag_ref,
-                               "track": track_names.get(b.track_id)}
+                               "track": track_names.get(b.track_id), "neighbour_line": b.neighbour_line}
                               for b in db.query(models.StationBorderORM)
                               .filter_by(adjacent_station_id=a["id"]).order_by(models.StationBorderORM.id)]}
             for a in rows(models.AdjacentStationORM, cols(models.AdjacentStationORM))],

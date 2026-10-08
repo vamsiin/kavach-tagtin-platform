@@ -245,3 +245,6 @@ fieldset.multi select[multiple] { min-width: 320px; }
 .dashboard-table tr.clickable:hover td { background: #eef4fb; }
 .warn-text { color: #8a6116; font-weight: 600; }
 .back-link { margin-bottom: 0.5rem; display: inline-block; }
+
+.register-table.compact td, .register-table.compact th { padding: 4px 6px; }
+.register-table.compact { margin: 6px 0; }

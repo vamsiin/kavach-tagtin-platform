@@ -133,6 +133,36 @@ def requires_signal_foot_tag(element_type: str) -> bool:
     return any(k in t for k in keywords)
 
 
+# What a tag of each type is placed FOR -- the element its "linked element" should be.
+LINK_HINTS = {
+    "S": "the signal, stop board, BSLB or shunt signal this foot tag is at",
+    "T": "the points / turnout this TIN-discrimination tag is for",
+    "G": "the LC gate this gate tag protects",
+    "L": "the last stop signal (Advanced Starter) the adjacent-line tag follows",
+    "D": "the points or dead end this dead-stop tag protects",
+    "X": "the points leading to the siding / non-KAVACH line",
+    "N": "optional: the signal this approach tag announces",
+    "A": "optional",
+}
+
+
+def suitable_link(tag_type: str, element_type: str) -> bool:
+    """Whether an element of this type is a sensible 'linked element' for the tag."""
+    if tag_type == "S":
+        return requires_signal_foot_tag(element_type)
+    if tag_type in ("T", "X"):
+        return element_type == POINTS
+    if tag_type == "G":
+        return element_type == LC_GATE
+    if tag_type == "L":
+        return "Starter" in element_type or "Stop Signal" in element_type
+    if tag_type == "D":
+        return element_type in (POINTS, "Stop Board/Buffer Stop", "Berthing Track End")
+    if tag_type == "N":
+        return element_type in SIGNAL_ELEMENT_TYPES
+    return True
+
+
 def is_starter_signal_eligible_for_h2_7_exception(element_type: str) -> bool:
     """H2.7's exception ("minimum distance can be less than 150m for Advanced
     Starter or Intermediate Starter") -- broadened from an exact-string match to a
@@ -195,7 +225,18 @@ class StationBorder:
     line_label: str                  # as on the layout, e.g. "DN line", "UP line"
     border_m: float
     border_tag_ref: str = ""
-    track_id: int | None = None
+    track_id: int | None = None      # this station's line
+    neighbour_line: str = ""         # the line it continues as at the neighbour, e.g. "DN MAIN"
+
+
+def line_config_from_borders(borders) -> str | None:
+    """Section line configuration derived from the line-wise border mapping: one line
+    crossing the border = Single, two = Double, more = Multiple."""
+    lines = {(b.track_id if b.track_id is not None else (b.line_label or "").strip().lower()) for b in borders}
+    lines.discard("")
+    if not lines:
+        return None
+    return "Single" if len(lines) == 1 else "Double" if len(lines) == 2 else "Multiple"
 
 
 @dataclass

@@ -133,11 +133,27 @@ def _validate_adjacent(payload: schemas.AdjacentStationCreate, station_id: int |
         raise HTTPException(422, "Side (direction towards the adjacent station) is required")
     if payload.line_config is not None and payload.line_config not in LINE_CONFIGS:
         raise HTTPException(422, f"line_config must be one of {LINE_CONFIGS}")
+    tracks = {t.id: t for t in db.query(models.TrackORM).filter_by(station_id=station_id).all()} if db else {}
+    for b in payload.borders:
+        # the label defaults to this station's line name when a line is picked
+        if not (b.line_label or "").strip() and b.track_id in tracks:
+            b.line_label = tracks[b.track_id].name
+        if b.border_m is None or b.border_m < 0:
+            raise HTTPException(422, "Border chainage must be a positive number")
+    mapped = [b.track_id for b in payload.borders if b.track_id is not None]
+    if len(set(mapped)) != len(mapped):
+        raise HTTPException(422, "Each line of this station can cross the border with a neighbour only once")
+    # line-wise mapping decides single / double / multiple line (H2.22); the stored
+    # value is only used as given when no lines are mapped (older data / API clients)
+    from ..domain import line_config_from_borders
+    derived = line_config_from_borders(payload.borders)
+    if derived:
+        payload.line_config = derived
     if payload.distance_m is not None and payload.distance_m < 0:
         raise HTTPException(422, "Distance cannot be negative")
     labels = [b.line_label.strip().lower() for b in payload.borders]
     if any(not x for x in labels):
-        raise HTTPException(422, "Each border needs the line it is on (e.g. 'DN line')")
+        raise HTTPException(422, "Each border needs the line it is on: pick this station's line")
     if len(set(labels)) != len(labels):
         raise HTTPException(422, "Only one border per line for each adjacent station")
     for b in payload.borders:
@@ -149,7 +165,9 @@ def _validate_adjacent(payload: schemas.AdjacentStationCreate, station_id: int |
 def _border_rows(payload: schemas.AdjacentStationCreate) -> list[models.StationBorderORM]:
     return [models.StationBorderORM(line_label=b.line_label.strip(), border_m=b.border_m,
                                     border_tag_ref=(b.border_tag_ref or "").strip() or None,
-                                    track_id=b.track_id) for b in payload.borders]
+                                    track_id=b.track_id,
+                                    neighbour_line=(b.neighbour_line or "").strip() or None)
+            for b in payload.borders]
 
 
 @router.get("/{station_id}/adjacent-stations", response_model=list[schemas.AdjacentStationOut])
@@ -184,6 +202,10 @@ def update_adjacent(station_id: int, adj_id: int, payload: schemas.AdjacentStati
     _editable_station(station_id, db, user)
     row = _get_adjacent_or_404(station_id, adj_id, db)
     _validate_adjacent(payload, station_id, db)
+    if "borders" not in payload.model_fields_set:
+        from ..domain import line_config_from_borders
+        payload.line_config = (line_config_from_borders(row.borders)
+                               or (payload.line_config if "line_config" in payload.model_fields_set else row.line_config))
     for k, v in payload.model_dump(exclude={"borders"}).items():
         setattr(row, k, v)
     if "borders" in payload.model_fields_set:   # replace the per-line borders only when sent

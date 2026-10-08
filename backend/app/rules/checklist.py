@@ -125,7 +125,7 @@ def _register_builtins():
        {}, [], lambda st, el, tg, tn, p: E.check_h2_21_tag_notation(tg))
     _b("h2_16", "H2.16", "Station border location recorded",
        "Each adjacent station is recorded with the absolute location of the border line.",
-       {}, [], lambda st, el, tg, tn, p: E.check_h2_16_border_locations(st))
+       {}, [], lambda st, el, tg, tn, p: E.check_h2_16_border_locations(st, tg))
     _b("h2_28", "H2.28", "Station centre line location recorded",
        "The station centre line absolute location is recorded (and lies on a line of the station).",
        {}, [], lambda st, el, tg, tn, p: E.check_h2_28_centre_line(st))

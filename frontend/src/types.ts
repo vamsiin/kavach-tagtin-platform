@@ -54,6 +54,31 @@ export const NON_SIGNAL_ELEMENT_TYPES = [
   LC_GATE, POINTS, "Fouling Mark", "Marker Board", "Axle Counter", "Whistle Board (W/L)",
 ] as const;
 export const ELEMENT_TYPES: readonly string[] = [...SIGNAL_ELEMENT_TYPES, ...NON_SIGNAL_ELEMENT_TYPES];
+export const POINTS_TYPE = "Points / Turnout";
+
+/** Mirrors backend domain.requires_signal_foot_tag / suitable_link / LINK_HINTS. */
+const FOOT_TAG_KEYWORDS = ["Home", "Starter", "Stop Signal", "Stop Board", "Buffer Stop", "Berthing Track End", "BSLB",
+  "Calling-on", "Calling on", "Auto Signal", "Semi-Automatic", "Semi Automatic", "Shunt"];
+export const LINK_HINTS: Record<string, string> = {
+  S: "the signal, stop board, BSLB or shunt signal this foot tag is at",
+  T: "the points / turnout this TIN-discrimination tag is for",
+  G: "the LC gate this gate tag protects",
+  L: "the last stop signal (Advanced Starter) the adjacent-line tag follows",
+  D: "the points or dead end this dead-stop tag protects",
+  X: "the points leading to the siding / non-KAVACH line",
+  N: "the signal this approach tag announces (optional)",
+};
+export function isSuitableLink(tagType: string, elementType: string): boolean {
+  switch (tagType) {
+    case "S": return FOOT_TAG_KEYWORDS.some((k) => elementType.includes(k));
+    case "T": case "X": return elementType === POINTS_TYPE;
+    case "G": return elementType === "LC Gate";
+    case "L": return elementType.includes("Starter") || elementType.includes("Stop Signal");
+    case "D": return [POINTS_TYPE, "Stop Board/Buffer Stop", "Berthing Track End"].includes(elementType);
+    case "N": return (SIGNAL_ELEMENT_TYPES as readonly string[]).includes(elementType);
+    default: return true;
+  }
+}
 
 export const TAG_TYPES = ["N", "S", "T", "X", "D", "G", "L", "A"] as const;
 
@@ -106,6 +131,7 @@ export interface StationBorder {
   border_m: number;
   border_tag_ref: string | null;
   track_id: number | null;
+  neighbour_line?: string | null;   // the line it continues as at the neighbour
 }
 
 export interface AdjacentStation {

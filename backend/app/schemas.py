@@ -154,10 +154,13 @@ class TrackOut(TrackCreate):
 
 
 class StationBorderIn(BaseModel):
-    line_label: str
+    """One line crossing the border with a neighbour: this station's line, the line it
+    continues as at the neighbour, the border chainage and the border tag."""
+    line_label: str = ""
     border_m: float
     border_tag_ref: str | None = None
     track_id: int | None = None
+    neighbour_line: str | None = None
 
 
 class StationBorderOut(StationBorderIn):

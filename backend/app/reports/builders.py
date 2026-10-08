@@ -214,9 +214,11 @@ def build_layout(ctx: Ctx) -> Report:
                   t.direction or "-", movement_text(t.start_m, t.end_m, t.direction),
                   "Yes" if t.is_kavach is not False else "No (white)"] for t in st.tracks],
                 empty_text="No lines recorded."),
-          Table(["Adjacent station", "KAVACH ID", "Side", "Border line (m) (H2.16)", "Distance (m)", "Section"],
+          Table(["Adjacent station", "KAVACH ID", "Side", "Line-wise border mapping (H2.16)", "Distance (m)",
+                 "Section"],
                 [[a.name, a.kavach_station_id or "-", a.side,
-                  "; ".join(f"{b.line_label}: {_fmt_m(b.border_m)}" + (f" ({b.border_tag_ref})" if b.border_tag_ref else "")
+                  "; ".join(f"{b.line_label}" + (f" -> {b.neighbour_line}" if b.neighbour_line else "")
+                            + f" at {_fmt_m(b.border_m)}" + (f" ({b.border_tag_ref})" if b.border_tag_ref else "")
                             for b in a.borders) if a.borders else
                   (_fmt_m(a.border_m) if a.border_m is not None else "Not recorded"),
                   _fmt_m(a.distance_m) if a.distance_m is not None else "-", a.line_config or "-"]

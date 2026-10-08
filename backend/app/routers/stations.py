@@ -162,6 +162,11 @@ def _update_fields(payload) -> dict:
     return data
 
 
+def _validate_link(station_id: int, element_id: int | None, db: Session) -> None:
+    if element_id is not None and not db.query(models.ElementORM).filter_by(id=element_id, station_id=station_id).first():
+        raise HTTPException(422, f"Linked element {element_id} is not an element of this station")
+
+
 def _validate_track_ref(station_id: int, track_id: int | None, db: Session, label: str = "track_id") -> None:
     if track_id is None:
         return
@@ -310,6 +315,7 @@ def add_tag(station_id: int, payload: schemas.TagCreate, db: Session = Depends(g
     _require_register_editor(user, station)
     _validate_source_document(station_id, payload.source_document_id, db)
     _validate_track_ref(station_id, payload.track_id, db)
+    _validate_link(station_id, payload.linked_element_id, db)
     tag = models.TagORM(station_id=station_id, **payload.model_dump())
     db.add(tag)
     db.commit()
@@ -345,6 +351,7 @@ def update_tag(
     tag = _get_tag_or_404(station_id, tag_id, db)
     _validate_source_document(station_id, payload.source_document_id, db)
     _validate_track_ref(station_id, payload.track_id, db)
+    _validate_link(station_id, payload.linked_element_id, db)
     for field, value in _update_fields(payload).items():
         setattr(tag, field, value)
     db.commit()

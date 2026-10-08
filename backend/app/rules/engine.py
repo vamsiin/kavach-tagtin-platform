@@ -548,25 +548,65 @@ def check_h2_28_centre_line(station: Station) -> list[CheckResult]:
 # adjacent station must be shown. (Placement of the border tag itself and the
 # H2.16.1 overlapping-signal exception stay manual.)
 # ---------------------------------------------------------------------------
-def check_h2_16_border_locations(station: Station) -> list[CheckResult]:
+def check_h2_16_border_locations(station: Station, tags: list[Tag] | None = None) -> list[CheckResult]:
+    """Border with each neighbour, mapped line by line: which line of this station
+    crosses the border, the line it continues as at the neighbour, the border chainage
+    and the border tag. Also: every main line (UP MAIN / DN MAIN) reaches a border on
+    each side, borders lie on their line, and a border tag that is in the tag register
+    sits on that line at the border."""
     title = "Station border location recorded"
     if not station.adjacent:
         return [CheckResult("H2.16", title, "FAIL",
                             "No adjacent stations recorded -- add each neighbouring station "
                             "with the absolute location of the border line")]
+    tracks = {t.id: t for t in station.tracks}
+    by_ref = {t.tag_ref.strip().upper(): t for t in tags or []}
     out = []
     for a in station.adjacent:
         if a.borders:
-            where = "; ".join(f"{b.line_label} {b.border_m:g} m"
-                              + (f" ({b.border_tag_ref})" if b.border_tag_ref else "") for b in a.borders)
-            out.append(CheckResult("H2.16", title, "PASS", f"Border with {a.name} ({a.side}): {where}",
+            def one(b):
+                mine = tracks[b.track_id].name if b.track_id in tracks else b.line_label
+                theirs = f" -> {a.name} {b.neighbour_line}" if b.neighbour_line else ""
+                return f"{mine}{theirs} at {b.border_m:g} m" + (f" ({b.border_tag_ref})" if b.border_tag_ref else "")
+            out.append(CheckResult("H2.16", title, "PASS",
+                                   f"Border with {a.name} ({a.side}): " + "; ".join(one(b) for b in a.borders),
                                    subject_ref=a.name))
+            for b in a.borders:
+                ref = f"{a.name} / {b.line_label}"
+                tr = tracks.get(b.track_id)
+                if tr is None:
+                    if tracks:
+                        out.append(CheckResult("H2.16", "Border mapped to a line", "WARN",
+                                               f"Border '{b.line_label}' with {a.name} is not linked to a line of "
+                                               f"this station -- pick the line", subject_ref=ref))
+                    continue
+                lo, hi = min(tr.start_m, tr.end_m), max(tr.start_m, tr.end_m)
+                if not lo - 1 <= b.border_m <= hi + 1:
+                    out.append(CheckResult("H2.16", "Border lies on its line", "WARN",
+                                           f"Border with {a.name} at {b.border_m:g} m is outside {tr.name} "
+                                           f"({lo:g}-{hi:g} m)", subject_ref=ref))
+                tag = by_ref.get((b.border_tag_ref or "").split("(")[0].strip().upper())
+                if tag is not None:
+                    ok = tag.track_id in (None, tr.id) and abs(tag.location_m - b.border_m) <= 1
+                    out.append(CheckResult("H2.16", "Border tag at the border", "PASS" if ok else "WARN",
+                                           f"{tag.tag_ref} at {tag.location_m:g} m"
+                                           + ("" if ok else f" -- border with {a.name} on {tr.name} is at "
+                                                            f"{b.border_m:g} m"), subject_ref=tag.tag_ref))
             continue
         ok = a.border_m is not None
         out.append(CheckResult("H2.16", title, "PASS" if ok else "FAIL",
                                f"Border with {a.name} ({a.side}): "
                                + (f"{a.border_m:g} m" if ok else "location not recorded"),
                                subject_ref=a.name))
+    # every main line crosses a border on each side that has a neighbour
+    for tr in station.tracks:
+        if getattr(tr, "line_type", "") not in ("UP MAIN", "DN MAIN"):
+            continue
+        for a in station.adjacent:
+            if a.borders and not any(b.track_id == tr.id for b in a.borders):
+                out.append(CheckResult("H2.16", "Main line mapped at each border", "WARN",
+                                       f"{tr.name} has no border mapped towards {a.name} ({a.side})",
+                                       subject_ref=f"{a.name} / {tr.name}"))
     return out
 
 
@@ -660,8 +700,21 @@ def check_topology(station: Station, elements: list[Element], tags: list[Tag], t
                                    f"Points {e.element_ref}: "
                                    + (f"lead to {to.name}" if ok else "the line they lead to is not recorded"),
                                    subject_ref=e.element_ref))
+    from ..domain import LINK_HINTS, suitable_link
+    els = {e.id: e for e in elements}
     for t in tags:
         on_line(t.tag_ref, t.track_id, t.location_m, t.location_m, "Tag")
+        el = els.get(t.linked_element_id)
+        if el is not None:
+            ok = suitable_link(t.tag_type, el.element_type)
+            out.append(CheckResult("DATA-TOPOLOGY", "Tag linked to a suitable element", "PASS" if ok else "FAIL",
+                                   f"{t.tag_ref} ({t.tag_type}) linked to {el.element_ref} ({el.element_type})"
+                                   + ("" if ok else f" -- a {t.tag_type} tag should be linked to "
+                                                    f"{LINK_HINTS.get(t.tag_type, 'a suitable element')}"),
+                                   subject_ref=t.tag_ref))
+        elif t.tag_type == "T":
+            out.append(CheckResult("DATA-TOPOLOGY", "Tag linked to a suitable element", "FAIL",
+                                   f"Turnout tag {t.tag_ref}: link it to its points / turnout", subject_ref=t.tag_ref))
     for n in tins:
         lo, hi = min(n.start_m, n.end_m), max(n.start_m, n.end_m)
         on_line(f"TIN {n.tin_no}", n.track_id, lo, hi, "")

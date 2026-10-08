@@ -318,7 +318,7 @@ def test_h2_16_per_line_borders_rule():
                StationBorder("DN line", 259740, "S1D"), StationBorder("UP line", 258024, "S24D")])]
     r = check_h2_16_border_locations(st(adjacent=adj))
     assert [x.status for x in r] == ["PASS", "PASS"]
-    assert "DN line 265278 m (S7D); UP line 266417 m (S30D)" in r[0].message
+    assert "DN line at 265278 m (S7D); UP line at 266417 m (S30D)" in r[0].message
 
 
 def test_per_line_borders_api(client, h):
@@ -369,4 +369,54 @@ def test_per_line_borders_api(client, h):
     with SessionLocal() as db:
         text = build_report(db, db.get(models.StationORM, sid),
                             db.query(models.UserORM).filter_by(username="dana").first(), "layout").plain_text()
-    assert "DN line: 259740 (S1D)" in text and "UP line: 266417 (S30D)" in text
+    assert "DN line at 259740 (S1D)" in text and "UP line at 266417 (S30D)" in text
+
+
+def test_line_wise_border_mapping_rule():
+    """Line-wise mapping (Oct 2026): each border names this station's line and the line it
+    continues as at the neighbour; main lines must be mapped; border tags must sit at the border."""
+    from app.domain import StationBorder, Tag
+    dn = Track(id=1, name="DN MAIN", track_type="Main", start_m=259740, end_m=265279, line_type="DN MAIN")
+    up = Track(id=2, name="UP MAIN", track_type="Main", start_m=258024, end_m=266417, line_type="UP MAIN")
+    adj = [AdjacentStation(id=1, name="Aler-PBP-IB", side="Higher km", borders=[
+        StationBorder("DN MAIN", 265279, "R-903 (S7D)", 1, "DN MAIN")])]
+    tags = [Tag(id=1, tag_ref="R-903", tag_type="S", location_m=265279, track_id=1)]
+    r = check_h2_16_border_locations(st(adjacent=adj, tracks=[dn, up]), tags)
+    by = {(x.title, x.subject_ref): x for x in r}
+    assert "DN MAIN -> Aler-PBP-IB DN MAIN at 265279 m (R-903 (S7D))" in by[("Station border location recorded", "Aler-PBP-IB")].message
+    assert by[("Border tag at the border", "R-903")].status == "PASS"
+    assert by[("Main line mapped at each border", "Aler-PBP-IB / UP MAIN")].status == "WARN"
+    # border tag elsewhere, border off its line
+    tags[0].location_m = 265000
+    adj[0].borders.append(StationBorder("UP MAIN", 270000, "", 2, "UP MAIN"))
+    r = check_h2_16_border_locations(st(adjacent=adj, tracks=[dn, up]), tags)
+    by = {(x.title, x.subject_ref): x for x in r}
+    assert by[("Border tag at the border", "R-903")].status == "WARN"
+    assert by[("Border lies on its line", "Aler-PBP-IB / UP MAIN")].status == "WARN"
+
+
+def test_line_wise_mapping_api_derives_line_config(client, h):
+    sid = client.post("/stations", json={"name": "Aler", "kavach_station_id": "103", "centre_line_m": 262750},
+                      headers=h["dana"]).json()["id"]
+    def line(name, lo, hi):
+        return client.post(f"/stations/{sid}/tracks", json={"name": name, "track_type": "Main", "start_m": lo,
+                                                             "end_m": hi}, headers=h["dana"]).json()["id"]
+    dn, up = line("DN MAIN", 259740, 265279), line("UP MAIN", 258024, 266417)
+    body = {"name": "Aler-PBP-IB", "side": "Higher km", "line_config": "Single", "borders": [
+        {"track_id": dn, "neighbour_line": "DN MAIN", "border_m": 265279, "border_tag_ref": "R-903"},
+        {"track_id": up, "neighbour_line": "UP MAIN", "border_m": 266417, "border_tag_ref": "R-902"}]}
+    r = client.post(f"/stations/{sid}/adjacent-stations", json=body, headers=h["dana"])
+    assert r.status_code == 200, r.text
+    a = r.json()
+    assert a["line_config"] == "Double"                          # derived from the mapping, not the given value
+    assert [(b["line_label"], b["neighbour_line"]) for b in a["borders"]] == [("DN MAIN", "DN MAIN"),
+                                                                              ("UP MAIN", "UP MAIN")]
+    # PUT without borders keeps the mapping and the derived configuration
+    r = client.put(f"/stations/{sid}/adjacent-stations/{a['id']}",
+                   json={"name": "Aler-PBP-IB", "side": "Higher km", "distance_m": 4000}, headers=h["dana"])
+    assert r.json()["line_config"] == "Double" and len(r.json()["borders"]) == 2
+    # the same line twice is refused
+    dup = {**body, "borders": [body["borders"][0], {**body["borders"][0], "border_m": 265300}]}
+    assert client.post(f"/stations/{sid}/adjacent-stations", json=dup, headers=h["dana"]).status_code == 422
+    one = {**body, "name": "X", "borders": [body["borders"][0]]}
+    assert client.post(f"/stations/{sid}/adjacent-stations", json=one, headers=h["dana"]).json()["line_config"] == "Single"
