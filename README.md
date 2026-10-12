@@ -661,7 +661,13 @@ forms (types, lines by name, chainage in m or km, endpoints in either order for 
 details, the element a tag is placed for, the partner tag of a pair). Nothing is saved while any row has an error;
 "Import" then writes the whole file in one go and records it in the station's change history. Rows that already exist
 (same element ref + line, tag ID, or TIN number + line) are reported unless "Update rows that already exist" is
-ticked. "Download template" gives a CSV with the expected columns and example rows. Import elements before tags that
+ticked. "Download template" gives a CSV in the QFTL working-sheet format (Oct 2026): Elements `#, Name of the  Signal,
+Type of Signal, Location(m), Line, Dir, Remarks`; Tags `#, Tag Number, Type of Tag, Chainage(m), Line, Dir, Linked
+element, Pair group ID, Legend, Border tag`; TINs `#, TIN Number, TIN Placement, Line, Color, Start (m), End (m), No
+KAVACH territory`. Values as on those sheets are understood: tag IDs in "Tag Number", "S - Signal Foot Tag",
+"Nominal (DN)" / "Down", type names split over two lines, "-" for empty, "261083 / 261144" (ABS-1 used, ABS-2 kept in
+remarks), TIN endpoints in either order, the same TIN or element name more than once on a line at different places.
+When updating, an empty cell keeps the recorded value. Import elements before tags that
 refer to them. API: `POST /stations/{id}/registers/{elements|tags|tins}/import?apply=&update_existing=`,
 `GET .../template`.
 

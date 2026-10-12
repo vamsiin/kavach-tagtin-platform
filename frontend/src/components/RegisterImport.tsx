@@ -3,9 +3,9 @@ import { api, type ImportPreview } from "../api";
 
 const TITLES: Record<string, string> = { elements: "Elements", tags: "Tags", tins: "TINs" };
 const COLUMNS: Record<string, string> = {
-  elements: "element_ref, element_type, location_m (or km), line, to_line (points), direction, lc_class, lc_manning, remarks",
-  tags: "tag_ref, tag_number, tag_type, location_m (or km), line, direction, placed_for (element ref), paired_with (tag ID), role (main / duplicate), legend_shape, exit_set, is_border_tag (yes / no), remarks",
-  tins: "tin_no, section_type (Station / Block), line, color, start_m and end_m (either order), direction, non_kavach (yes / no), remarks",
+  elements: "#, Name of the Signal, Type of Signal, Location(m), Line, Dir (Down / Up), Remarks",
+  tags: "#, Tag Number (e.g. R-775), Type of Tag (e.g. S - Signal Foot Tag), Chainage(m), Line, Dir (Nominal (DN) / Reverse (UP)), Linked element, Pair group ID, Legend, Border tag (Yes / No)",
+  tins: "#, TIN Number, TIN Placement (Station / Block), Line, Color, Start (m), End (m) (either order), No KAVACH territory (Yes / No)",
 };
 
 /** "Upload CSV" for a register: pick a .csv / .xlsx file, see every row checked
@@ -60,7 +60,7 @@ export function RegisterImport({ stationId, kind, onDone }: { stationId: number;
               <button className="secondary" onClick={close}>Close</button>
             </div>
             <p className="muted small">
-              Columns: {COLUMNS[kind]}. Header names are matched loosely; a row starting with # is skipped.{" "}
+              Columns: {COLUMNS[kind]}. "-" means empty; when updating, an empty cell keeps what is already recorded.{" "}
               <button className="link-btn" onClick={() => api.downloadRegisterTemplate(stationId, kind)}>Download template</button>
             </p>
             {busy && <div className="muted">Checking…</div>}

@@ -102,3 +102,69 @@ def test_tins_normalised_and_xlsx(client):
     assert rows["TIN 218"]["action"] == "add" and rows["TIN 218"]["data"]["start_m"] == 263145
     assert any("high-to-low" in w for w in rows["TIN 218"]["warnings"])
     assert rows["TIN 169"]["action"] == "error" and any("equal" in e for e in rows["TIN 169"]["errors"])
+
+
+QFTL_ELEMENTS = '''#,Name of the  Signal,Type of Signal,Location(m),Line,Dir,Remarks
+,S1/S1A,"Main Home with Junction
+ Route Indicator",261789,DN MAIN,Down,-
+,S30 ID/29D,"Gate Inner Distant-Cum-
+ Distant Signal",265370,UP MAIN,Up,-
+,S30/29 ID,"Gate stop-cum-
+Inner Distant  Signal",264362,UP MAIN,Up,-
+,SB,Stop  Board /Buffer Stop,262977,UP MAIN,Up,-
+,SB,Stop  Board /Buffer Stop,262982,UP MAIN,Up,-
+,S5/SH8,Loopline Starter ,262907,DN MAIN,Down,-
+'''
+QFTL_TAGS = '''#,Tag Number,Type of Tag,Chainage(m),Line,Dir,Linked element,Pair group ID,Legend,Border tag
+,R-775,S - Signal Foot Tag,259740,DN MAIN,Nominal (DN),S1/S1A,-,Triangle,Yes
+,R-883,G - Lc Gate Tag,263574,DN MAIN,Nominal (DN),-,-,Triangle,No
+,R-862,A - Adjustment / Junction Tag,261083 / 261144,UP MAIN,Reverse (UP),-,-,Triangle,No
+'''
+QFTL_TINS = '''#,TIN Number,TIN Placement,Line,Color,Start (m),End (m),No KAVACH territory
+,169,Station,COMMON LOOP,Yellow,261978,262213,No
+,169,Station,COMMON LOOP,Yellow,261978,262023,No
+,218,Block,UP MAIN,Orange,270968,263145,No
+'''
+
+
+def test_qftl_sheet_format(client):
+    """The column headings and cell values of the QFTL working sheets (ALER_*_test.csv)."""
+    sid, des, _ = _setup(client)
+    p = _up(client, sid, "elements", QFTL_ELEMENTS, des).json()
+    assert p["ignored_columns"] == [] and p["can_apply"], p
+    types = {r["key"]: r["data"]["element_type"] for r in p["rows"]}
+    assert types["S1/S1A (DN MAIN)"] == "Main Home with Junction Route Indicator"
+    assert types["S30 ID/29D (UP MAIN)"] == "Gate Inner Distant-cum-Distant Signal"
+    assert types["S30/29 ID (UP MAIN)"] == "Gate-cum-Inner Distant Signal"
+    assert types["SB (UP MAIN)"] == "Stop Board/Buffer Stop" and types["S5/SH8 (DN MAIN)"] == "Loopline Starter"
+    assert p["counts"]["add"] == 6                                   # two SBs at different chainages
+    _up(client, sid, "elements", QFTL_ELEMENTS, des, apply=True)
+    p = _up(client, sid, "tags", QFTL_TAGS, des).json()
+    assert p["can_apply"], p
+    rows = {r["key"]: r for r in p["rows"]}
+    assert rows["R-775"]["data"]["tag_type"] == "S" and rows["R-775"]["data"]["tag_number"] == 775
+    assert rows["R-775"]["data"]["direction"] == "Nominal" and rows["R-775"]["data"]["is_border_tag"] is True
+    assert rows["R-775"]["data"]["linked_element_id"] is not None
+    assert rows["R-862"]["data"]["location_m"] == 261083 and "ABS-2 261144" in rows["R-862"]["data"]["remarks"]
+    p = _up(client, sid, "tins", QFTL_TINS, des).json()
+    assert p["can_apply"] and p["counts"]["add"] == 3, p
+    assert [r["data"]["section_type"] for r in p["rows"]] == ["Station", "Station", "Block"]
+
+
+def test_update_keeps_values_left_blank(client):
+    sid, des, _ = _setup(client)
+    _up(client, sid, "elements", QFTL_ELEMENTS, des, apply=True)
+    _up(client, sid, "tags", QFTL_TAGS, des, apply=True)
+    blank_link = QFTL_TAGS.replace("S1/S1A,-,Triangle,Yes", "-,-,Triangle,Yes")
+    _up(client, sid, "tags", blank_link, des, apply=True, update=True)
+    t = {x["tag_ref"]: x for x in client.get(f"/stations/{sid}/tags", headers=des).json()}
+    assert t["R-775"]["linked_element_id"] is not None
+
+
+def test_qftl_templates(client):
+    sid, des, _ = _setup(client)
+    heads = {k: client.get(f"/stations/{sid}/registers/{k}/template", headers=des).text.splitlines()[0]
+             for k in ("elements", "tags", "tins")}
+    assert heads == {"elements": "#,Name of the  Signal,Type of Signal,Location(m),Line,Dir,Remarks",
+                     "tags": "#,Tag Number,Type of Tag,Chainage(m),Line,Dir,Linked element,Pair group ID,Legend,Border tag",
+                     "tins": "#,TIN Number,TIN Placement,Line,Color,Start (m),End (m),No KAVACH territory"}

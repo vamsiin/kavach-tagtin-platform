@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 COLOURS = {
     "black": (0, 0, 0), "white": (255, 255, 255), "red": (220, 30, 30), "green": (0, 150, 60),
     "light green": (140, 220, 140), "dark green": (0, 100, 40), "blue": (30, 80, 220),
-    "light blue": (120, 190, 240), "dark blue": (10, 40, 140), "yellow": (240, 200, 0),
+    "light blue": (120, 190, 240), "sky blue": (110, 190, 245), "dark blue": (10, 40, 140), "yellow": (240, 200, 0),
     "orange": (245, 140, 20), "pink": (240, 120, 180), "light pink": (250, 185, 210),
     "magenta": (210, 0, 170), "violet": (140, 70, 200), "purple": (120, 40, 150),
     "brown": (140, 80, 30), "grey": (140, 140, 140), "gray": (140, 140, 140),
