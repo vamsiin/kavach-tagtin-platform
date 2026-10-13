@@ -55,6 +55,7 @@ _ALIASES = {
         "legend_shape": ["legendshape", "legend"],
         "exit_set": ["exitset"],
         "is_border_tag": ["isbordertag", "bordertag", "border"],
+        "abs2_m": ["abs2m", "abs2", "correctedlocation", "correctedlocationm"],
         "remarks": ["remarks", "remark", "notes"],
     },
     "tins": {
@@ -227,7 +228,7 @@ def _location(rec: dict, errs: list[str], m_key="location_m", km_key="km", what=
     if "/" in raw:                      # adjustment tag "261083 / 261144": ABS-1 / ABS-2
         first, second = [x.strip() for x in raw.split("/", 1)]
         if warns is not None:
-            warns.append(f"Two chainages given ({raw}): {first} (ABS-1, physical location) used; {second} kept in remarks")
+            warns.append(f"Two chainages given ({raw}): ABS-1 {first} = location, ABS-2 {second} = corrected location")
         rec["_abs2"] = second
         raw = first
     m = _num(raw, f"{what} (m)", errs)
@@ -237,6 +238,18 @@ def _location(rec: dict, errs: list[str], m_key="location_m", km_key="km", what=
     if m is not None and m < 0:
         errs.append(f"{what} cannot be negative")
     return m
+
+
+def _abs2(rec: dict, ttype: str | None, errs: list[str], warns: list[str]) -> float | None:
+    """ABS-2 of an adjustment tag, from "ABS-1 / ABS-2" in the chainage cell or an abs2 column."""
+    raw = rec.get("_abs2") or rec.get("abs2_m") or ""
+    if not raw:
+        return None
+    v = _num(raw, "ABS-2", errs)
+    if v is not None and ttype != "A":
+        warns.append("ABS-2 is only used for adjustment (A) tags -- ignored")
+        return None
+    return v
 
 
 def _direction(v: str, errs: list[str], allow_both=False, dn_direction: str = "Nominal"):
@@ -407,8 +420,8 @@ def preview(db, station: models.StationORM, kind: str, rows: list[dict[str, str]
                 tag_ref=ref, tag_number=num, tag_type=ttype, location_m=loc, track_id=tid, direction=direction,
                 linked_element_id=link, legend_shape=legend, exit_set=exit_set,
                 is_border_tag=_yes(rec.get("is_border_tag", "")),
-                remarks="; ".join(x for x in ((rec.get("remarks") or "").strip(),
-                                              f"ABS-2 {rec['_abs2']}" if rec.get("_abs2") else "") if x) or None,
+                remarks=(rec.get("remarks") or "").strip() or None,
+                abs2_m=_abs2(rec, ttype, errs, warns),
                 pair_group_id=(rec.get("pair_group_id") or "").strip() or None,
                 _partner=partner or None, is_duplicate=role.startswith("dup")))
             old = existing.get(ref.upper())

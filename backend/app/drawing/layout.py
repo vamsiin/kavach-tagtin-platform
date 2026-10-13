@@ -39,6 +39,19 @@ class DTrack:
     start_m: float
     end_m: float
     is_kavach: bool = True
+    line_type: str = "OTHER"
+    sort_order: int = 0
+
+
+# Top-to-bottom order of lines on the sheet, as on the manual layouts (Aler V2.0.3):
+# COMMON LOOP and DN LOOP above DN MAIN, then UP MAIN, then UP LOOP; other lines
+# (sidings etc.) at the bottom. Within a line type the line's sort order decides.
+LINE_ORDER = {"COMMON LOOP": 0, "DN LOOP": 1, "DN MAIN": 2, "UP MAIN": 3, "UP LOOP": 4, "OTHER": 5}
+
+
+def ordered_tracks(tracks: list) -> list:
+    return sorted(tracks, key=lambda t: (LINE_ORDER.get(getattr(t, "line_type", "OTHER") or "OTHER", 5),
+                                         getattr(t, "sort_order", 0) or 0, t.id))
 
 
 @dataclass
@@ -63,6 +76,7 @@ class DTag:
     legend_shape: str | None = None
     pair_group: str | None = None
     is_border: bool = False
+    abs2_m: float | None = None
 
 
 @dataclass
@@ -187,7 +201,7 @@ def build(d: DrawingData) -> Scene:
 
 
 def _plan(s: Scene, d: DrawingData) -> None:
-    tracks = d.tracks or []
+    tracks = ordered_tracks(d.tracks or [])
     if not tracks:
         s.add(Text((X0 + X1) / 2, (Y_TOP + Y_BOTTOM) / 2, "No lines recorded for this station -- record its "
                    "lines (Registers tab) to draw the layout", 3.5, anchor="middle", rgb=FAINT))
@@ -212,10 +226,17 @@ def _plan(s: Scene, d: DrawingData) -> None:
                    anchor="middle", bold=True))
 
     # neighbours at the ends
+    sides: dict[bool, list] = {True: [], False: []}
     for name, side in d.neighbours:
-        low = "lower" in (side or "").lower()
+        low = "lower" in (side or "").lower() or "reverse" in (side or "").lower()
+        if name not in sides[low]:
+            sides[low].append(name)
+    for low, names in sides.items():
+        if not names:
+            continue
         x, anchor = (X0 - 2, "start") if low else (X1 + 2, "end")
-        s.add(Text(x, Y_BOTTOM - 12, f"<< {name}" if low else f"{name} >>", 2.6, "TEXT", anchor=anchor, bold=True))
+        label = " / ".join(names)
+        s.add(Text(x, Y_BOTTOM - 12, f"<< {label}" if low else f"{label} >>", 2.6, "TEXT", anchor=anchor, bold=True))
 
     for t in tracks:
         y = y_of[t.id]
@@ -338,8 +359,10 @@ def _tag(s: Scene, t: DTag, x: float, y: float, group: list, refs: str) -> None:
         s.add(Rect(x - TAG / 2, base, TAG, TAG, "TAGS", fill=fill, width=0.3))
     s.add(Text(x, base + TAG / 2 - 0.8, t.tag_type, 1.6, "TAGS", anchor="middle", bold=True))
     direction = f"{t.direction[:3].upper()}" if t.direction else ""
+    where = (f"ABS-1 {km(t.location_m)} / ABS-2 {km(t.abs2_m)}" if t.tag_type == "A" and t.abs2_m is not None
+             else km(t.location_m))
     label = f"{refs}{' #' + str(t.number) if t.number is not None and str(t.number) not in t.ref else ''}" \
-            f"  {km(t.location_m)}  {direction}"
+            f"  {where}  {direction}"
     if above:
         s.add(Text(x + 0.7, base + TAG + 5.5, label, 1.8, "TAGS", angle=90))
     else:

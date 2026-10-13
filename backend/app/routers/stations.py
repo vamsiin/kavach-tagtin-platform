@@ -148,7 +148,7 @@ def _validate_source_document(station_id: int, doc_id: int | None, db: Session) 
 
 # Fields added after the first clients shipped: only changed when the client sends
 # them, so an older client can't wipe them on every edit.
-_SEND_TO_CHANGE = ("source_document_id", "track_id", "to_track_id", "lc_class", "lc_manning")
+_SEND_TO_CHANGE = ("source_document_id", "track_id", "to_track_id", "lc_class", "lc_manning", "abs2_m")
 
 
 def _update_fields(payload) -> dict:
@@ -160,6 +160,14 @@ def _update_fields(payload) -> dict:
         if f in data and f not in payload.model_fields_set:
             data.pop(f)
     return data
+
+
+def _clean_abs2(payload) -> None:
+    """ABS-2 belongs to adjustment (A) tags only."""
+    if payload.tag_type != "A":
+        payload.abs2_m = None
+    elif payload.abs2_m is not None and payload.abs2_m < 0:
+        raise HTTPException(422, "ABS-2 cannot be negative")
 
 
 def _validate_link(station_id: int, element_id: int | None, db: Session) -> None:
@@ -316,6 +324,7 @@ def add_tag(station_id: int, payload: schemas.TagCreate, db: Session = Depends(g
     _validate_source_document(station_id, payload.source_document_id, db)
     _validate_track_ref(station_id, payload.track_id, db)
     _validate_link(station_id, payload.linked_element_id, db)
+    _clean_abs2(payload)
     tag = models.TagORM(station_id=station_id, **payload.model_dump())
     db.add(tag)
     db.commit()
@@ -352,6 +361,7 @@ def update_tag(
     _validate_source_document(station_id, payload.source_document_id, db)
     _validate_track_ref(station_id, payload.track_id, db)
     _validate_link(station_id, payload.linked_element_id, db)
+    _clean_abs2(payload)
     for field, value in _update_fields(payload).items():
         setattr(tag, field, value)
     db.commit()

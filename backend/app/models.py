@@ -196,6 +196,9 @@ class TagORM(Base):
     remarks = Column(Text, nullable=True)
     source_document_id = Column(Integer, ForeignKey("input_documents.id"), nullable=True)
     track_id = Column(Integer, ForeignKey("tracks.id"), nullable=True)
+    # adjustment (A) tags: location_m is ABS-1, the physical location; abs2_m is ABS-2,
+    # the corrected location the tag reports
+    abs2_m = Column(Float, nullable=True)
 
     station = relationship("StationORM", back_populates="tags")
 
@@ -207,7 +210,7 @@ class TagORM(Base):
             linked_element_id=self.linked_element_id, is_duplicate=bool(self.is_duplicate),
             pair_group_id=self.pair_group_id, legend_shape=self.legend_shape,
             exit_set=self.exit_set, is_border_tag=bool(self.is_border_tag),
-            remarks=self.remarks or "", track_id=self.track_id,
+            remarks=self.remarks or "", track_id=self.track_id, abs2_m=self.abs2_m,
         )
 
 

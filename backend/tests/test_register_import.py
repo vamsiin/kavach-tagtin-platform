@@ -145,7 +145,7 @@ def test_qftl_sheet_format(client):
     assert rows["R-775"]["data"]["tag_type"] == "S" and rows["R-775"]["data"]["tag_number"] == 775
     assert rows["R-775"]["data"]["direction"] == "Nominal" and rows["R-775"]["data"]["is_border_tag"] is True
     assert rows["R-775"]["data"]["linked_element_id"] is not None
-    assert rows["R-862"]["data"]["location_m"] == 261083 and "ABS-2 261144" in rows["R-862"]["data"]["remarks"]
+    assert rows["R-862"]["data"]["location_m"] == 261083 and rows["R-862"]["data"]["abs2_m"] == 261144
     p = _up(client, sid, "tins", QFTL_TINS, des).json()
     assert p["can_apply"] and p["counts"]["add"] == 3, p
     assert [r["data"]["section_type"] for r in p["rows"]] == ["Station", "Station", "Block"]

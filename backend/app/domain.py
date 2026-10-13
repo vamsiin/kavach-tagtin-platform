@@ -336,6 +336,7 @@ class Tag:
     is_border_tag: bool = False  # BRD BR-005 / Annexure-H H2.16 -- station border marker
     remarks: str = ""
     track_id: int | None = None
+    abs2_m: float | None = None   # A tags: ABS-2 (corrected location); location_m is ABS-1 (physical)
 
 
 @dataclass

@@ -208,6 +208,7 @@ export interface Tag {
   remarks: string | null;
   source_document_id?: number | null;
   track_id?: number | null;
+  abs2_m?: number | null;   // adjustment (A) tags: ABS-2, corrected location
 }
 
 export interface TIN {

@@ -142,3 +142,21 @@ def test_drawing_endpoint(client, h):
     assert client.get(f"/stations/{sid}/drawing", params={"format": "png"}, headers=h["dana"]).status_code == 422
     log = client.get(f"/stations/{sid}/report-log", headers=h["dana"]).json()
     assert sorted(x["fmt"] for x in log if x["report_type"] == "drawing") == ["dxf", "pdf"]
+
+
+def test_line_order_follows_line_type():
+    """QFTL review (Oct 2026): COMMON LOOP above DN MAIN, then UP MAIN, then UP LOOP,
+    whatever order the lines were entered in."""
+    from app.drawing.layout import DTrack, ordered_tracks
+    tr = [DTrack(1, "UP LOOP", 0, 1, line_type="UP LOOP"), DTrack(2, "DN MAIN", 0, 1, line_type="DN MAIN"),
+          DTrack(3, "SIDING", 0, 1, line_type="OTHER"), DTrack(4, "UP MAIN", 0, 1, line_type="UP MAIN"),
+          DTrack(5, "COMMON LOOP", 0, 1, line_type="COMMON LOOP")]
+    assert [t.name for t in ordered_tracks(tr)] == ["COMMON LOOP", "DN MAIN", "UP MAIN", "UP LOOP", "SIDING"]
+
+
+def test_adjustment_tag_shows_abs1_and_abs2():
+    from app.drawing.layout import DTag, _tag
+    from app.drawing.scene import Scene, Text
+    s = Scene(420, 297)
+    _tag(s, DTag("R-862", "A", 261083, 1, 862, "Reverse", abs2_m=261144), 100, 100, [], "R-862")
+    assert any("ABS-1 261.083 / ABS-2 261.144" in x.text for x in s.items if isinstance(x, Text))

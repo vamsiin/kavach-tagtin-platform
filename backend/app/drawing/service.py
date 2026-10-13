@@ -29,11 +29,13 @@ def build_data(db: Session, st: models.StationORM, user: models.UserORM) -> Draw
         drawn_to_scale=False,   # the generated sheet's chainage axis is always compressed (H2.26)
         centre_line_m=st.centre_line_m,
         generated_at=datetime.now(timezone.utc).isoformat(), generated_by=user.full_name or user.username)
-    d.tracks = [DTrack(t.id, t.name, t.start_m, t.end_m, t.is_kavach is not False) for t in st.tracks]
+    from ..domain import guess_line_type
+    d.tracks = [DTrack(t.id, t.name, t.start_m, t.end_m, t.is_kavach is not False,
+                       t.line_type or guess_line_type(t.name), t.sort_order or 0) for t in st.tracks]
     d.tins = [DTin(n.tin_no, n.start_m, n.end_m, n.track_id, n.color, n.section_type,
                    bool(n.is_non_kavach_territory)) for n in st.tins]
     d.tags = [DTag(t.tag_ref, t.tag_type, t.location_m, t.track_id, t.tag_number, t.direction, t.legend_shape,
-                   t.pair_group_id, bool(t.is_border_tag)) for t in st.tags]
+                   t.pair_group_id, bool(t.is_border_tag), t.abs2_m) for t in st.tags]
     d.elements = [DElement(e.element_ref, e.element_type, e.location_m, e.track_id, e.to_track_id)
                   for e in st.elements]
     for a in st.adjacent_stations:
@@ -61,8 +63,13 @@ def build_data(db: Session, st: models.StationORM, user: models.UserORM) -> Draw
     own = find_row(rows, st.kavach_station_id, st.name) if rows else None
     if own is not None:
         d.allotment_ref = chart_ref(own.chart)
+        seen_rows = set()
         for label, r in [(st.name, own)] + [(a.name, find_row(rows, a.kavach_station_id, a.name))
                                             for a in st.adjacent_stations]:
+            if r is not None:
+                if r.id in seen_rows:
+                    continue                  # two neighbours matched to the same chart row
+                seen_rows.add(r.id)
             if r is None:
                 d.allotment.append(DAllotRow(f"{label} (not on chart)", "", None, None, "", None, None))
                 continue

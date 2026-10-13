@@ -35,7 +35,8 @@ export function TagsPanel({ tags, elements, tracks, nextFree, dnDirection, onAdd
     { key: "tag_ref", label: "Tag ID" },
     { key: "tag_number", label: "No." },
     { key: "tag_type", label: "Type", render: (t) => `${t.tag_type} — ${TAG_TYPE_LABELS[t.tag_type]}` },
-    { key: "location_m", label: "Chainage (m)" },
+    { key: "location_m", label: "Chainage (m)",
+      render: (t) => t.tag_type === "A" && t.abs2_m != null ? `${t.location_m} (ABS-2 ${t.abs2_m})` : String(t.location_m) },
     { key: "track_id", label: "Line", render: (t) => lineName(tracks, t.track_id) },
     { key: "direction", label: "Direction", render: (t) => t.direction ? directionLabel(t.direction, dnDirection) : "—" },
     { key: "linked_element_id", label: "Placed for",
@@ -115,6 +116,7 @@ function TagForm({ elements, tracks, tags, nextFree, dnDirection, initial, onSub
   const [number, setNumber] = useState(initial?.tag_number != null ? String(initial.tag_number) : "");
   const [type, setType] = useState<string>(initial?.tag_type ?? TAG_TYPES[0]);
   const [loc, setLoc] = useState(initial ? String(initial.location_m) : "");
+  const [abs2, setAbs2] = useState(initial?.abs2_m != null ? String(initial.abs2_m) : "");
   const [dir, setDir] = useState(initial?.direction ?? "");
   const [linkedEl, setLinkedEl] = useState<string>(initial?.linked_element_id ? String(initial.linked_element_id) : "");
   const initialPartner = initial ? partnersOf(initial, tags)[0] : undefined;
@@ -156,6 +158,7 @@ function TagForm({ elements, tracks, tags, nextFree, dnDirection, initial, onSub
     onSubmit({
       tag_ref: ref, tag_number: number ? parseInt(number) : null,
       tag_type: type, location_m: parseFloat(loc), direction: dir || null,
+      abs2_m: type === "A" && abs2.trim() !== "" ? parseFloat(abs2) : null,
       linked_element_id: linkedEl ? parseInt(linkedEl) : null,
       pair_group_id: group, is_duplicate: partnerTag ? isDup : false,
       legend_shape: partnerTag ? (legend || autoLegend || null) : (legend || null),
@@ -191,9 +194,15 @@ function TagForm({ elements, tracks, tags, nextFree, dnDirection, initial, onSub
         <Field label="Line" help="The line the tag is fixed on">
           <LineSelect tracks={tracks} value={track} onChange={setTrack} placeholder="Pick a line…" />
         </Field>
-        <Field label="Chainage (m)" help={here != null && Number.isFinite(here) ? `km ${km(here)}` : "In metres, e.g. 262910 for km 262.910"}>
+        <Field label={type === "A" ? "ABS-1 — physical location (m)" : "Chainage (m)"} help={here != null && Number.isFinite(here) ? `km ${km(here)}` : "In metres, e.g. 262910 for km 262.910"}>
           <input type="number" step="0.001" value={loc} onChange={(e) => setLoc(e.target.value)} required placeholder="262910" />
         </Field>
+        {type === "A" && (
+          <Field label="ABS-2 — corrected location (m)" help={<>Adjustment tag: the chainage above is ABS-1, the physical
+            location; ABS-2 is the corrected location the tag reports.{abs2 && Number.isFinite(Number(abs2)) ? ` km ${km(Number(abs2))}` : ""}</>}>
+            <input type="number" step="0.001" value={abs2} onChange={(e) => setAbs2(e.target.value)} placeholder="261144" />
+          </Field>
+        )}
         <Field label="Direction of travel" help="The trains this tag is read by: Nominal = towards higher km, Reverse = towards lower km">
           <select value={dir} onChange={(e) => setDir(e.target.value)}>
             <option value="">Not set</option>

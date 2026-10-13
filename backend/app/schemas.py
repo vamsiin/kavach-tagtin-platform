@@ -78,6 +78,8 @@ class TagCreate(BaseModel):
     source_document_id: int | None = Field(
         default=None, description="Input document (SIP/DXF/Allocation Chart) this tag was derived from -- FR-011/BR-001")
     track_id: int | None = Field(default=None, description="Line this tag sits on")
+    abs2_m: float | None = Field(default=None, description="Adjustment (A) tags only: ABS-2, the corrected "
+                                 "location; location_m is ABS-1, the physical location")
 
 
     @field_validator("is_duplicate", "is_border_tag", mode="before")
