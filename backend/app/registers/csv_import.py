@@ -21,7 +21,8 @@ from dataclasses import dataclass, field
 from fastapi import HTTPException
 
 from .. import models
-from ..domain import ELEMENT_TYPES, LC_CLASSES, LC_GATE, LC_MANNING, POINTS, TAG_TYPES
+from ..domain import (ELEMENT_TYPES, LC_CLASSES, LC_GATE, LC_MANNING, POINTS, TAG_TYPES, is_signal_type,
+                      normalise_aspects)
 
 KINDS = ("elements", "tags", "tins")
 
@@ -38,6 +39,7 @@ _ALIASES = {
         "direction": ["direction", "dir"],
         "lc_class": ["lcclass", "class"],
         "lc_manning": ["lcmanning", "manning"],
+        "aspects": ["aspects", "aspect", "signalaspects", "aspectsofsignal", "lamps"],
         "remarks": ["remarks", "remark", "notes"],
     },
     "tags": {
@@ -341,6 +343,15 @@ def preview(db, station: models.StationORM, kind: str, rows: list[dict[str, str]
                 warns.append("Points: the line they lead to is not given")
             lc_class = _choice(rec.get("lc_class", ""), LC_CLASSES, "LC class", errs) if etype == LC_GATE else None
             lc_man = _choice(rec.get("lc_manning", ""), LC_MANNING, "LC manning", errs) if etype == LC_GATE else None
+            aspects = None
+            if (rec.get("aspects") or "").strip() and etype:
+                if is_signal_type(etype):
+                    try:
+                        aspects = normalise_aspects(rec.get("aspects"))
+                    except ValueError as ex:
+                        errs.append(str(ex))
+                else:
+                    warns.append(f"Aspects ignored: {etype} is not a signal")
             key = (ref.upper(), tid)
             if (key, loc) in seen:
                 errs.append(f"{ref} appears twice in the file on the same line at the same chainage")
@@ -348,7 +359,7 @@ def preview(db, station: models.StationORM, kind: str, rows: list[dict[str, str]
             r = RowResult(i, f"{ref}" + (f" ({rec.get('line')})" if rec.get("line") else ""), errors=errs, warnings=warns,
                           data=dict(element_ref=ref, element_type=etype, location_m=loc, track_id=tid,
                                     to_track_id=to, direction=(rec.get("direction") or "").strip() or None,
-                                    lc_class=lc_class, lc_manning=lc_man,
+                                    lc_class=lc_class, lc_manning=lc_man, aspects=aspects,
                                     remarks=(rec.get("remarks") or "").strip() or None))
             old = _match(existing.get(key, []), lambda e: e.location_m == loc, claimed)
             if old is not None:

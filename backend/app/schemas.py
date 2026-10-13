@@ -50,6 +50,8 @@ class ElementCreate(BaseModel):
     to_track_id: int | None = Field(default=None, description="Points only: the line the turnout leads to")
     lc_class: str | None = Field(default=None, description="LC gates only: Special / A / B / C / D")
     lc_manning: str | None = Field(default=None, description="LC gates only")
+    aspects: str | None = Field(default=None, description="Signals only: lamps such as R/Y/G or R/Y/YY/G+RI; "
+                                                          "blank = default for the signal type")
 
 
 

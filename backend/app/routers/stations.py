@@ -148,7 +148,7 @@ def _validate_source_document(station_id: int, doc_id: int | None, db: Session) 
 
 # Fields added after the first clients shipped: only changed when the client sends
 # them, so an older client can't wipe them on every edit.
-_SEND_TO_CHANGE = ("source_document_id", "track_id", "to_track_id", "lc_class", "lc_manning", "abs2_m")
+_SEND_TO_CHANGE = ("source_document_id", "track_id", "to_track_id", "lc_class", "lc_manning", "abs2_m", "aspects")
 
 
 def _update_fields(payload) -> dict:
@@ -186,8 +186,16 @@ def _clean_element(station_id: int, data: dict, el: "models.ElementORM | None", 
     """Type-specific element fields: LC details only on LC gates, the diverging line
     only on points. Values that don't apply to the type are cleared, not rejected,
     so changing an element's type in the form never leaves stale data behind."""
-    from ..domain import LC_CLASSES, LC_GATE, LC_MANNING, POINTS
+    from ..domain import LC_CLASSES, LC_GATE, LC_MANNING, POINTS, is_signal_type, normalise_aspects
     etype = data.get("element_type")
+    if not is_signal_type(etype):
+        if "aspects" in data or (el is not None and el.aspects is not None):
+            data["aspects"] = None
+    elif data.get("aspects") is not None:
+        try:
+            data["aspects"] = normalise_aspects(data["aspects"])
+        except ValueError as e:
+            raise HTTPException(422, str(e))
     track = data.get("track_id", el.track_id if el else None)
     if etype != LC_GATE:
         for f in ("lc_class", "lc_manning"):

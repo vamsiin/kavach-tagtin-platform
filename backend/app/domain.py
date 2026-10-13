@@ -43,6 +43,57 @@ NON_SIGNAL_ELEMENT_TYPES = [
 ]
 ELEMENT_TYPES = SIGNAL_ELEMENT_TYPES + NON_SIGNAL_ELEMENT_TYPES
 
+# Signal aspects (QFTL, Oct 2026: "signal aspects need to be displayed clearly").
+# Written as lamps separated by "/", e.g. "R/Y/YY/G". R red, Y yellow, YY double
+# yellow, G green, C calling-on (miniature yellow), SH shunt (position light);
+# "+RI" adds a junction-type route indicator. Blank on an element -> the default for
+# its type below (multiple-aspect colour-light practice); the designer overrides it
+# from the SIP where the station differs.
+ASPECT_LAMPS = ["R", "Y", "YY", "G", "C", "SH"]
+NON_ASPECT_TYPES = {"BSLB Board", "Stop Board/Buffer Stop", "Berthing Track End"}
+
+
+def is_signal_type(element_type: str | None) -> bool:
+    return element_type in SIGNAL_ELEMENT_TYPES and element_type not in NON_ASPECT_TYPES
+
+
+def default_aspects(element_type: str | None) -> str | None:
+    t = element_type or ""
+    if not is_signal_type(t):
+        return None
+    if t == "Calling-on Signal":
+        return "C"
+    if t == "Shunt Signal":
+        return "SH"
+    if t == "Other Misc Signals":
+        return None                           # unknown: the designer states it
+    lo = t.lower()
+    stop_words = ("starter", "gate stop", "gate-cum", "gate cum", "ib signal", "ib stop", "home",
+                  "auto", "semi", "stop signal")
+    is_stop = any(w in lo for w in stop_words)
+    if "distant" in lo and not is_stop:
+        return "G/YY/Y"                       # permissive distant / inner distant: no red
+    ri = "+RI" if "with junction" in lo else ""
+    if "home" in lo or "distant" in lo:       # home, and stop signals that also act as a distant
+        return "R/Y/YY/G" + ri
+    return "R/Y/G" + ri
+
+
+def normalise_aspects(text: str | None) -> str | None:
+    """'r y g', 'R-Y-G', 'R/Y/YY/G + RI' -> 'R/Y/G', 'R/Y/YY/G+RI'. Raises ValueError
+    for an unknown lamp."""
+    import re
+    raw = (text or "").strip().upper()
+    if not raw:
+        return None
+    ri = bool(re.search(r"\+\s*(J?RI|ROUTE)", raw))
+    raw = re.sub(r"\+\s*(J?RI|ROUTE\w*)", "", raw)
+    lamps = [p for p in re.split(r"[\s/,\-]+", raw) if p]
+    bad = [p for p in lamps if p not in ASPECT_LAMPS]
+    if bad or not lamps:
+        raise ValueError(f"Unknown aspect(s) {', '.join(bad) or raw}; use {'/'.join(ASPECT_LAMPS)} (and +RI)")
+    return "/".join(lamps) + ("+RI" if ri else "")
+
 LC_CLASSES = ["Special", "A", "B", "C", "D"]
 LC_MANNING = ["Manned interlocked", "Manned non-interlocked", "Unmanned"]
 
@@ -317,6 +368,7 @@ class Element:
     to_track_id: int | None = None   # points only: the line the turnout leads to
     lc_class: str | None = None      # LC gates only
     lc_manning: str | None = None    # LC gates only
+    aspects: str | None = None       # signals only; blank -> default_aspects(type)
 
 
 @dataclass

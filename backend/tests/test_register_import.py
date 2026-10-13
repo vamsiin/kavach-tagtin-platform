@@ -168,3 +168,17 @@ def test_qftl_templates(client):
     assert heads == {"elements": "#,Name of the  Signal,Type of Signal,Location(m),Line,Dir,Remarks",
                      "tags": "#,Tag Number,Type of Tag,Chainage(m),Line,Dir,Linked element,Pair group ID,Legend,Border tag",
                      "tins": "#,TIN Number,TIN Placement,Line,Color,Start (m),End (m),No KAVACH territory"}
+
+
+def test_element_aspects_column(client):
+    """QFTL (Oct 2026): an optional Aspects column sets the signal's lamps."""
+    sid, des, _ = _setup(client)
+    csv = ("#,Name of the  Signal,Type of Signal,Location(m),Line,Dir,Aspects,Remarks\n"
+           "1,S1,Main Home without Junction Route Indicator,261789,DN MAIN,Down,r/y/yy/g,\n"
+           "2,S2,Distant Signal,260000,DN MAIN,Down,R/Q,\n"
+           "3,LC1,LC Gate,264174,DN MAIN,,R/Y/G,\n")
+    r = _up(client, sid, "elements", csv, des).json()
+    rows = r["rows"]
+    assert rows[0]["data"]["aspects"] == "R/Y/YY/G" and not rows[0]["errors"]
+    assert any("Unknown aspect" in e for e in rows[1]["errors"])
+    assert any("Aspects ignored" in w for w in rows[2]["warnings"])

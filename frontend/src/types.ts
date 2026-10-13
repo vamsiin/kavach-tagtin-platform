@@ -189,6 +189,26 @@ export interface Element {
   to_track_id?: number | null;
   lc_class?: string | null;
   lc_manning?: string | null;
+  aspects?: string | null;
+}
+
+/** Signal aspects (mirrors backend domain.default_aspects). R red, Y yellow, YY double
+ *  yellow, G green, C calling-on, SH shunt; "+RI" = junction-type route indicator. */
+const NON_ASPECT = ["BSLB Board", "Stop Board/Buffer Stop", "Berthing Track End", "LC Gate", "Points / Turnout",
+  "Fouling Mark", "Marker Board", "Axle Counter", "Whistle Board (W/L)"];
+export function isSignalType(t: string): boolean {
+  return !NON_ASPECT.includes(t);
+}
+export function defaultAspects(t: string): string | null {
+  if (!isSignalType(t) || t === "Other Misc Signals") return null;
+  if (t === "Calling-on Signal") return "C";
+  if (t === "Shunt Signal") return "SH";
+  const lo = t.toLowerCase();
+  const stop = ["starter", "gate stop", "gate-cum", "gate cum", "ib signal", "ib stop", "home", "auto", "semi",
+    "stop signal"].some((w) => lo.includes(w));
+  if (lo.includes("distant") && !stop) return "G/YY/Y";
+  const ri = lo.includes("with junction") ? "+RI" : "";
+  return (lo.includes("home") || lo.includes("distant") ? "R/Y/YY/G" : "R/Y/G") + ri;
 }
 
 export interface Tag {

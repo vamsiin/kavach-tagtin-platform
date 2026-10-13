@@ -3,7 +3,7 @@ import { api, type ImportPreview } from "../api";
 
 const TITLES: Record<string, string> = { elements: "Elements", tags: "Tags", tins: "TINs" };
 const COLUMNS: Record<string, string> = {
-  elements: "#, Name of the Signal, Type of Signal, Location(m), Line, Dir (Down / Up), Remarks",
+  elements: "#, Name of the Signal, Type of Signal, Location(m), Line, Dir (Down / Up), Remarks; optional: Aspects (e.g. R/Y/G, R/Y/YY/G+RI), Leads to (points)",
   tags: "#, Tag Number (e.g. R-775), Type of Tag (e.g. S - Signal Foot Tag), Chainage(m), Line, Dir (Nominal (DN) / Reverse (UP)), Linked element, Pair group ID, Legend, Border tag (Yes / No)",
   tins: "#, TIN Number, TIN Placement (Station / Block), Line, Color, Start (m), End (m) (either order), No KAVACH territory (Yes / No)",
 };

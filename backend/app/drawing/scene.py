@@ -69,6 +69,16 @@ class Text:
     angle: float = 0                  # degrees, counter-clockwise
     anchor: str = "start"             # start | middle | end
     bold: bool = False
+    halo: bool = False                # white outline so lines passing behind don't cut the text
+
+
+# Average Helvetica glyph width as a fraction of the cap height (font size = cap * 1.38);
+# conservative, so estimated label lengths never come out shorter than drawn.
+CHAR_W = 0.80
+
+
+def text_len(text: str, size: float, bold: bool = False) -> float:
+    return len(text) * size * (CHAR_W + (0.06 if bold else 0))
 
 
 @dataclass

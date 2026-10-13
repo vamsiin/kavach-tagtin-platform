@@ -36,8 +36,13 @@ def build_data(db: Session, st: models.StationORM, user: models.UserORM) -> Draw
                    bool(n.is_non_kavach_territory)) for n in st.tins]
     d.tags = [DTag(t.tag_ref, t.tag_type, t.location_m, t.track_id, t.tag_number, t.direction, t.legend_shape,
                    t.pair_group_id, bool(t.is_border_tag), t.abs2_m) for t in st.tags]
-    d.elements = [DElement(e.element_ref, e.element_type, e.location_m, e.track_id, e.to_track_id)
-                  for e in st.elements]
+    from ..domain import default_aspects
+    d.elements = []
+    for e in st.elements:
+        stated = (e.aspects or "").strip() or None
+        d.elements.append(DElement(e.element_ref, e.element_type, e.location_m, e.track_id, e.to_track_id,
+                                   e.direction, stated or default_aspects(e.element_type),
+                                   aspects_default=stated is None and default_aspects(e.element_type) is not None))
     for a in st.adjacent_stations:
         d.neighbours.append((a.name, a.side))
         for b in a.borders:

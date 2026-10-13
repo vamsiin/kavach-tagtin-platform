@@ -40,8 +40,10 @@ def to_svg(s: Scene) -> bytes:
             size = it.size * 1.38   # cap height -> font size
             rot = f' transform="rotate({-it.angle:.1f} {it.x:.2f} {Y(it.y):.2f})"' if it.angle else ""
             bold = ' font-weight="bold"' if it.bold else ""
+            halo = (' stroke="#ffffff" stroke-width="0.7" stroke-linejoin="round" paint-order="stroke"'
+                    if it.halo else "")
             out.append(f'<text x="{it.x:.2f}" y="{Y(it.y):.2f}" font-size="{size:.2f}" fill="{_hex(it.rgb)}" '
-                       f'text-anchor="{it.anchor}"{bold}{rot}>{escape(it.text)}</text>')
+                       f'text-anchor="{it.anchor}"{bold}{halo}{rot}>{escape(it.text)}</text>')
     out.append("</svg>")
     return "\n".join(out).encode("utf-8")
 
@@ -82,14 +84,28 @@ def to_pdf(s: Scene) -> bytes:
                     p.close()
                 c.drawPath(p, stroke=1 if it.stroke else 0, fill=1 if it.fill else 0)
         elif isinstance(it, Text):
-            c.setFillColorRGB(*[v / 255 for v in it.rgb])
-            c.setFont(FONT + ("-Bold" if it.bold else ""), it.size * 1.38 * mm)
+            font, size = FONT + ("-Bold" if it.bold else ""), it.size * 1.38 * mm
             c.saveState()
             c.translate(it.x * mm, it.y * mm)
             if it.angle:
                 c.rotate(it.angle)
-            draw = {"middle": c.drawCentredString, "end": c.drawRightString}.get(it.anchor, c.drawString)
-            draw(0, 0, it.text)
+            w = c.stringWidth(it.text, font, size)
+            x0 = {"middle": -w / 2, "end": -w}.get(it.anchor, 0)
+            if it.halo:
+                c.saveState()
+                t = c.beginText(x0, 0)
+                t.setFont(font, size)
+                t.setTextRenderMode(1)
+                c.setStrokeColorRGB(1, 1, 1)
+                c.setLineWidth(0.7 * mm)
+                c.setLineJoin(1)
+                c.setDash([])
+                t.textOut(it.text)
+                c.drawText(t)
+                c.restoreState()
+            c.setFillColorRGB(*[v / 255 for v in it.rgb])
+            c.setFont(font, size)
+            c.drawString(x0, 0, it.text)
             c.restoreState()
     c.showPage()
     c.save()

@@ -164,6 +164,7 @@ class ElementORM(Base):
     to_track_id = Column(Integer, ForeignKey("tracks.id"), nullable=True)   # points: diverging line
     lc_class = Column(String, nullable=True)
     lc_manning = Column(String, nullable=True)
+    aspects = Column(String, nullable=True)        # signals: "R/Y/G"; blank -> type default
 
     station = relationship("StationORM", back_populates="elements")
 
@@ -172,7 +173,7 @@ class ElementORM(Base):
             id=self.id, element_ref=self.element_ref, element_type=self.element_type,
             location_m=self.location_m, direction=self.direction,
             remarks=self.remarks or "", track_id=self.track_id, to_track_id=self.to_track_id,
-            lc_class=self.lc_class, lc_manning=self.lc_manning,
+            lc_class=self.lc_class, lc_manning=self.lc_manning, aspects=self.aspects,
         )
 
 

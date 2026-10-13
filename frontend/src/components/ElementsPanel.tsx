@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import type { Element, Track } from "../types";
-import { ELEMENT_TYPES, LC_CLASSES, LC_GATE, LC_MANNING, POINTS } from "../types";
+import { ELEMENT_TYPES, LC_CLASSES, LC_GATE, LC_MANNING, POINTS, defaultAspects, isSignalType } from "../types";
 import { RegisterTable, type ColumnDef } from "./RegisterTable";
 
 interface Props {
@@ -43,6 +43,8 @@ export function ElementsPanel({ elements, tracks, dnDirection, onAdd, onUpdate, 
     { key: "to_track_id", label: "Details", render: (e) =>
         e.element_type === POINTS ? (e.to_track_id != null ? `to ${lineName(tracks, e.to_track_id)}` : "to —")
         : e.element_type === LC_GATE ? [e.lc_class && `Class ${e.lc_class}`, e.lc_manning].filter(Boolean).join(", ") || "—"
+        : isSignalType(e.element_type) ? (e.aspects ? `Aspects ${e.aspects}`
+            : defaultAspects(e.element_type) ? `Aspects ${defaultAspects(e.element_type)} (default)` : "Aspects —")
         : "" },
     { key: "remarks", label: "Remarks" },
   ];
@@ -81,6 +83,7 @@ function ElementForm({ tracks, initial, onSubmit, onCancel, submitting }: {
   const [toTrack, setToTrack] = useState(initial?.to_track_id != null ? String(initial.to_track_id) : "");
   const [lcClass, setLcClass] = useState(initial?.lc_class ?? "");
   const [lcManning, setLcManning] = useState(initial?.lc_manning ?? "");
+  const [aspects, setAspects] = useState(initial?.aspects ?? "");
   const id = (v: string) => (v ? parseInt(v) : null);
 
   return (
@@ -92,6 +95,7 @@ function ElementForm({ tracks, initial, onSubmit, onCancel, submitting }: {
         to_track_id: type === POINTS ? id(toTrack) : null,
         lc_class: type === LC_GATE ? lcClass || null : null,
         lc_manning: type === LC_GATE ? lcManning || null : null,
+        aspects: isSignalType(type) ? aspects.trim() || null : null,
       });
     }}>
       <input placeholder="Ref (e.g. SIG-HS-01)" value={ref} onChange={(e) => setRef(e.target.value)} required />
@@ -121,6 +125,11 @@ function ElementForm({ tracks, initial, onSubmit, onCancel, submitting }: {
             {LC_MANNING.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </>
+      )}
+      {isSignalType(type) && (
+        <input placeholder={`Aspects (default ${defaultAspects(type) ?? "—"})`} value={aspects}
+               onChange={(e) => setAspects(e.target.value)} style={{ width: 170 }}
+               title="Lamps from the SIP, e.g. R/Y/G or R/Y/YY/G+RI (R red, Y yellow, YY double yellow, G green, C calling-on, SH shunt, +RI route indicator). Leave blank to use the default for the signal type." />
       )}
       <input placeholder="Remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} />
       <button type="submit" disabled={submitting}>
