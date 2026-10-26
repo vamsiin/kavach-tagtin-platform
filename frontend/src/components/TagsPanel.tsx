@@ -124,6 +124,7 @@ function TagForm({ elements, tracks, tags, nextFree, dnDirection, initial, onSub
   const [isDup, setIsDup] = useState(initial?.is_duplicate ?? false);
   const [legend, setLegend] = useState(initial?.legend_shape ?? "");
   const [exitSet, setExitSet] = useState(initial?.exit_set ?? "");
+  const [exitComm, setExitComm] = useState(initial?.exit_comm ?? "");
   const [isBorderTag, setIsBorderTag] = useState(initial?.is_border_tag ?? false);
   const [track, setTrack] = useState(initial?.track_id != null ? String(initial.track_id) : "");
 
@@ -162,7 +163,7 @@ function TagForm({ elements, tracks, tags, nextFree, dnDirection, initial, onSub
       linked_element_id: linkedEl ? parseInt(linkedEl) : null,
       pair_group_id: group, is_duplicate: partnerTag ? isDup : false,
       legend_shape: partnerTag ? (legend || autoLegend || null) : (legend || null),
-      exit_set: exitSet || null, is_border_tag: isBorderTag,
+      exit_set: exitSet || null, exit_comm: type === "X" ? (exitComm || null) : null, is_border_tag: isBorderTag,
       track_id: track ? parseInt(track) : null,
     }, partnerTag ? partnerTag.id : null);
   }
@@ -268,6 +269,14 @@ function TagForm({ elements, tracks, tags, nextFree, dnDirection, initial, onSub
             <option value="">Exit set —</option>
             <option value="1st">1st set</option>
             <option value="2nd">2nd set</option>
+          </select>
+        )}
+        {type === "X" && (
+          <select value={exitComm} onChange={(e) => setExitComm(e.target.value)}
+                  title="1st exit tag: communication in the direction of entry only. 2nd exit tag: none either way.">
+            <option value="">Programming —</option>
+            <option value="ENTRY">Entry direction only (1st set)</option>
+            <option value="NONE">No communication (2nd set)</option>
           </select>
         )}
         <label className="checkbox-label" title="Marks the boundary with the neighbouring station / block section (H2.16)">

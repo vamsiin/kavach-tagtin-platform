@@ -52,6 +52,8 @@ class ElementCreate(BaseModel):
     lc_manning: str | None = Field(default=None, description="LC gates only")
     aspects: str | None = Field(default=None, description="Signals only: lamps such as R/Y/G or R/Y/YY/G+RI; "
                                                           "blank = default for the signal type")
+    b_end_m: float | None = Field(default=None, description="Points only: B-end ABS (m) on the line the "
+                                                            "turnout leads to; location_m is the A-end")
 
 
 
@@ -75,6 +77,8 @@ class TagCreate(BaseModel):
     pair_group_id: str | None = None
     legend_shape: str | None = None
     exit_set: str | None = None
+    exit_comm: str | None = Field(default=None, description="Exit (X) tags: ENTRY = communication in the direction "
+                                  "of entry only (1st exit set); NONE = no communication either way (2nd set)")
     is_border_tag: bool = False
     remarks: str | None = None
     source_document_id: int | None = Field(
@@ -1053,3 +1057,38 @@ class BaselineDiffOut(BaseModel):
 
 
 StationCreateRequest.model_rebuild()
+
+
+# ---------------------------------------------------------------------------
+# Towers and the tower RSSI survey (input 5)
+# ---------------------------------------------------------------------------
+class TowerCreate(BaseModel):
+    tower_ref: str
+    location_m: float = Field(description="Tower absolute location (m)")
+    owner: str | None = Field(default=None, description="Station the tower belongs to; blank = this station")
+    track_id: int | None = Field(default=None, description="Line the tower stands beside")
+    side: str | None = None
+    height_m: float | None = None
+    remarks: str | None = None
+    source_document_id: int | None = None
+
+
+class TowerOut(TowerCreate):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class RssiReadingOut(BaseModel):
+    id: int
+    tower_ref: str
+    location_m: float
+    rssi_dbm: float
+    track_id: int | None = None
+    direction: str | None = None
+    survey_date: str | None = None
+    remarks: str | None = None
+
+    class Config:
+        from_attributes = True

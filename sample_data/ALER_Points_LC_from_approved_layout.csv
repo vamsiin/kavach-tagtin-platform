@@ -1,0 +1,9 @@
+#,Name of the  Signal,Type of Signal,A-end (m),Line,Dir,Leads to,B-end (m),LC class,Remarks
+1,P11,Points / Turnout,262067,DN MAIN,,UP MAIN,261978,,A/B ends as on approved layout V2.0.3
+2,P12,Points / Turnout,262103,DN MAIN,,COMMON LOOP,262197,,A/B ends as on approved layout V2.0.3
+3,P13,Points / Turnout,262150,UP MAIN,,UP LOOP,262254,,A/B ends as on approved layout V2.0.3
+4,P17,Points / Turnout,263050,COMMON LOOP,,,,,Leads to the sub-station / tower wagon siding
+5,P18,Points / Turnout,263086,UP MAIN,,UP LOOP,262992,,A/B ends as on approved layout V2.0.3
+6,P19,Points / Turnout,263009,DN MAIN,,COMMON LOOP,262922,,A/B ends as on approved layout V2.0.3
+7,P20,Points / Turnout,263044,DN MAIN,,UP MAIN,263140,,A/B ends as on approved layout V2.0.3
+8,LC-38,LC Gate,264174,DN MAIN,,,,Special,'SPL' class LC gate no. 38 (gate control-16 EOLB)

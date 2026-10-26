@@ -24,7 +24,7 @@ from .. import models
 from ..domain import (ELEMENT_TYPES, LC_CLASSES, LC_GATE, LC_MANNING, POINTS, TAG_TYPES, is_signal_type,
                       normalise_aspects)
 
-KINDS = ("elements", "tags", "tins")
+KINDS = ("elements", "tags", "tins", "towers", "rssi")
 
 # canonical field -> accepted header spellings (normalised: lower case, letters/digits only)
 _ALIASES = {
@@ -32,7 +32,8 @@ _ALIASES = {
         "element_ref": ["elementref", "ref", "element", "name", "signal", "id", "nameofthesignal", "signalname",
                         "nameoftheelement", "elementname"],
         "element_type": ["elementtype", "type", "typeofsignal", "signaltype", "typeofelement"],
-        "location_m": ["locationm", "location", "chainagem", "chainage", "absolutelocation"],
+        "location_m": ["locationm", "location", "chainagem", "chainage", "absolutelocation", "aendm", "aend",
+                       "aendabs", "aendabsm", "aendlocation", "aendlocationm"],
         "km": ["km", "locationkm", "chainagekm"],
         "line": ["line", "track", "trackname", "linename"],
         "to_line": ["toline", "divergingline", "leadsto", "totrack"],
@@ -40,6 +41,8 @@ _ALIASES = {
         "lc_class": ["lcclass", "class"],
         "lc_manning": ["lcmanning", "manning"],
         "aspects": ["aspects", "aspect", "signalaspects", "aspectsofsignal", "lamps"],
+        "b_end_m": ["bendm", "bend", "bendabs", "bendlocation", "bendlocationm", "bendabsm", "bendchainage",
+                    "bendchainagem", "toendm"],
         "remarks": ["remarks", "remark", "notes"],
     },
     "tags": {
@@ -56,6 +59,7 @@ _ALIASES = {
         "pair_group_id": ["pairgroupid", "pairgroup", "group"],
         "legend_shape": ["legendshape", "legend"],
         "exit_set": ["exitset"],
+        "exit_comm": ["exitcomm", "exitcommunication", "exitprogramming"],
         "is_border_tag": ["isbordertag", "bordertag", "border"],
         "abs2_m": ["abs2m", "abs2", "correctedlocation", "correctedlocationm"],
         "remarks": ["remarks", "remark", "notes"],
@@ -72,6 +76,28 @@ _ALIASES = {
         "direction": ["direction", "dir"],
         "is_non_kavach_territory": ["isnonkavachterritory", "nonkavach", "nonkavachterritory", "nokavachterritory",
                                     "nokavach"],
+        "remarks": ["remarks", "remark", "notes"],
+    },
+    "towers": {
+        "tower_ref": ["towerref", "tower", "towerid", "towerno", "towername", "ref", "id", "name"],
+        "location_m": ["locationm", "location", "chainagem", "chainage", "absolutelocation", "towerlocation",
+                       "towerlocationm", "abs", "absm"],
+        "km": ["km", "locationkm", "chainagekm"],
+        "owner": ["owner", "station", "stationname", "belongsto", "ownerstation"],
+        "line": ["line", "track", "trackname", "linename", "besideline"],
+        "side": ["side"],
+        "height_m": ["heightm", "height", "towerheight", "towerheightm"],
+        "remarks": ["remarks", "remark", "notes"],
+    },
+    "rssi": {
+        "tower_ref": ["towerref", "tower", "towerid", "towerno", "towername", "stationarykavach", "skavach"],
+        "location_m": ["locationm", "location", "chainagem", "chainage", "absolutelocation", "measuredat",
+                       "measuredatm", "abs", "absm"],
+        "km": ["km", "locationkm", "chainagekm"],
+        "rssi_dbm": ["rssidbm", "rssi", "signalstrength", "signalstrengthdbm", "rssivalue", "rssivaluedbm", "dbm"],
+        "line": ["line", "track", "trackname", "linename"],
+        "direction": ["direction", "dir"],
+        "survey_date": ["surveydate", "date", "measuredon"],
         "remarks": ["remarks", "remark", "notes"],
     },
 }
@@ -92,6 +118,13 @@ TEMPLATES = {
              "1,222,Block,DN MAIN,Orange,252711,261978,No\n"
              "2,169,Station,DN MAIN,Yellow,261978,262221,No\n"
              "3,218,Block,UP MAIN,Orange,270968,263145,No\n"),
+    "towers": ("#,Tower,Location(m),Station,Line,Side,Height(m),Remarks\n"
+               "1,ALR-T1,262760,Aler,DN MAIN,DN side,40,Station building\n"
+               "2,WP-T1,256900,Wangapalli-Aler IB,UP MAIN,UP side,30,Adjacent station tower\n"),
+    "rssi": ("#,Tower,Location(m),Line,Dir,RSSI(dBm),Survey date,Remarks\n"
+             "1,ALR-T1,258024,UP MAIN,Reverse (UP),-66,2026-10-10,at border tag R-774\n"
+             "2,WP-T1,258024,UP MAIN,Reverse (UP),-58,2026-10-10,at border tag R-774\n"
+             "3,ALR-T1,259740,DN MAIN,Nominal (DN),-62,2026-10-10,at border tag R-775\n"),
 }
 
 # serial-number columns are skipped without a warning
@@ -287,11 +320,39 @@ def _match(same: list, exact, claimed: set):
     return hit
 
 
+def _rssi_wide_to_long(rows: list[dict], tower_refs: set[str]) -> list[dict]:
+    """An RSSI sheet with one column per tower ("RSSI ALR-T1 (dBm)", or just the
+    tower's name) becomes one row per reading. A sheet that already has a Tower
+    column is returned as it is."""
+    headers = list(rows[0].keys()) if rows else []
+    if any(_norm(h) in _ALIASES["rssi"]["tower_ref"] or _norm(h) == "towerref" for h in headers):
+        return rows
+    upper = {t.upper(): t for t in tower_refs}
+    per_tower = {}
+    for h in headers:
+        m = re.match(r"(?i)^\s*rssi\s*[-_:(]?\s*(.+?)\s*\)?\s*(\(?\s*dbm\s*\)?)?\s*$", h or "")
+        if m and _norm(m.group(1)) not in ("", "dbm", "value"):
+            per_tower[h] = m.group(1).strip(" -_:()")
+        elif (h or "").strip().upper() in upper:
+            per_tower[h] = upper[h.strip().upper()]
+    if not per_tower:
+        return rows
+    out = []
+    for r in rows:
+        base = {k: v for k, v in r.items() if k not in per_tower}
+        for h, ref in per_tower.items():
+            if str(r.get(h) or "").strip() not in ("", "-"):
+                out.append({**base, "Tower": ref, "RSSI (dBm)": r[h]})
+    return out or rows
+
+
 def preview(db, station: models.StationORM, kind: str, rows: list[dict[str, str]], update_existing: bool) -> dict:
     if kind not in KINDS:
         raise HTTPException(404, "Unknown register")
     if not rows:
         raise HTTPException(422, "No data rows in the file")
+    if kind == "rssi":
+        rows = _rssi_wide_to_long(rows, {t.tower_ref for t in station.towers})
     cols, unknown = map_headers(kind, list(rows[0].keys()))
     # QFTL sheets put the tag ID (R-775) in the "Tag Number" column
     if kind == "tags" and "tag_ref" not in cols and "tag_number" in cols and any(
@@ -343,6 +404,15 @@ def preview(db, station: models.StationORM, kind: str, rows: list[dict[str, str]
                 warns.append("Points: the line they lead to is not given")
             lc_class = _choice(rec.get("lc_class", ""), LC_CLASSES, "LC class", errs) if etype == LC_GATE else None
             lc_man = _choice(rec.get("lc_manning", ""), LC_MANNING, "LC manning", errs) if etype == LC_GATE else None
+            b_end = None
+            if (rec.get("b_end_m") or "").strip():
+                if etype != POINTS:
+                    warns.append("B-end ignored: only points have a B-end")
+                else:
+                    try:
+                        b_end = float(_clean(rec.get("b_end_m")).replace(",", ""))
+                    except ValueError:
+                        errs.append(f"B-end '{rec.get('b_end_m')}' is not a number (metres)")
             aspects = None
             if (rec.get("aspects") or "").strip() and etype:
                 if is_signal_type(etype):
@@ -359,7 +429,7 @@ def preview(db, station: models.StationORM, kind: str, rows: list[dict[str, str]
             r = RowResult(i, f"{ref}" + (f" ({rec.get('line')})" if rec.get("line") else ""), errors=errs, warnings=warns,
                           data=dict(element_ref=ref, element_type=etype, location_m=loc, track_id=tid,
                                     to_track_id=to, direction=(rec.get("direction") or "").strip() or None,
-                                    lc_class=lc_class, lc_manning=lc_man, aspects=aspects,
+                                    lc_class=lc_class, lc_manning=lc_man, aspects=aspects, b_end_m=b_end,
                                     remarks=(rec.get("remarks") or "").strip() or None))
             old = _match(existing.get(key, []), lambda e: e.location_m == loc, claimed)
             if old is not None:
@@ -424,12 +494,14 @@ def preview(db, station: models.StationORM, kind: str, rows: list[dict[str, str]
             role = _norm(rec.get("role", ""))
             legend = _choice(rec.get("legend_shape", ""), ["Rectangle", "Triangle"], "Legend shape", errs)
             exit_set = _choice(rec.get("exit_set", ""), ["1st", "2nd"], "Exit set", errs)
+            exit_comm = _choice((rec.get("exit_comm") or "").strip().upper(), ["ENTRY", "NONE"],
+                                "Exit communication (ENTRY / NONE)", errs)
             if ref.upper() in seen:
                 errs.append(f"{ref} appears twice in the file")
             seen.add(ref.upper())
             r = RowResult(i, ref, errors=errs, warnings=warns, data=dict(
                 tag_ref=ref, tag_number=num, tag_type=ttype, location_m=loc, track_id=tid, direction=direction,
-                linked_element_id=link, legend_shape=legend, exit_set=exit_set,
+                linked_element_id=link, legend_shape=legend, exit_set=exit_set, exit_comm=exit_comm,
                 is_border_tag=_yes(rec.get("is_border_tag", "")),
                 remarks=(rec.get("remarks") or "").strip() or None,
                 abs2_m=_abs2(rec, ttype, errs, warns),
@@ -444,7 +516,7 @@ def preview(db, station: models.StationORM, kind: str, rows: list[dict[str, str]
                     errs.append(f"{ref} already exists -- tick 'update existing' to change it")
             results.append(r)
 
-    else:  # tins
+    elif kind == "tins":
         missing = [f for f in ("tin_no",) if f not in cols]
         if not (("start_m" in cols or "start_km" in cols) and ("end_m" in cols or "end_km" in cols)):
             missing.append("start_m and end_m (or endpoint A / B)")
@@ -496,6 +568,83 @@ def preview(db, station: models.StationORM, kind: str, rows: list[dict[str, str]
                     errs.append(f"TIN {no} already exists on this line -- tick 'update existing' to change it")
             results.append(r)
 
+    elif kind == "towers":
+        missing = [f for f in ("tower_ref",) if f not in cols]
+        if "location_m" not in cols and "km" not in cols:
+            missing.append("location_m (or km)")
+        if missing:
+            raise HTTPException(422, f"Missing column(s): {', '.join(missing)}")
+        existing = {t.tower_ref.strip().upper(): t for t in station.towers}
+        seen = set()
+        own = station.name.strip().lower()
+        for i, rec in enumerate(rec_rows, 1):
+            errs, warns = [], []
+            ref = rec.get("tower_ref", "").strip()
+            if not ref:
+                errs.append("Tower is empty")
+            loc = _location(rec, errs)
+            if loc is None and not any("Chainage" in e for e in errs):
+                errs.append("Location is empty")
+            height = _num(rec.get("height_m", ""), "Height", errs) if rec.get("height_m") else None
+            owner = (rec.get("owner") or "").strip()
+            owner = None if not owner or owner.lower() == own else owner
+            if owner and not any(owner.lower() == a.name.strip().lower() for a in station.adjacent_stations):
+                warns.append(f"'{owner}' is not one of this station's adjacent stations")
+            if ref.upper() in seen:
+                errs.append(f"{ref} appears twice in the file")
+            seen.add(ref.upper())
+            r = RowResult(i, ref, errors=errs, warnings=warns, data=dict(
+                tower_ref=ref, location_m=loc, owner=owner, track_id=line(rec.get("line"), errs),
+                side=(rec.get("side") or "").strip() or None, height_m=height,
+                remarks=(rec.get("remarks") or "").strip() or None))
+            old = existing.get(ref.upper())
+            if old is not None:
+                r.existing_id = old.id
+                if update_existing:
+                    r.action = "update"
+                else:
+                    errs.append(f"{ref} already exists -- tick 'update existing' to change it")
+            results.append(r)
+
+    elif kind == "rssi":
+        missing = [f for f in ("tower_ref", "rssi_dbm") if f not in cols]
+        if "location_m" not in cols and "km" not in cols:
+            missing.append("location_m (or km)")
+        if missing:
+            raise HTTPException(422, f"Missing column(s): {', '.join(missing)} -- give a Tower and an RSSI (dBm) "
+                                     f"column, or one 'RSSI <tower>' column per tower")
+        known = {t.tower_ref.strip().upper() for t in station.towers}
+        had = {}
+        for rd in station.rssi_readings:
+            had[rd.tower_ref.strip().upper()] = had.get(rd.tower_ref.strip().upper(), 0) + 1
+        warned = set()
+        for i, rec in enumerate(rec_rows, 1):
+            errs, warns = [], []
+            ref = rec.get("tower_ref", "").strip()
+            if not ref:
+                errs.append("Tower is empty")
+            loc = _location(rec, errs)
+            if loc is None and not any("Chainage" in e for e in errs):
+                errs.append("Location is empty")
+            v = _num(rec.get("rssi_dbm", "").replace("dBm", "").replace("dbm", "").strip(), "RSSI", errs)
+            if v is not None and not -140 <= v <= 0:
+                errs.append(f"RSSI {v:g} dBm is outside -140 to 0 -- give dBm (a negative number)")
+            if ref and ref.upper() not in known and ref.upper() not in warned:
+                warns.append(f"Tower {ref} is not in the towers register yet -- add it (with its station) "
+                             f"so the border check knows whose radio this is")
+                warned.add(ref.upper())
+            if ref and update_existing and had.get(ref.upper()) and ("r" + ref.upper()) not in warned:
+                warns.append(f"Replaces the {had[ref.upper()]} reading(s) of {ref} already loaded")
+                warned.add("r" + ref.upper())
+            direction = _direction(rec.get("direction"), errs, allow_both=True, dn_direction=dn_direction) \
+                if rec.get("direction") else None
+            results.append(RowResult(i, f"{ref} @ {rec.get('location_m') or rec.get('km') or '?'}", errors=errs,
+                                     warnings=warns, data=dict(
+                                         tower_ref=ref, location_m=loc, rssi_dbm=v,
+                                         track_id=line(rec.get("line"), errs), direction=direction,
+                                         survey_date=(rec.get("survey_date") or "").strip() or None,
+                                         remarks=(rec.get("remarks") or "").strip() or None)))
+
     for r in results:
         if r.errors:
             r.action = "error"
@@ -506,12 +655,19 @@ def preview(db, station: models.StationORM, kind: str, rows: list[dict[str, str]
         "rows": [{"row": r.row, "key": r.key, "action": r.action, "errors": r.errors, "warnings": r.warnings,
                   "data": {k: v for k, v in r.data.items() if not k.startswith("_")}} for r in results],
         "_results": results,
+        "_replace": kind == "rssi" and update_existing,
     }
 
 
 def apply(db, station: models.StationORM, kind: str, result: dict) -> dict:
     results: list[RowResult] = result["_results"]
-    model = {"elements": models.ElementORM, "tags": models.TagORM, "tins": models.TINORM}[kind]
+    model = {"elements": models.ElementORM, "tags": models.TagORM, "tins": models.TINORM,
+             "towers": models.TowerORM, "rssi": models.RssiReadingORM}[kind]
+    if kind == "rssi" and result.get("_replace"):
+        refs = {r.data["tower_ref"] for r in results}
+        db.query(models.RssiReadingORM).filter(models.RssiReadingORM.station_id == station.id,
+                                               models.RssiReadingORM.tower_ref.in_(refs)).delete(
+            synchronize_session=False)
     written = {}
     for r in results:
         data = {k: v for k, v in r.data.items() if not k.startswith("_")}

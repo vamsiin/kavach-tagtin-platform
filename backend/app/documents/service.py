@@ -30,6 +30,7 @@ SITE_SURVEY = "SITE_SURVEY"
 RFID_ALLOCATION_CHART = "RFID_ALLOCATION_CHART"
 ADJACENT_LAYOUT = "ADJACENT_LAYOUT"
 TOC = "TOC"
+RSSI_REPORT = "RSSI_REPORT"
 OTHER = "OTHER"
 
 _DRAWING_EXT = (".pdf", ".dxf", ".dwg", ".png", ".jpg", ".jpeg", ".tif", ".tiff")
@@ -41,6 +42,7 @@ DOC_TYPES: dict[str, dict] = {
     RFID_ALLOCATION_CHART: {"label": "RFID Tag Allocation Chart", "extensions": _SHEET_EXT},
     ADJACENT_LAYOUT: {"label": "Adjacent Station Layout", "extensions": _DRAWING_EXT},
     TOC: {"label": "Table of Control", "extensions": (".csv", ".xlsx", ".xls", ".docx", ".pdf")},
+    RSSI_REPORT: {"label": "Tower RSSI Survey Report", "extensions": _SHEET_EXT + (".zip",)},
     OTHER: {"label": "Other supporting document", "extensions": _DRAWING_EXT + _SHEET_EXT + (".zip", ".txt")},
 }
 

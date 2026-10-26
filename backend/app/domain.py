@@ -329,6 +329,17 @@ class StationAllotment:
 
 
 @dataclass
+class NearbyStation:
+    """Another station's layout within reach of this one (H2.14 repeat limits):
+    its tags as (tag_ref, tag_number, chainage_m) and its TINs as (tin_no,
+    section_type, lo_m, hi_m)."""
+    name: str
+    centre_m: float
+    tags: list = field(default_factory=list)
+    tins: list = field(default_factory=list)
+
+
+@dataclass
 class Station:
     id: int | None = None
     name: str = ""
@@ -348,6 +359,9 @@ class Station:
     allotment: StationAllotment | None = None   # None = no allotment chart loaded
     dn_direction: str = "Nominal"   # workspace convention: KAVACH direction of the SIP's "Down"
     workspace_code: str = ""
+    towers: list["Tower"] = field(default_factory=list)     # input 5: tower locations
+    rssi: list["RssiReading"] = field(default_factory=list)  # tower RSSI survey
+    nearby: list[NearbyStation] = field(default_factory=list)  # other layouts within 50 km (H2.14)
 
     @property
     def layout_version(self) -> str:
@@ -369,6 +383,7 @@ class Element:
     lc_class: str | None = None      # LC gates only
     lc_manning: str | None = None    # LC gates only
     aspects: str | None = None       # signals only; blank -> default_aspects(type)
+    b_end_m: float | None = None     # points only: B-end ABS (on to_track); location_m is the A-end
 
 
 @dataclass
@@ -385,10 +400,38 @@ class Tag:
     pair_group_id: str | None = None
     legend_shape: str | None = None
     exit_set: str | None = None
+    exit_comm: str | None = None   # X tags: "ENTRY" (talks in the direction of entry only) / "NONE"
     is_border_tag: bool = False  # BRD BR-005 / Annexure-H H2.16 -- station border marker
     remarks: str = ""
     track_id: int | None = None
     abs2_m: float | None = None   # A tags: ABS-2 (corrected location); location_m is ABS-1 (physical)
+
+
+@dataclass
+class Tower:
+    id: int | None
+    tower_ref: str
+    location_m: float
+    owner: str = ""                  # station the tower belongs to; "" = this station
+    track_id: int | None = None
+    side: str = ""
+    height_m: float | None = None
+    remarks: str = ""
+
+
+@dataclass
+class RssiReading:
+    id: int | None
+    tower_ref: str
+    location_m: float
+    rssi_dbm: float
+    track_id: int | None = None
+    direction: str | None = None
+
+
+# BRD BR-005: a border tag must be covered by both the handing-over and the
+# taking-over station's radio at this level or better (RSSI survey).
+RSSI_THRESHOLD_DBM = -70.0
 
 
 @dataclass

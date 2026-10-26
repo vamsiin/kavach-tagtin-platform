@@ -190,6 +190,7 @@ export interface Element {
   lc_class?: string | null;
   lc_manning?: string | null;
   aspects?: string | null;
+  b_end_m?: number | null;
 }
 
 /** Signal aspects (mirrors backend domain.default_aspects). R red, Y yellow, YY double
@@ -224,11 +225,34 @@ export interface Tag {
   pair_group_id: string | null;
   legend_shape: string | null;
   exit_set: string | null;
+  exit_comm?: string | null;
   is_border_tag: boolean;
   remarks: string | null;
   source_document_id?: number | null;
   track_id?: number | null;
   abs2_m?: number | null;   // adjustment (A) tags: ABS-2, corrected location
+}
+
+export interface Tower {
+  id: number;
+  tower_ref: string;
+  location_m: number;
+  owner?: string | null;          // blank = this station
+  track_id?: number | null;
+  side?: string | null;
+  height_m?: number | null;
+  remarks?: string | null;
+}
+
+export interface RssiTowerSummary {
+  tower_ref: string; readings: number; from_m: number; to_m: number; best_dbm: number; worst_dbm: number;
+  in_register: boolean; owner: string | null;
+}
+
+export interface RssiSummary {
+  towers: RssiTowerSummary[];
+  border_coverage: { status: string; subject_ref: string | null; message: string }[];
+  total_readings: number;
 }
 
 export interface TIN {

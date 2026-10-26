@@ -1,5 +1,5 @@
 import type {
-  Station, Element, Tag, TIN, Track, AdjacentStation,
+  Station, Element, Tag, TIN, Track, AdjacentStation, Tower, RssiSummary,
   Workspace,
   AllotmentChart, AllotmentChartDetail, AllotmentParse, AllotmentRow, StationAllotment, VerificationReport, CheckDeviation, ToCCrossValidation,
   User, TokenResponse, WorkflowStatus,
@@ -170,6 +170,18 @@ export const api = {
     request<void>(`/stations/${stationId}/adjacent-stations/${id}`, { method: "DELETE" }),
   setCentreLine: (stationId: number, centre_line_m: number | null) =>
     request<Station>(`/stations/${stationId}/centre-line`, { method: "PUT", body: JSON.stringify({ centre_line_m }) }),
+
+  listTowers: (stationId: number) => request<Tower[]>(`/stations/${stationId}/towers`),
+  addTower: (stationId: number, payload: Partial<Tower>) =>
+    request<Tower>(`/stations/${stationId}/towers`, { method: "POST", body: JSON.stringify(payload) }),
+  updateTower: (stationId: number, id: number, payload: Partial<Tower>) =>
+    request<Tower>(`/stations/${stationId}/towers/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteTower: (stationId: number, id: number) =>
+    request<void>(`/stations/${stationId}/towers/${id}`, { method: "DELETE" }),
+  rssiSummary: (stationId: number) => request<RssiSummary>(`/stations/${stationId}/rssi/summary`),
+  clearRssi: (stationId: number, towerRef?: string) =>
+    request<void>(`/stations/${stationId}/rssi${towerRef ? `?tower_ref=${encodeURIComponent(towerRef)}` : ""}`,
+      { method: "DELETE" }),
 
   listElements: (stationId: number) => request<Element[]>(`/stations/${stationId}/elements`),
   addElement: (stationId: number, payload: Partial<Element>) =>

@@ -6,9 +6,9 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from .. import models
-from ..allotment.ranges import TAG_MAX, TIN_MAX, RangeError, parse_ranges
+from ..allotment.ranges import TAG_MAX, TIN_MAX, RangeError, compact, parse_ranges
 from ..allotment.service import chart_ref, current_rows, find_row
-from .layout import (DAllotRow, DBorder, DElement, DrawingData, DTag, DTin, DTrack)
+from .layout import (DAllotRow, DBorder, DElement, DrawingData, DTag, DTin, DTower, DTrack)
 
 SIGN_ACTIONS = {"Prepared": "self_check", "Checked": "check", "Approved": "approve"}
 
@@ -34,21 +34,25 @@ def build_data(db: Session, st: models.StationORM, user: models.UserORM) -> Draw
                        t.line_type or guess_line_type(t.name), t.sort_order or 0) for t in st.tracks]
     d.tins = [DTin(n.tin_no, n.start_m, n.end_m, n.track_id, n.color, n.section_type,
                    bool(n.is_non_kavach_territory)) for n in st.tins]
+    el_ref = {e.id: e.element_ref for e in st.elements}
     d.tags = [DTag(t.tag_ref, t.tag_type, t.location_m, t.track_id, t.tag_number, t.direction, t.legend_shape,
-                   t.pair_group_id, bool(t.is_border_tag), t.abs2_m) for t in st.tags]
+                   t.pair_group_id, bool(t.is_border_tag), t.abs2_m, el_ref.get(t.linked_element_id))
+              for t in st.tags]
     from ..domain import default_aspects
     d.elements = []
     for e in st.elements:
         stated = (e.aspects or "").strip() or None
         d.elements.append(DElement(e.element_ref, e.element_type, e.location_m, e.track_id, e.to_track_id,
                                    e.direction, stated or default_aspects(e.element_type),
-                                   aspects_default=stated is None and default_aspects(e.element_type) is not None))
+                                   aspects_default=stated is None and default_aspects(e.element_type) is not None,
+                                   b_end_m=e.b_end_m, lc_class=e.lc_class, lc_manning=e.lc_manning))
     for a in st.adjacent_stations:
         d.neighbours.append((a.name, a.side))
         for b in a.borders:
             d.borders.append(DBorder(a.name, a.side, b.line_label, b.border_m, b.border_tag_ref or "", b.track_id))
         if not a.borders and a.border_m is not None:
             d.borders.append(DBorder(a.name, a.side, "All lines", a.border_m))
+    d.towers = [DTower(t.tower_ref, t.location_m, t.owner or "", t.side or "") for t in st.towers]
     d.revisions = [(r.rev_no, r.date, r.description) for r in
                    db.query(models.RevisionORM).filter_by(station_id=st.id).order_by(models.RevisionORM.id)]
 
@@ -61,9 +65,11 @@ def build_data(db: Session, st: models.StationORM, user: models.UserORM) -> Draw
         if ev is not None:
             d.signatures[role] = (names.get(ev.actor_username) or ev.actor_username, (ev.timestamp or "")[:10])
 
-    # allotment block (H2.23): own row and the adjacent sections' rows, with used / spare
+    # allotment block (H2.23), as on the approved layouts: per section (this station and
+    # its neighbours) the range, the numbers used on this layout and the spare ones
     rows = current_rows(db, st.workspace_id)
     used_tags = {t.tag_number for t in st.tags if t.tag_number is not None}
+    border_tags = {t.tag_number for t in st.tags if t.tag_number is not None and t.is_border_tag}
     used_tins = {n.tin_no for n in st.tins}
     own = find_row(rows, st.kavach_station_id, st.name) if rows else None
     if own is not None:
@@ -79,6 +85,11 @@ def build_data(db: Session, st: models.StationORM, user: models.UserORM) -> Draw
                 d.allotment.append(DAllotRow(f"{label} (not on chart)", "", None, None, "", None, None))
                 continue
             tg, tn = _nums(r.tag_ranges, TAG_MAX), _nums(r.tin_ranges, TIN_MAX)
-            d.allotment.append(DAllotRow(r.name, r.tag_ranges or "", len(tg & used_tags), len(tg - used_tags),
-                                         r.tin_ranges or "", len(tn & used_tins), len(tn - used_tins)))
+            d.allotment.append(DAllotRow(
+                r.name, r.tag_ranges or "", len(tg & used_tags), len(tg - used_tags),
+                r.tin_ranges or "", len(tn & used_tins), len(tn - used_tins),
+                station_id=r.station_id or r.station_code or "",
+                tags_allotted=compact(tg & used_tags), tags_spare=compact(tg - used_tags),
+                tins_allotted=compact(tn & used_tins), tins_spare=compact(tn - used_tins),
+                border_tags=compact(tg & border_tags)))
     return d

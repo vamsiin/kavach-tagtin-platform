@@ -425,3 +425,202 @@ __all__ = ["check_h2_8_tin_demarcation", "check_h2_17_tin_colours", "check_h2_20
            "check_h2_22_block_tin_extent", "check_h2_26_not_to_scale", "check_tan_dead_stop",
            "check_tan_adjacent_line_tag", "check_tan_after_adjustment", "gate_tag_wl_alternative",
            "neighbouring_tins", "LC_GATE"]
+
+
+# ---------------------------------------------------------------------------
+# Turnout tags: every points / turnout has its TIN-discrimination (T) tag on it, and
+# every T tag lies on a turnout -- between the A-end and B-end of points (the one it
+# is linked to, if linked). Catches a T tag entered at the wrong chainage, which
+# otherwise just goes missing from its turnout on the drawing.
+# ---------------------------------------------------------------------------
+def check_turnout_t_tags(tags: list[Tag], elements: list[Element], p: dict | None = None) -> list[CheckResult]:
+    p = _params("turnout_t_tags", p)
+    tol = float(p.get("tolerance_m", 5.0))
+    title = "Turnout (T) tag between the A-end and B-end of its points"
+    points = [e for e in elements if e.element_type == POINTS]
+    els = {e.id: e for e in elements}
+    out = []
+
+    def span(e):
+        b = e.b_end_m if getattr(e, "b_end_m", None) is not None else e.location_m
+        return min(e.location_m, b) - tol, max(e.location_m, b) + tol
+
+    def desc(e):
+        b = getattr(e, "b_end_m", None)
+        return (f"{e.element_ref} (A {e.location_m / 1000:.3f}" +
+                (f" / B {b / 1000:.3f})" if b is not None else ", B-end not recorded)"))
+    t_tags = [t for t in tags if t.tag_type == "T"]
+    used: dict[int, list] = {}
+    for t in t_tags:
+        linked = els.get(t.linked_element_id)
+        if linked is not None and linked.element_type == POINTS:
+            lo, hi = span(linked)
+            ok = lo <= t.location_m <= hi
+            out.append(CheckResult("DATA-TURNOUT", title, "PASS" if ok else "FAIL",
+                                   f"{t.tag_ref} at {t.location_m / 1000:.3f} " +
+                                   ("is on " if ok else "is not between the ends of ") + desc(linked),
+                                   subject_ref=t.tag_ref))
+            used.setdefault(linked.id, []).append(t)
+            continue
+        on = [e for e in points if span(e)[0] <= t.location_m <= span(e)[1]]
+        if not on:
+            near = min(points, key=lambda e: min(abs(t.location_m - x) for x in span(e)), default=None)
+            hint = f" -- nearest is {desc(near)}" if near is not None else ""
+            out.append(CheckResult("DATA-TURNOUT", title, "WARN",
+                                   f"{t.tag_ref} at {t.location_m / 1000:.3f} is not on any turnout{hint}. "
+                                   "Check its chainage, or link it to its points (Linked element)",
+                                   subject_ref=t.tag_ref))
+            continue
+        # the turnout it belongs to: one whose lines include the tag's line, then the nearest middle
+        best = min(on, key=lambda e: (t.track_id is not None and t.track_id not in (e.track_id, e.to_track_id),
+                                      abs(t.location_m - sum(span(e)) / 2)))
+        used.setdefault(best.id, []).append(t)
+    for e in points:
+        if e.to_track_id is None:
+            continue                       # leads off the KAVACH lines (siding): no T tag needed
+        mine = used.get(e.id, [])
+        if not mine:
+            out.append(CheckResult("DATA-TURNOUT", title, "WARN",
+                                   f"No T tag between the ends of {desc(e)}", subject_ref=e.element_ref))
+        elif len(mine) > 1 and len({round(t.location_m) for t in mine}) < len(mine):
+            out.append(CheckResult("DATA-TURNOUT", title, "WARN",
+                                   f"{' and '.join(t.tag_ref for t in mine)} are at the same chainage on "
+                                   f"{e.element_ref} -- one of them is probably entered at the wrong place",
+                                   subject_ref=e.element_ref))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Two different TINs overlapping on one line: one of them is usually a turnout piece
+# entered as a TIN row on a loop (QFTL, Oct 2026: N-171 rows on COMMON LOOP painted
+# over N-186). Turnouts take their colours from the lines' own TINs, so such rows
+# should be deleted. Says which row looks like the stray one.
+# ---------------------------------------------------------------------------
+def check_tin_overlaps(station: Station, tins: list[TIN], tags: list[Tag], p: dict | None = None) -> list[CheckResult]:
+    from ..drawing.layout import tin_doubt
+    title = "No two TINs overlap on one line"
+    names = {t.id: t.name for t in station.tracks}
+    t_tags = [t for t in tags if t.tag_type == "T"]
+    doubt = tin_doubt(tins, [t.location_m for t in t_tags])
+    out = []
+
+    def ext(n):
+        return min(n.start_m, n.end_m), max(n.start_m, n.end_m)
+
+    def why(n):
+        r = []
+        for t in t_tags:
+            if abs(n.start_m - t.location_m) <= 2 or abs(n.end_m - t.location_m) <= 2:
+                r.append(f"ends at turnout tag {t.tag_ref}")
+                break
+        others = sorted({names.get(o.track_id, "?") for o in tins if o.tin_no == n.tin_no and o.track_id != n.track_id})
+        if others:
+            r.append(f"TIN {n.tin_no} is also on {', '.join(others)}")
+        return "; ".join(r)
+    def rank(n):
+        a0, a1 = ext(n)
+        return (doubt[id(n)], a1 - a0)
+
+    for r in tins:
+        if r.track_id is None:
+            continue
+        r0, r1 = ext(r)
+        same_line = [o for o in tins if o is not r and o.track_id == r.track_id]
+        # entered twice: lies inside another row of the same TIN on the same line
+        dup = next((o for o in same_line if o.tin_no == r.tin_no and ext(o)[0] <= r0 and r1 <= ext(o)[1]
+                    and (ext(o) != (r0, r1) or id(o) < id(r))), None)
+        if dup is not None:
+            out.append(CheckResult("DATA-TIN", title, "WARN",
+                                   f"TIN {r.tin_no} is entered twice on {names.get(r.track_id, '?')}: "
+                                   f"{r0 / 1000:.3f}-{r1 / 1000:.3f} lies within {ext(dup)[0] / 1000:.3f}-"
+                                   f"{ext(dup)[1] / 1000:.3f}" + (f" ({why(r)})" if why(r) else "")
+                                   + " -- delete the shorter row", subject_ref=f"TIN {r.tin_no}"))
+            continue
+        over = [o for o in same_line if o.tin_no != r.tin_no and min(r1, ext(o)[1]) - max(r0, ext(o)[0]) > 1]
+        if not over or not any(rank(o) < rank(r) for o in over):
+            continue                       # nothing overlaps it, or it is the line's own TIN there
+        mid = (max(r0, min(ext(o)[0] for o in over)) + min(r1, max(ext(o)[1] for o in over))) / 2
+        shown = min([o for o in tins if o.track_id == r.track_id and ext(o)[0] - 1 <= mid <= ext(o)[1] + 1],
+                    key=rank)
+        reason = why(r)
+        out.append(CheckResult(
+            "DATA-TIN", title, "WARN",
+            f"TIN {r.tin_no} ({r0 / 1000:.3f}-{r1 / 1000:.3f}) overlaps "
+            f"{', '.join(sorted({f'TIN {o.tin_no}' for o in over}))} on {names.get(r.track_id, '?')}"
+            + (f"; it looks like a turnout piece ({reason})" if reason else "")
+            + f". The drawing shows TIN {shown.tin_no} there. Turnouts take their colours from the lines' "
+              f"TINs -- delete this row.", subject_ref=f"TIN {r.tin_no}"))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# The same signal entered on two lines (QFTL, Oct 2026: S26/S27 on UP MAIN as well as
+# COMMON LOOP / UP LOOP, S5/SH8 and SH22 on DN MAIN as well as COMMON LOOP, a second SB
+# on UP MAIN). Shared by the drawing (draw one copy) and the data check (say which row
+# to delete).
+# ---------------------------------------------------------------------------
+def _ref_parts(ref: str) -> set:
+    import re
+    return {p for p in re.split(r"[/\s,]+", (ref or "").upper()) if p}
+
+
+def duplicate_elements(items: list, s_tags: list, line_type: dict, window_m: float = 60.0) -> dict:
+    """items: [(key, ref, element_type, location_m, track_id)]; s_tags: [(ref, location_m,
+    track_id)] signal-foot tags; line_type: track id -> line type. Returns {key: (kept
+    item, why)} for each copy that should not be drawn: there is a copy of the same
+    signal on another line within window_m that fits better -- a loop-line starter on a
+    loop / a main-line starter on a main line, then nearer its signal-foot tag."""
+    def fit(it):
+        t, lt = (it[2] or "").lower(), (line_type.get(it[4]) or "").upper()
+        if "loopline" in t or "loop line" in t:
+            return 0 if "LOOP" in lt else 1
+        if "mainline" in t or "main line" in t:
+            return 0 if "MAIN" in lt else 1
+        return 0
+
+    def foot(it):
+        near = [(abs(m - it[3]), r) for r, m, tid in s_tags if tid == it[4]]
+        return min(near) if near else (999.0, None)
+
+    def score(it):
+        return (fit(it), round(foot(it)[0], 1))
+    out = {}
+    for it in items:
+        if "points" in (it[2] or "").lower() or "lc gate" in (it[2] or "").lower():
+            continue
+        parts = _ref_parts(it[1])
+        better = [o for o in items if o is not it and o[4] != it[4] and o[4] is not None
+                  and _ref_parts(o[1]) & parts and abs(o[3] - it[3]) <= window_m and score(o) < score(it)]
+        if better:
+            kept = min(better, key=score)
+            why = []
+            if fit(kept) < fit(it):
+                why.append(f"{kept[2]} belongs on a {'loop' if 'loop' in (kept[2] or '').lower() else 'main'} line")
+            f = foot(kept)
+            if f[1] is not None and f[0] <= 10:
+                why.append(f"its signal-foot tag {f[1]} is there")
+            out[it[0]] = (kept, "; ".join(why))
+    return out
+
+
+def check_duplicate_elements(station: Station, elements: list[Element], tags: list[Tag],
+                             p: dict | None = None) -> list[CheckResult]:
+    title = "Each signal entered on one line only"
+    names = {t.id: t.name for t in station.tracks}
+    lt = {t.id: getattr(t, "line_type", "") for t in station.tracks}
+    items = [(e.id, e.element_ref, e.element_type, e.location_m, e.track_id) for e in elements]
+    s_tags = [(t.tag_ref, t.location_m, t.track_id) for t in tags if t.tag_type == "S"]
+    dups = duplicate_elements(items, s_tags, lt)
+    out = []
+    for e in elements:
+        if e.id not in dups:
+            continue
+        kept, why = dups[e.id]
+        out.append(CheckResult(
+            "DATA-DUP", title, "WARN",
+            f"{e.element_ref} is entered on {names.get(e.track_id, '?')} ({e.location_m / 1000:.3f}) and as "
+            f"{kept[1]} on {names.get(kept[4], '?')} ({kept[3] / 1000:.3f}); the drawing shows the "
+            f"{names.get(kept[4], '?')} one" + (f" ({why})" if why else "") +
+            f". Delete the {names.get(e.track_id, '?')} row if it is the same signal.",
+            subject_ref=e.element_ref))
+    return out

@@ -182,3 +182,14 @@ def test_element_aspects_column(client):
     assert rows[0]["data"]["aspects"] == "R/Y/YY/G" and not rows[0]["errors"]
     assert any("Unknown aspect" in e for e in rows[1]["errors"])
     assert any("Aspects ignored" in w for w in rows[2]["warnings"])
+
+
+def test_points_b_end_column(client):
+    """QFTL (Oct 2026): points carry an A-end (Location) and a B-end."""
+    sid, des, _ = _setup(client)
+    csv = ("Name,Type,A-end (m),Line,Leads to,B-end (m)\n"
+           "P11,Points / Turnout,262067,DN MAIN,UP MAIN,261978\n"
+           "S9,Distant Signal,262000,DN MAIN,,262100\n")
+    rows = _up(client, sid, "elements", csv, des).json()["rows"]
+    assert rows[0]["data"]["location_m"] == 262067 and rows[0]["data"]["b_end_m"] == 261978
+    assert any("B-end ignored" in w for w in rows[1]["warnings"])

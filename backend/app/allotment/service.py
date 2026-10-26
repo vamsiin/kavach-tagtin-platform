@@ -63,3 +63,51 @@ def station_allotment(db: Session, st: models.StationORM) -> domain.StationAllot
         else:
             out.adjacent.append((a.name, to_entry(r)))
     return out
+
+
+NEARBY_M = 50_000.0   # the longest repeat limit (block-section TINs, H2.14)
+
+
+def nearby_stations(db: Session, st: models.StationORM) -> list[domain.NearbyStation]:
+    """Other layouts in the workspace that the H2.14 repeat limits apply to: stations
+    within 50 km of this one's centre line by chainage, and linked to it through the
+    adjacent-station records (directly or via other stations). The link keeps stations
+    on an unrelated route, whose chainage merely happens to coincide, out of the check."""
+    if st.centre_line_m is None or st.workspace_id is None:
+        return []
+    others = (db.query(models.StationORM)
+              .filter(models.StationORM.workspace_id == st.workspace_id, models.StationORM.id != st.id,
+                      models.StationORM.centre_line_m.isnot(None)).all())
+    if not others:
+        return []
+    by_id = {id_key(o.kavach_station_id): o for o in others if id_key(o.kavach_station_id) is not None}
+    by_name = {name_key(o.name): o for o in others}
+
+    def neighbours(s):
+        for a in s.adjacent_stations:
+            o = by_id.get(id_key(a.kavach_station_id)) if id_key(a.kavach_station_id) is not None else None
+            o = o or by_name.get(name_key(a.name))
+            if o is not None:
+                yield o
+    # stations that name this one as a neighbour count too (links are often recorded on one side only)
+    me_id, me_name = id_key(st.kavach_station_id), name_key(st.name)
+    reach = {o.id for o in others if any((id_key(a.kavach_station_id) == me_id and me_id is not None)
+                                         or name_key(a.name) == me_name for a in o.adjacent_stations)}
+    reach |= {o.id for o in neighbours(st)}
+    todo = list(reach)
+    index = {o.id: o for o in others}
+    while todo:
+        cur = index[todo.pop()]
+        for o in neighbours(cur):
+            if o.id not in reach:
+                reach.add(o.id)
+                todo.append(o.id)
+    out = []
+    for o in others:
+        if o.id in reach and abs(o.centre_line_m - st.centre_line_m) <= 2 * NEARBY_M:
+            out.append(domain.NearbyStation(
+                name=o.name, centre_m=o.centre_line_m,
+                tags=[(t.tag_ref, t.tag_number, t.location_m) for t in o.tags if t.tag_number is not None],
+                tins=[(n.tin_no, n.section_type or "", min(n.start_m, n.end_m), max(n.start_m, n.end_m))
+                      for n in o.tins]))
+    return out

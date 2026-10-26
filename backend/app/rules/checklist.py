@@ -165,6 +165,20 @@ def _register_builtins():
        {"min_m": 90, "max_m": 110},
        [P("min_m", "number", "Minimum (m)", min=0), P("max_m", "number", "Maximum (m)", min=0)],
        lambda st, el, tg, tn, p: L.check_tan_adjacent_line_tag(tg, el, p))
+    _b("turnout_t_tags", "DATA-TURNOUT", "Turnout (T) tag on its turnout",
+       "Every points / turnout has its T tag between its A-end and B-end, and every T tag lies on a "
+       "turnout (the points it is linked to, if linked). Flags a T tag entered at the wrong chainage.",
+       {"tolerance_m": 5.0},
+       [P("tolerance_m", "number", "Tolerance beyond the ends (m)", min=0)],
+       lambda st, el, tg, tn, p: L.check_turnout_t_tags(tg, el, p), severity="WARN")
+    _b("tin_overlaps", "DATA-TIN", "No two TINs overlap on one line",
+       "Two different TINs on the same stretch of one line: usually a turnout piece entered as a TIN row "
+       "on a loop. Names the likely stray row (ends at a turnout tag, or the TIN belongs to another line).",
+       {}, [], lambda st, el, tg, tn, p: L.check_tin_overlaps(st, tn, tg, p), severity="WARN")
+    _b("dup_elements", "DATA-DUP", "Each signal entered on one line only",
+       "The same signal (or board) entered on two lines within 60 m -- e.g. a loop-line starter also "
+       "entered on the main line. Names the copy the drawing leaves out.",
+       {}, [], lambda st, el, tg, tn, p: L.check_duplicate_elements(st, el, tg, p), severity="WARN")
     _b("tan_after_a", "TAN-3", "Tags after an adjustment tag",
        "New-TAN rule: after each adjustment (A) tag, the next tags follow at no more than "
        "(0.5 x max section speed + 10) m each (A tag at its ABS-1 physical location).",
@@ -172,6 +186,41 @@ def _register_builtins():
        [P("max_speed_kmph", "number", "Max section speed (km/h)", min=1),
         P("normal_tags", "int", "Tags required after the A tag", min=1)],
        lambda st, el, tg, tn, p: L.check_tan_after_adjustment(tg, p))
+    from . import deck_rules as D
+    _b("h2_14_repeat", "H2.14", "Repeated tag / TIN numbers",
+       "A tag number does not repeat within 25 km; a station-section TIN repeats only after 10 km, a "
+       "block-section TIN after 50 km. Compared with the other stations of the workspace linked to this one.",
+       {"tag_radius_m": 25000, "tin_station_m": 10000, "tin_block_m": 50000},
+       [P("tag_radius_m", "number", "Tag number not repeated within (m)", min=0),
+        P("tin_station_m", "number", "Station-section TIN repeats after (m)", min=0),
+        P("tin_block_m", "number", "Block-section TIN repeats after (m)", min=0)],
+       lambda st, el, tg, tn, p: D.check_h2_14_repeat_limits(st, tg, tn, p))
+    _b("h2_11_prog", "H2.11", "Exit tag programming",
+       "1st exit tag: communication in the direction of entry only; 2nd exit tag: no communication either way.",
+       {}, [], lambda st, el, tg, tn, p: E.check_h2_11_exit_programming(tg))
+    _b("h2_7_merged", "H2.7", "Approach / merged tag for every main signal",
+       "A Normal, LC-gate (merged) or shunt-signal tag 150-250 m (preferably 200 m) before each main signal's "
+       "foot tag, for signals with no linked N tag.",
+       {"min_m": 150, "max_m": 250, "preferred_m": 200, "starter_exception": True},
+       [P("min_m", "number", "Minimum (m)", min=0), P("max_m", "number", "Maximum (m)", min=0),
+        P("preferred_m", "number", "Preferred (m)", min=0),
+        P("starter_exception", "bool", "Allow < minimum for Advance/Intermediate Starter")],
+       lambda st, el, tg, tn, p: D.check_merged_approach(st, tg, el, p), severity="WARN")
+    _b("tan_shunt_n", "TAN-4", "Shunt-signal approach tag is N",
+       "A shunt signal's tag that is the approach tag of the next main signal is designated N, not S.",
+       {"min_m": 150, "max_m": 250},
+       [P("min_m", "number", "Minimum (m)", min=0), P("max_m", "number", "Maximum (m)", min=0)],
+       lambda st, el, tg, tn, p: D.check_shunt_foot_as_normal(st, tg, el, p))
+    _b("virtual_bslb", "H2.6", "Virtual BSLB",
+       "Where a block TIN ends with no BSLB board or home signal, a virtual BSLB (S tag) is provided at its end.",
+       {"tolerance_m": 20}, [P("tolerance_m", "number", "Within (m) of the block TIN end", min=0)],
+       lambda st, el, tg, tn, p: D.check_virtual_bslb(st, el, tg, tn, p))
+    _b("tin_bifurcation", "H2.21", "TIN bifurcation (common loop reception)",
+       "A TIN boundary lies between a shunt signal and the advance starter on the same line.",
+       {"tolerance_m": 10, "max_span_m": 500},
+       [P("tolerance_m", "number", "Boundary within (m) of the signals", min=0),
+        P("max_span_m", "number", "Shunt signal to starter at most (m)", min=0)],
+       lambda st, el, tg, tn, p: D.check_tin_bifurcation(st, el, tn, p), severity="WARN")
     _b("dir_conv", "DIR-CONV", "Tag direction matches its signal",
        "A tag linked to a signal runs in the signal's direction, using the workspace's convention "
        "(SCR: SIP Down = Nominal; ECR: SIP Up = Nominal).",
@@ -189,6 +238,14 @@ def _register_builtins():
        {}, [], lambda st, el, tg, tn, p: E.check_br001_allotment(st, tg, tn))
     _b("br005", "BR-005", "Border tag location recorded", "Border tags have an absolute location.",
        {}, [], lambda st, el, tg, tn, p: E.check_brd_br005_border_tag_present(tg))
+    _b("br005_rssi", "BR-005", "Border tag covered by both stations (RSSI)",
+       "At every border tag, the tower RSSI survey shows this station's and the adjacent station's "
+       "Stationary KAVACH at the threshold or better (BRD BR-005: -70 dBm on both sides).",
+       {"threshold_dbm": -70.0, "window_m": 50.0},
+       [P("threshold_dbm", "number", "Minimum RSSI (dBm)"),
+        P("window_m", "number", "Readings within (m) of the border tag", min=1)],
+       lambda st, el, tg, tn, p: E.check_br005_rssi_coverage(st, tg, float(p.get("threshold_dbm", -70.0)),
+                                                             float(p.get("window_m", 50.0))))
 
 
 FIELD_WHITELIST = {
@@ -313,8 +370,9 @@ def validate_params(kind: str, builtin: str | None, params: dict) -> dict:
 # Defaults
 # ---------------------------------------------------------------------------
 _ORDER = ["data_units", "h2_1", "h2_2", "h2_5", "h2_6", "h2_7", "h2_9", "h2_11", "h2_12", "h2_13",
-          "h2_15", "h2_16", "h2_18", "h2_21", "h2_23", "h2_28", "fr004_unique", "fr004_parity", "br001", "br005",
-          "topology", "h2_8", "h2_17", "h2_20", "h2_22", "h2_26", "tan_dead_stop", "tan_l_tag", "tan_after_a", "dir_conv"]
+          "h2_15", "h2_16", "h2_18", "h2_21", "h2_23", "h2_28", "fr004_unique", "fr004_parity", "br001", "br005", "br005_rssi",
+          "topology", "h2_8", "h2_17", "h2_20", "h2_22", "h2_26", "tan_dead_stop", "tan_l_tag", "tan_after_a", "dir_conv", "turnout_t_tags", "tin_overlaps", "dup_elements",
+          "h2_14_repeat", "h2_11_prog", "h2_7_merged", "tan_shunt_n", "virtual_bslb", "tin_bifurcation"]
 
 
 def _ensure():

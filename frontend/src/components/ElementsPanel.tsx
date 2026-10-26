@@ -42,6 +42,7 @@ export function ElementsPanel({ elements, tracks, dnDirection, onAdd, onUpdate, 
         : "—" },
     { key: "to_track_id", label: "Details", render: (e) =>
         e.element_type === POINTS ? (e.to_track_id != null ? `to ${lineName(tracks, e.to_track_id)}` : "to —")
+            + (e.b_end_m != null ? ` · A-end ${e.location_m} / B-end ${e.b_end_m}` : " · B-end —")
         : e.element_type === LC_GATE ? [e.lc_class && `Class ${e.lc_class}`, e.lc_manning].filter(Boolean).join(", ") || "—"
         : isSignalType(e.element_type) ? (e.aspects ? `Aspects ${e.aspects}`
             : defaultAspects(e.element_type) ? `Aspects ${defaultAspects(e.element_type)} (default)` : "Aspects —")
@@ -84,6 +85,7 @@ function ElementForm({ tracks, initial, onSubmit, onCancel, submitting }: {
   const [lcClass, setLcClass] = useState(initial?.lc_class ?? "");
   const [lcManning, setLcManning] = useState(initial?.lc_manning ?? "");
   const [aspects, setAspects] = useState(initial?.aspects ?? "");
+  const [bEnd, setBEnd] = useState(initial?.b_end_m != null ? String(initial.b_end_m) : "");
   const id = (v: string) => (v ? parseInt(v) : null);
 
   return (
@@ -96,13 +98,15 @@ function ElementForm({ tracks, initial, onSubmit, onCancel, submitting }: {
         lc_class: type === LC_GATE ? lcClass || null : null,
         lc_manning: type === LC_GATE ? lcManning || null : null,
         aspects: isSignalType(type) ? aspects.trim() || null : null,
+        b_end_m: type === POINTS && bEnd.trim() ? parseFloat(bEnd) : null,
       });
     }}>
       <input placeholder="Ref (e.g. SIG-HS-01)" value={ref} onChange={(e) => setRef(e.target.value)} required />
       <select value={type} onChange={(e) => setType(e.target.value)}>
         {ELEMENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
       </select>
-      <input type="number" step="0.001" placeholder="Chainage (m)" title="Chainage in metres, e.g. 262910 for km 262.910" value={loc}
+      <input type="number" step="0.001" placeholder={type === POINTS ? "A-end ABS (m)" : "Chainage (m)"}
+             title={type === POINTS ? "Points: A-end absolute location (m), on the line the points are on" : "Chainage in metres, e.g. 262910 for km 262.910"} value={loc}
              onChange={(e) => setLoc(e.target.value)} required style={{ width: 130 }} />
       <LineSelect tracks={tracks} value={track} onChange={setTrack} />
       <select value={dir} onChange={(e) => setDir(e.target.value)}>
@@ -113,6 +117,10 @@ function ElementForm({ tracks, initial, onSubmit, onCancel, submitting }: {
       {type === POINTS && (
         <LineSelect tracks={tracks.filter((t) => String(t.id) !== track)} value={toTrack} onChange={setToTrack}
           placeholder="Leads to line —" />
+      )}
+      {type === POINTS && (
+        <input type="number" step="0.001" placeholder="B-end ABS (m)" value={bEnd} onChange={(e) => setBEnd(e.target.value)}
+               title="Points: B-end absolute location (m), where the turnout meets the line it leads to" style={{ width: 130 }} />
       )}
       {type === LC_GATE && (
         <>

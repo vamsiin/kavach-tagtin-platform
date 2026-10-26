@@ -148,10 +148,19 @@ def check_h2_6_signal_foot_tags(elements: list[Element], tags: list[Tag]) -> lis
     results = []
     linked_element_ids = {t.linked_element_id for t in tags if t.tag_type == "S" and t.linked_element_id}
     linked = [e for e in elements if e.id in linked_element_ids]
+    # a shunt signal whose tag is the approach tag of the next main signal carries an N tag
+    from .deck_rules import shunt_approach_target
+    shunt_n = {t.linked_element_id for t in tags if t.tag_type == "N" and t.linked_element_id
+               and shunt_approach_target(t, tags, elements, 150, 250) is not None}
     for el in elements:
         if not requires_signal_foot_tag(el.element_type):
             continue
         ok = el.id in linked_element_ids
+        if not ok and el.id in shunt_n and "Shunt" in el.element_type:
+            results.append(CheckResult("H2.6", "Signal Foot Tag present", "PASS",
+                                       f"{el.element_type} '{el.element_ref}' has a Normal (N) tag in place of the S tag: "
+                                       f"it is the approach tag of the next main signal", subject_ref=el.element_ref))
+            continue
         # a calling-on signal on the home signal's post shares its foot tag (Aler: S1A
         # with S1 at 261.789, S29A with S29 at 263.325)
         post = None if ok else next((e for e in linked if e.id != el.id and e.track_id == el.track_id
@@ -293,6 +302,37 @@ def check_h2_11_exit_tags(tags: list[Tag], p: dict | None = None) -> list[CheckR
             subject_ref=group_id,
         ))
     return results
+
+
+# ---------------------------------------------------------------------------
+# H2.11 programming: the 1st exit tag communicates in the direction of entry and not in
+# the direction of exit; the 2nd exit tag has no communication in either direction.
+# ---------------------------------------------------------------------------
+EXIT_COMM_BY_SET = {"1st": "ENTRY", "2nd": "NONE"}
+EXIT_COMM_TEXT = {"ENTRY": "communication in the direction of entry only", "NONE": "no communication either way"}
+
+
+def check_h2_11_exit_programming(tags: list[Tag]) -> list[CheckResult]:
+    title = "Exit tag programming (1st: entry direction only, 2nd: none)"
+    out = []
+    for t in tags:
+        if t.tag_type != "X":
+            continue
+        want = EXIT_COMM_BY_SET.get(t.exit_set or "")
+        if want is None:
+            out.append(CheckResult("H2.11", title, "WARN",
+                                   f"{t.tag_ref}: exit set (1st / 2nd) not recorded, so its programming cannot be checked",
+                                   subject_ref=t.tag_ref))
+        elif not t.exit_comm:
+            out.append(CheckResult("H2.11", title, "WARN",
+                                   f"{t.tag_ref} ({t.exit_set} exit tag): programming not recorded -- should be "
+                                   f"{EXIT_COMM_TEXT[want]}", subject_ref=t.tag_ref))
+        else:
+            ok = t.exit_comm == want
+            out.append(CheckResult("H2.11", title, "PASS" if ok else "FAIL",
+                                   f"{t.tag_ref} ({t.exit_set} exit tag): {EXIT_COMM_TEXT.get(t.exit_comm, t.exit_comm)}"
+                                   + ("" if ok else f" -- should be {EXIT_COMM_TEXT[want]}"), subject_ref=t.tag_ref))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -524,6 +564,68 @@ def check_brd_br005_border_tag_present(tags: list[Tag]) -> list[CheckResult]:
             f"{t.tag_ref}: location_m={t.location_m}",
             subject_ref=t.tag_ref,
         ))
+    return results
+
+
+# ---------------------------------------------------------------------------
+# BRD BR-005 RSSI criterion: at every border tag, both the handing-over and the
+# taking-over Stationary KAVACH must be received at -70 dBm or better, as shown by
+# the tower RSSI survey (input 5). Readings within `window_m` of the tag, on the
+# tag's line (or with no line given), count; the best reading per side is used.
+# "This station's side" = towers whose owner is this station; the other side =
+# towers of an adjacent station.
+# ---------------------------------------------------------------------------
+def check_br005_rssi_coverage(station: Station, tags: list[Tag], threshold_dbm: float = -70.0,
+                              window_m: float = 50.0) -> list[CheckResult]:
+    title = "Border tag covered by both stations' radio (RSSI survey)"
+    border = [t for t in tags if t.is_border_tag]
+    if not border:
+        return []
+    if not station.rssi:
+        return [CheckResult("BR-005", title, "WARN",
+                            f"No tower RSSI survey loaded -- {len(border)} border tag(s) "
+                            f"({', '.join(t.tag_ref for t in border)}) can't be checked against "
+                            f"{threshold_dbm:g} dBm. Load the RSSI report (Registers -> Towers & RSSI).",
+                            subject_ref=border[0].tag_ref)]
+    own_name = (station.name or "").strip().lower()
+    owner = {tw.tower_ref: ((tw.owner or "").strip() or station.name) for tw in station.towers}
+    results = []
+    for t in border:
+        near = [r for r in station.rssi if abs(r.location_m - t.location_m) <= window_m
+                and (r.track_id is None or t.track_id is None or r.track_id == t.track_id)]
+        unknown = sorted({r.tower_ref for r in near if r.tower_ref not in owner})
+        mine = [r for r in near if r.tower_ref in owner and owner[r.tower_ref].strip().lower() == own_name]
+        theirs = [r for r in near if r.tower_ref in owner and owner[r.tower_ref].strip().lower() != own_name]
+        parts, bad, missing = [], [], []
+        for label, rs in ((f"{station.name} tower", mine), ("adjacent station tower", theirs)):
+            if not rs:
+                missing.append(label)
+                continue
+            r = max(rs, key=lambda r: r.rssi_dbm)
+            parts.append(f"{label} best {r.rssi_dbm:g} dBm ({r.tower_ref} at {r.location_m / 1000:.3f})")
+            if r.rssi_dbm < threshold_dbm:
+                bad.append(label)
+        msg = f"{t.tag_ref} at {t.location_m / 1000:.3f}: " + ("; ".join(parts) if parts else "no readings")
+        if missing:
+            msg += f"; no reading within {window_m:g} m from: {', '.join(missing)}"
+        if unknown:
+            msg += f"; readings from towers not in the towers register: {', '.join(unknown)}"
+        if not near and t.tag_type == "N":
+            status = "PASS"
+            msg += ("; no signal reading at the border from either station -- a Normal tag is used as the "
+                    "border tag, as permitted where no signal is available")
+        elif not near:
+            status = "WARN"
+            msg += ("; no signal available from either station to decide the border -- use a Normal (N) tag as "
+                    "the border tag")
+        elif bad:
+            status = "FAIL"
+            msg += f" -- below {threshold_dbm:g} dBm"
+        elif missing:
+            status = "WARN"
+        else:
+            status = "PASS"
+        results.append(CheckResult("BR-005", title, status, msg, subject_ref=t.tag_ref))
     return results
 
 
@@ -781,8 +883,9 @@ MANUAL_CLAUSES = {
              "operating Railway' -- policy decision, not a fixed rule.",
     "H2.16": "Border RFID tag placement and the overlapping-signal exception "
              "diagram (H2.16.1) -- requires comparing adjacent stations' layouts.",
-    "H2.14": "Repeated Tag ID not allowed within 25km radius -- requires "
-             "cross-station data beyond a single station's register.",
+    "H2.14": "Repeated Tag ID not allowed within 25km radius (TINs: 10 km station, "
+             "50 km block) -- checked automatically against the linked stations in the "
+             "workspace; confirm by hand against stations not yet in the platform.",
     "H2.17": "Each TIN a single colour, distinguishable from neighbouring TINs -- "
              "automatable partially (flag identical colour on adjacent TIN rows) but "
              "'distinguishable' is ultimately a visual judgement.",
@@ -797,11 +900,6 @@ MANUAL_CLAUSES = {
     "H2.24-H2.26": "Signature block, revision history, and legend presence/format -- "
                    "checked at a basic presence level in StationInfo, but format "
                    "compliance with 'User Railway practice' needs human review.",
-    "BR-005 (RSSI)": "Border RFID tag's location is checked for presence (see "
-                      "check_brd_br005_border_tag_present), but the BRD's full "
-                      "criterion -- RSSI -70 dBm on both handing-over and "
-                      "taking-over sides per a Tower RSSI Survey -- requires a "
-                      "dataset this platform doesn't currently ingest.",
 }
 
 # BRD BR-008 states G-tags must be 550-850m from the LC gate. This directly

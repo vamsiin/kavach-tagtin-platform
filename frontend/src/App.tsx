@@ -8,6 +8,7 @@ import { ElementsPanel } from "./components/ElementsPanel";
 import { TagsPanel } from "./components/TagsPanel";
 import { TinsPanel } from "./components/TinsPanel";
 import { RegisterImport } from "./components/RegisterImport";
+import { TowersPanel } from "./components/TowersPanel";
 import { LinesPanel } from "./components/LinesPanel";
 import { AllotmentChartsPanel } from "./components/AllotmentChartsPanel";
 import { StationAllotmentPanel } from "./components/StationAllotmentPanel";
@@ -260,6 +261,8 @@ function MainContent() {
                 onAdd={async (p) => { await api.addTin(selected.id, p); await reloadTins(); }}
                 onUpdate={async (id, p) => { await api.updateTin(selected.id, id, p); await reloadTins(); }}
                 onDelete={async (id) => { await api.deleteTin(selected.id, id); await reloadTins(); }} />
+              <TowersPanel stationId={selected.id} stationName={selected.name} tracks={tracks} adjacent={adjacent}
+                readOnly={readOnly} lockReason={lockReason} />
             </>
           )}
 

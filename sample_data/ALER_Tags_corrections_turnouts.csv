@@ -1,0 +1,8 @@
+#,Tag Number,Type of Tag,Chainage(m),Line,Dir,Linked element,Pair group ID,Legend,Border tag
+1,R-840,T - TIN Discrimination / Turnout Tag,263092,DN MAIN,Reverse (UP),P20,-,Rectangle,No
+2,R-838,T - TIN Discrimination / Turnout Tag,262023,DN MAIN,Reverse (UP),P11,-,Rectangle,No
+3,R-834,T - TIN Discrimination / Turnout Tag,262150,COMMON LOOP,,P12,-,Rectangle,No
+4,R-836,T - TIN Discrimination / Turnout Tag,262966,COMMON LOOP,,P19,-,Rectangle,No
+5,R-843,T - TIN Discrimination / Turnout Tag,262201,UP LOOP,,P13,-,Rectangle,No
+6,R-842,T - TIN Discrimination / Turnout Tag,263039,UP LOOP,,P18,-,Rectangle,No
+7,R-789,N - Normal / Inline section Tag,262421,DN MAIN,,-,-,Triangle,No

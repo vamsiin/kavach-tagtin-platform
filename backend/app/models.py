@@ -86,6 +86,10 @@ class StationORM(Base):
     elements = relationship("ElementORM", back_populates="station", cascade="all, delete-orphan")
     tags = relationship("TagORM", back_populates="station", cascade="all, delete-orphan")
     tins = relationship("TINORM", back_populates="station", cascade="all, delete-orphan")
+    towers = relationship("TowerORM", back_populates="station", cascade="all, delete-orphan",
+                          order_by="TowerORM.location_m")
+    rssi_readings = relationship("RssiReadingORM", back_populates="station", cascade="all, delete-orphan",
+                                 order_by="RssiReadingORM.location_m")
     revisions = relationship("RevisionORM", back_populates="station", cascade="all, delete-orphan")
     documents = relationship("InputDocumentORM", back_populates="station", cascade="all, delete-orphan")
     railway_submissions = relationship("RailwaySubmissionORM", back_populates="station",
@@ -122,7 +126,16 @@ class StationORM(Base):
             allotment=self._allotment(),
             dn_direction=self.workspace.dn_direction if self.workspace is not None else "Nominal",
             workspace_code=self.workspace.code if self.workspace is not None else "",
+            towers=[t.to_domain() for t in self.towers],
+            rssi=[r.to_domain() for r in self.rssi_readings],
+            nearby=self._nearby(),
         )
+
+    def _nearby(self):
+        from sqlalchemy.orm import object_session
+        from .allotment.service import nearby_stations
+        db = object_session(self)
+        return nearby_stations(db, self) if db is not None else []
 
     def _allotment(self):
         from sqlalchemy.orm import object_session
@@ -165,6 +178,7 @@ class ElementORM(Base):
     lc_class = Column(String, nullable=True)
     lc_manning = Column(String, nullable=True)
     aspects = Column(String, nullable=True)        # signals: "R/Y/G"; blank -> type default
+    b_end_m = Column(Float, nullable=True)         # points: B-end ABS on the line they lead to
 
     station = relationship("StationORM", back_populates="elements")
 
@@ -174,6 +188,7 @@ class ElementORM(Base):
             location_m=self.location_m, direction=self.direction,
             remarks=self.remarks or "", track_id=self.track_id, to_track_id=self.to_track_id,
             lc_class=self.lc_class, lc_manning=self.lc_manning, aspects=self.aspects,
+            b_end_m=self.b_end_m,
         )
 
 
@@ -193,6 +208,7 @@ class TagORM(Base):
     pair_group_id = Column(String, nullable=True)
     legend_shape = Column(String, nullable=True)
     exit_set = Column(String, nullable=True)
+    exit_comm = Column(String, nullable=True)   # X tags: ENTRY / NONE
     is_border_tag = Column(Boolean, default=False)
     remarks = Column(Text, nullable=True)
     source_document_id = Column(Integer, ForeignKey("input_documents.id"), nullable=True)
@@ -210,9 +226,57 @@ class TagORM(Base):
             direction=self.direction, tin_no=self.tin_no,
             linked_element_id=self.linked_element_id, is_duplicate=bool(self.is_duplicate),
             pair_group_id=self.pair_group_id, legend_shape=self.legend_shape,
-            exit_set=self.exit_set, is_border_tag=bool(self.is_border_tag),
+            exit_set=self.exit_set, exit_comm=self.exit_comm, is_border_tag=bool(self.is_border_tag),
             remarks=self.remarks or "", track_id=self.track_id, abs2_m=self.abs2_m,
         )
+
+
+class TowerORM(Base):
+    """A Stationary KAVACH tower (input 5: tower locations, from the RSSI report).
+    `owner` is the station the tower belongs to: this station's own towers, or an
+    adjacent station's towers that the border survey also measured."""
+    __tablename__ = "towers"
+
+    id = Column(Integer, primary_key=True)
+    station_id = Column(Integer, ForeignKey("stations.id"), nullable=False)
+    tower_ref = Column(String, nullable=False)
+    location_m = Column(Float, nullable=False)
+    owner = Column(String, nullable=True)            # blank = this station
+    track_id = Column(Integer, ForeignKey("tracks.id"), nullable=True)   # line it stands beside
+    side = Column(String, nullable=True)             # e.g. "UP side" / "DN side"
+    height_m = Column(Float, nullable=True)
+    remarks = Column(Text, nullable=True)
+    source_document_id = Column(Integer, ForeignKey("input_documents.id"), nullable=True)
+
+    station = relationship("StationORM", back_populates="towers")
+
+    def to_domain(self) -> domain.Tower:
+        return domain.Tower(id=self.id, tower_ref=self.tower_ref, location_m=self.location_m,
+                            owner=self.owner or "", track_id=self.track_id, side=self.side or "",
+                            height_m=self.height_m, remarks=self.remarks or "")
+
+
+class RssiReadingORM(Base):
+    """One RSSI measurement from the tower RSSI survey: signal strength of a tower's
+    radio measured on a line at a chainage."""
+    __tablename__ = "rssi_readings"
+
+    id = Column(Integer, primary_key=True)
+    station_id = Column(Integer, ForeignKey("stations.id"), nullable=False)
+    tower_ref = Column(String, nullable=False)
+    location_m = Column(Float, nullable=False)
+    rssi_dbm = Column(Float, nullable=False)
+    track_id = Column(Integer, ForeignKey("tracks.id"), nullable=True)
+    direction = Column(String, nullable=True)
+    survey_date = Column(String, nullable=True)
+    remarks = Column(Text, nullable=True)
+    source_document_id = Column(Integer, ForeignKey("input_documents.id"), nullable=True)
+
+    station = relationship("StationORM", back_populates="rssi_readings")
+
+    def to_domain(self) -> domain.RssiReading:
+        return domain.RssiReading(id=self.id, tower_ref=self.tower_ref, location_m=self.location_m,
+                                  rssi_dbm=self.rssi_dbm, track_id=self.track_id, direction=self.direction)
 
 
 class TINORM(Base):

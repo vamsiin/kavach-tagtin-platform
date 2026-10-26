@@ -1,16 +1,18 @@
 import { useRef, useState } from "react";
 import { api, type ImportPreview } from "../api";
 
-const TITLES: Record<string, string> = { elements: "Elements", tags: "Tags", tins: "TINs" };
+const TITLES: Record<string, string> = { elements: "Elements", tags: "Tags", tins: "TINs", towers: "Towers", rssi: "RSSI survey readings" };
 const COLUMNS: Record<string, string> = {
-  elements: "#, Name of the Signal, Type of Signal, Location(m), Line, Dir (Down / Up), Remarks; optional: Aspects (e.g. R/Y/G, R/Y/YY/G+RI), Leads to (points)",
+  elements: "#, Name of the Signal, Type of Signal, Location(m), Line, Dir (Down / Up), Remarks; optional: Aspects (e.g. R/Y/G, R/Y/YY/G+RI), Leads to, B-end (m) (points: Location = A-end)",
   tags: "#, Tag Number (e.g. R-775), Type of Tag (e.g. S - Signal Foot Tag), Chainage(m), Line, Dir (Nominal (DN) / Reverse (UP)), Linked element, Pair group ID, Legend, Border tag (Yes / No)",
   tins: "#, TIN Number, TIN Placement (Station / Block), Line, Color, Start (m), End (m) (either order), No KAVACH territory (Yes / No)",
+  towers: "#, Tower, Location(m), Station (blank = this station; else the adjacent station it belongs to), Line, Side, Height(m), Remarks",
+  rssi: "#, Tower, Location(m), Line, Dir, RSSI(dBm), Survey date, Remarks -- or one column per tower: Location(m), Line, RSSI <tower> (dBm), ...  'Update existing' replaces the earlier readings of the towers in the file",
 };
 
 /** "Upload CSV" for a register: pick a .csv / .xlsx file, see every row checked
  *  (add / update / error) before anything is saved, then import it in one go. */
-export function RegisterImport({ stationId, kind, onDone }: { stationId: number; kind: "elements" | "tags" | "tins"; onDone: () => Promise<void> }) {
+export function RegisterImport({ stationId, kind, onDone }: { stationId: number; kind: "elements" | "tags" | "tins" | "towers" | "rssi"; onDone: () => Promise<void> }) {
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
