@@ -155,6 +155,15 @@ class DAllotRow:
 
 
 @dataclass
+class DAnnotation:
+    kind: str                          # Track circuit | Section note | Feature
+    label: str
+    track_id: int | None
+    start_m: float
+    end_m: float | None = None
+
+
+@dataclass
 class DrawingData:
     station_name: str
     kavach_station_id: str
@@ -170,10 +179,11 @@ class DrawingData:
     elements: list = field(default_factory=list)
     borders: list = field(default_factory=list)
     towers: list = field(default_factory=list)           # [DTower]
-    neighbours: list = field(default_factory=list)       # [(name, side)]
+    neighbours: list = field(default_factory=list)       # [(name, side[, distance_m[, KAVACH station id]])]
     revisions: list = field(default_factory=list)        # [(rev, date, description)]
     signatures: dict = field(default_factory=dict)       # role -> (name, date)
     allotment: list = field(default_factory=list)        # [DAllotRow]
+    annotations: list = field(default_factory=list)      # [DAnnotation]
     allotment_ref: str = ""
     generated_at: str = ""
     generated_by: str = ""
@@ -765,6 +775,7 @@ def _axis_points(d: DrawingData, tracks: list, turnouts: list) -> list:
     pts += [t.location_m for t in d.tags] + [e.location_m for e in d.elements]
     pts += [n.start_m for n in d.tins] + [n.end_m for n in d.tins] + [b.location_m for b in d.borders]
     pts += [to.b_m for to in turnouts] + [tw.location_m for tw in d.towers]
+    pts += [a.start_m for a in d.annotations] + [a.end_m for a in d.annotations if a.end_m is not None]
     if d.centre_line_m is not None:
         pts.append(d.centre_line_m)
     return pts
@@ -854,6 +865,18 @@ def _arrange(d: DrawingData, order: list, turnouts: list, w: float, measure: boo
                       _border_box_top(p, b, side))
             lb.comm = texts_
             p.lanes[side].labs.append(lb)
+    # annotations: track circuit names under the line, section notes and site features above it
+    for a in d.annotations:
+        p = plans.get(a.track_id)
+        if p is None:
+            continue
+        mid = ax((a.start_m + a.end_m) / 2) if a.end_m is not None else ax(a.start_m)
+        if a.kind == "Track circuit":
+            p.lanes[-1].labs.append(_Lab(mid, [(a.label, 1.9, (60, 60, 60), True, False)], BAND / 2))
+        elif a.kind == "Section note":
+            p.lanes[1].labs.append(_Lab(mid, [(f"({a.label})", 1.9, INK, False, False)], BAND / 2))
+        else:
+            p.lanes[1].labs.append(_Lab(mid, [(a.label.upper(), 1.9, (90, 50, 0), True, False)], BAND / 2))
     # turnout ends: points name and the A-end / B-end ABS beside each end
     for to in turnouts:
         pa = plans[to.ta]
@@ -973,6 +996,12 @@ def _sheet(d: DrawingData, w: float, h: float) -> Scene:
           Text(w / 2, y - 5.6, f"STATION ID-{_station_id(d)}", 2.6, "TITLE", anchor="middle"))
     if d.centre_line_m is not None:
         s.add(Text(w / 2, y - 9.6, f"ABSOLUTE LOCATION: {km(d.centre_line_m)}", 2.6, "TITLE", anchor="middle"))
+    # north arrow, as on the manual layouts (the sheet is not geographically oriented; it marks the
+    # direction the drawing's top edge is taken to point)
+    nx, ny = w / 2 + max(nw / 2 + 28, 60), y - 6
+    s.add(Line(nx, ny - 5, nx, ny + 5, "TITLE", width=0.35),
+          Poly([(nx, ny + 7), (nx - 1.6, ny + 3), (nx + 1.6, ny + 3)], "TITLE", fill=INK, width=0.05),
+          Text(nx, ny + 8.2, "N", 2.6, "TITLE", anchor="middle", bold=True))
     return s
 
 
@@ -988,6 +1017,15 @@ def _draw(s: Scene, d: DrawingData, order: list, plans: dict, turnouts: list, w:
         x = ax(d.centre_line_m)
         s.add(Line(x, plan_bottom - 4, x, plan_top + 2, "CENTRE", rgb=(200, 0, 0), width=0.3),
               Text(x, plan_top + 3.2, km(d.centre_line_m), 2.6, "CENTRE", (200, 0, 0), anchor="middle"))
+
+    # station building under the centre line, as on the manual layouts (H2.4: the station master's
+    # panel centre is the station's reference)
+    if d.centre_line_m is not None:
+        x = ax(d.centre_line_m)
+        s.add(Rect(x - 3, plan_bottom - 12, 6, 4, "CENTRE", stroke=INK, fill=(255, 255, 255), width=0.25),
+              Line(x - 3, plan_bottom - 12, x + 3, plan_bottom - 8, "CENTRE", width=0.15),
+              Line(x - 3, plan_bottom - 8, x + 3, plan_bottom - 12, "CENTRE", width=0.15),
+              Text(x, plan_bottom - 15.2, "STATION BUILDING", 1.9, "CENTRE", anchor="middle"))
 
     # running directions, as on the manual layouts: "<- UP / DOWN ->", "<- REVERSE / NOMINAL ->"
     up_left = d.dn_direction == "Nominal"        # DN runs to higher km (left to right)
@@ -1040,6 +1078,7 @@ def _draw(s: Scene, d: DrawingData, order: list, plans: dict, turnouts: list, w:
         for bx in sorted(bounds):
             if p.x_from + 0.5 < bx < p.x_to - 0.5:
                 s.add(Line(bx, y - BAND / 2 - 1.0, bx, y + BAND / 2 + 1.0, "TINS", width=0.45))
+    _annotation_marks(s, d, plans)
     if unknown:
         s.add(Text(x0, plan_bottom - 19, "TIN colour(s) not recognised, drawn grey: " + ", ".join(sorted(unknown)),
                    2, "TINS", (200, 0, 0)))
@@ -1138,17 +1177,57 @@ def _line_ends(s: Scene, d: DrawingData, order: list, w: float) -> None:
             rgb = _tin_rgb(_tin_at(d, p.t.id, m))
             s.add(Rect(xa, p.y - BAND / 2, xb - xa, BAND, "TRACKS", stroke=INK, fill=rgb, width=0.2))
     sides: dict[bool, list] = {True: [], False: []}
-    for name, side in d.neighbours:
+    for nb in d.neighbours:
+        name, side = nb[0], nb[1]
+        dist = nb[2] if len(nb) > 2 else None
+        kid = nb[3] if len(nb) > 3 else ""
         low = "lower" in (side or "").lower() or "reverse" in (side or "").lower()
-        if name not in sides[low]:
-            sides[low].append(name)
+        if name not in [n[0] for n in sides[low]]:
+            sides[low].append((name, dist, kid))
     ys = sorted(p.y for p in mains)
     ymid = (ys[0] + ys[-1]) / 2 if len(ys) > 1 else ys[0] - 8
-    for low, names in sides.items():
-        for i, name in enumerate(names):
+    for low, items in sides.items():
+        # name, then "(KAVACH ID 00104: -10.45 KM)" -- the neighbour's ID and its distance from this
+        # station's centre line, as the approved layouts write them
+        step = 6.4
+        for i, (name, dist, kid) in enumerate(items):
             xt = e0 + 1 if low else e1 - 1
-            s.add(Text(xt, ymid + 1.5 - i * 4.0 - (len(names) - 1) * 2.0, name.upper(), 2.4, "TEXT",
-                       anchor="start" if low else "end", bold=True))
+            anchor = "start" if low else "end"
+            y = ymid + 1.5 - i * step - (len(items) - 1) * step / 2 + (step / 2 if (dist is not None or kid) else 0)
+            s.add(Text(xt, y, name.upper(), 2.4, "TEXT", anchor=anchor, bold=True))
+            sub = []
+            if kid:
+                sub.append(f"ID {str(kid).zfill(5) if str(kid).isdigit() else kid}")
+            if dist is not None:
+                sub.append(f"{'-' if low else '+'}{dist / 1000:.2f} KM")
+            if sub:
+                s.add(Text(xt, y - 3.0, "(" + ": ".join(sub) + ")", 1.9, "TEXT", anchor=anchor))
+
+
+def _annotation_marks(s: Scene, d: DrawingData, plans: dict) -> None:
+    """On the line itself: a joint tick at each end of a track circuit, a bracket under a
+    section note's stretch, and a small hatched block where a site feature stands."""
+    ax = d._ax
+    for a in d.annotations:
+        p = plans.get(a.track_id)
+        if p is None:
+            continue
+        y = p.y
+        xa = ax(a.start_m)
+        xb = ax(a.end_m) if a.end_m is not None else xa
+        if a.kind == "Track circuit":
+            for x in (xa, xb):
+                s.add(Line(x, y - BAND / 2 - 1.4, x, y + BAND / 2 + 1.4, "ANNOTATIONS", width=0.5))
+        elif a.kind == "Section note":
+            for x in (xa, xb):
+                s.add(Line(x, y + BAND / 2, x, y + BAND / 2 + 1.6, "ANNOTATIONS", width=0.25))
+            s.add(Line(xa, y + BAND / 2 + 1.6, xb, y + BAND / 2 + 1.6, "ANNOTATIONS", width=0.25, dash=True))
+        else:
+            w = max(xb - xa, 4.0)
+            x0 = (xa + xb) / 2 - w / 2
+            s.add(Rect(x0, y + BAND / 2 + 0.4, w, 2.6, "ANNOTATIONS", stroke=INK, fill=(235, 220, 195), width=0.25),
+                  Line(x0, y + BAND / 2 + 0.4, x0 + w, y + BAND / 2 + 3.0, "ANNOTATIONS", width=0.15),
+                  Line(x0, y + BAND / 2 + 3.0, x0 + w, y + BAND / 2 + 0.4, "ANNOTATIONS", width=0.15))
 
 
 def _band_poly(xa, ya, xb, yb, width) -> list:

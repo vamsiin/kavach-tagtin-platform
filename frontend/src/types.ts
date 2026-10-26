@@ -244,6 +244,16 @@ export interface Tower {
   remarks?: string | null;
 }
 
+export interface Annotation {
+  id: number;
+  kind: string;                   // Track circuit | Section note | Feature
+  label: string;
+  track_id?: number | null;
+  start_m: number;
+  end_m?: number | null;
+  remarks?: string | null;
+}
+
 export interface RssiTowerSummary {
   tower_ref: string; readings: number; from_m: number; to_m: number; best_dbm: number; worst_dbm: number;
   in_register: boolean; owner: string | null;

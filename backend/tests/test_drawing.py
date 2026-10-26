@@ -399,3 +399,13 @@ def test_signal_entered_on_two_lines_is_drawn_once():
     assert len(msgs) == 2
     assert any(m.startswith("S5/SH8 is entered on DN MAIN") and "shows the COMMON LOOP one" in m for m in msgs)
     assert any(m.startswith("S26 is entered on UP MAIN") and "R-827" in m for m in msgs)
+
+
+def test_neighbours_show_id_and_distance_north_arrow_and_station_building():
+    d = aler(neighbours=[("Secunderabad Jn", "Lower km", 10450, "104"), ("Pembarti", "Higher km", 8830, "102"),
+                         ("Aler-WP-IB", "Lower km")])           # a plain (name, side) neighbour still works
+    t = texts(build(d))
+    assert "SECUNDERABAD JN" in t and "(ID 00104: -10.45 KM)" in t
+    assert "PEMBARTI" in t and "(ID 00102: +8.83 KM)" in t
+    assert "ALER-WP-IB" in t
+    assert "N" in t and "STATION BUILDING" in t

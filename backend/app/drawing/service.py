@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..allotment.ranges import TAG_MAX, TIN_MAX, RangeError, compact, parse_ranges
 from ..allotment.service import chart_ref, current_rows, find_row
-from .layout import (DAllotRow, DBorder, DElement, DrawingData, DTag, DTin, DTower, DTrack)
+from .layout import (DAllotRow, DAnnotation, DBorder, DElement, DrawingData, DTag, DTin, DTower, DTrack)
 
 SIGN_ACTIONS = {"Prepared": "self_check", "Checked": "check", "Approved": "approve"}
 
@@ -47,11 +47,12 @@ def build_data(db: Session, st: models.StationORM, user: models.UserORM) -> Draw
                                    aspects_default=stated is None and default_aspects(e.element_type) is not None,
                                    b_end_m=e.b_end_m, lc_class=e.lc_class, lc_manning=e.lc_manning))
     for a in st.adjacent_stations:
-        d.neighbours.append((a.name, a.side))
+        d.neighbours.append((a.name, a.side, a.distance_m, a.kavach_station_id or ""))
         for b in a.borders:
             d.borders.append(DBorder(a.name, a.side, b.line_label, b.border_m, b.border_tag_ref or "", b.track_id))
         if not a.borders and a.border_m is not None:
             d.borders.append(DBorder(a.name, a.side, "All lines", a.border_m))
+    d.annotations = [DAnnotation(a.kind, a.label, a.track_id, a.start_m, a.end_m) for a in st.annotations]
     d.towers = [DTower(t.tower_ref, t.location_m, t.owner or "", t.side or "") for t in st.towers]
     d.revisions = [(r.rev_no, r.date, r.description) for r in
                    db.query(models.RevisionORM).filter_by(station_id=st.id).order_by(models.RevisionORM.id)]

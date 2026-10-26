@@ -90,6 +90,8 @@ class StationORM(Base):
                           order_by="TowerORM.location_m")
     rssi_readings = relationship("RssiReadingORM", back_populates="station", cascade="all, delete-orphan",
                                  order_by="RssiReadingORM.location_m")
+    annotations = relationship("AnnotationORM", back_populates="station", cascade="all, delete-orphan",
+                               order_by="AnnotationORM.start_m")
     revisions = relationship("RevisionORM", back_populates="station", cascade="all, delete-orphan")
     documents = relationship("InputDocumentORM", back_populates="station", cascade="all, delete-orphan")
     railway_submissions = relationship("RailwaySubmissionORM", back_populates="station",
@@ -229,6 +231,24 @@ class TagORM(Base):
             exit_set=self.exit_set, exit_comm=self.exit_comm, is_border_tag=bool(self.is_border_tag),
             remarks=self.remarks or "", track_id=self.track_id, abs2_m=self.abs2_m,
         )
+
+
+class AnnotationORM(Base):
+    """A drawing annotation on one line: a track circuit name over a stretch of the line, a
+    section note over a stretch ("Axle Counter Section"), or a site feature at a place
+    (sand hump, tower wagon shed). Drawn on the layout sheet; not part of verification."""
+    __tablename__ = "annotations"
+
+    id = Column(Integer, primary_key=True)
+    station_id = Column(Integer, ForeignKey("stations.id"), nullable=False)
+    kind = Column(String, nullable=False)            # domain.ANNOTATION_KINDS
+    label = Column(String, nullable=False)
+    track_id = Column(Integer, ForeignKey("tracks.id"), nullable=True)
+    start_m = Column(Float, nullable=False)
+    end_m = Column(Float, nullable=True)             # blank = a single place
+    remarks = Column(Text, nullable=True)
+
+    station = relationship("StationORM", back_populates="annotations")
 
 
 class TowerORM(Base):

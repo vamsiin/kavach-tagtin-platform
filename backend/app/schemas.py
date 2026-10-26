@@ -1092,3 +1092,22 @@ class RssiReadingOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ---------------------------------------------------------------------------
+# Drawing annotations: track circuit names, section notes, site features
+# ---------------------------------------------------------------------------
+class AnnotationCreate(BaseModel):
+    kind: str = Field(description="One of: Track circuit, Section note, Feature")
+    label: str = Field(description='e.g. "DMAT", "Axle Counter Section", "SAND HUMP"')
+    track_id: int | None = Field(default=None, description="Line it is on")
+    start_m: float = Field(description="Chainage (m) where it starts, or where the feature is")
+    end_m: float | None = Field(default=None, description="Chainage (m) where it ends; blank = a single place")
+    remarks: str | None = None
+
+
+class AnnotationOut(AnnotationCreate):
+    id: int
+
+    class Config:
+        from_attributes = True

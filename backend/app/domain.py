@@ -134,6 +134,12 @@ def expected_line_direction(line_type: str | None, dn_direction: str = "Nominal"
     return None
 LINE_CONFIGS = ["Single", "Double", "Multiple"]
 
+# Drawing annotations: things the approved layouts show that are not tags, TINs or
+# signalling elements -- track circuit names (DMAT, UMAT ...), section notes
+# ("Axle Counter Section", "B/BPAC Section") and site features (sand hump, tower
+# wagon shed ...). They are drawn on the layout sheet and take no part in verification.
+ANNOTATION_KINDS = ["Track circuit", "Section note", "Feature"]
+
 
 TAG_TYPES = ["N", "S", "T", "X", "D", "G", "L", "A"]
 

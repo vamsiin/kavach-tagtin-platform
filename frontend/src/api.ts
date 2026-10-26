@@ -1,5 +1,5 @@
 import type {
-  Station, Element, Tag, TIN, Track, AdjacentStation, Tower, RssiSummary,
+  Station, Element, Tag, TIN, Track, AdjacentStation, Tower, RssiSummary, Annotation,
   Workspace,
   AllotmentChart, AllotmentChartDetail, AllotmentParse, AllotmentRow, StationAllotment, VerificationReport, CheckDeviation, ToCCrossValidation,
   User, TokenResponse, WorkflowStatus,
@@ -171,6 +171,13 @@ export const api = {
   setCentreLine: (stationId: number, centre_line_m: number | null) =>
     request<Station>(`/stations/${stationId}/centre-line`, { method: "PUT", body: JSON.stringify({ centre_line_m }) }),
 
+  listAnnotations: (stationId: number) => request<Annotation[]>(`/stations/${stationId}/annotations`),
+  addAnnotation: (stationId: number, payload: Partial<Annotation>) =>
+    request<Annotation>(`/stations/${stationId}/annotations`, { method: "POST", body: JSON.stringify(payload) }),
+  updateAnnotation: (stationId: number, id: number, payload: Partial<Annotation>) =>
+    request<Annotation>(`/stations/${stationId}/annotations/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteAnnotation: (stationId: number, id: number) =>
+    request<void>(`/stations/${stationId}/annotations/${id}`, { method: "DELETE" }),
   listTowers: (stationId: number) => request<Tower[]>(`/stations/${stationId}/towers`),
   addTower: (stationId: number, payload: Partial<Tower>) =>
     request<Tower>(`/stations/${stationId}/towers`, { method: "POST", body: JSON.stringify(payload) }),

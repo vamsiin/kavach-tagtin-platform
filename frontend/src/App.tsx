@@ -9,6 +9,7 @@ import { TagsPanel } from "./components/TagsPanel";
 import { TinsPanel } from "./components/TinsPanel";
 import { RegisterImport } from "./components/RegisterImport";
 import { TowersPanel } from "./components/TowersPanel";
+import { AnnotationsPanel } from "./components/AnnotationsPanel";
 import { LinesPanel } from "./components/LinesPanel";
 import { AllotmentChartsPanel } from "./components/AllotmentChartsPanel";
 import { StationAllotmentPanel } from "./components/StationAllotmentPanel";
@@ -263,6 +264,7 @@ function MainContent() {
                 onDelete={async (id) => { await api.deleteTin(selected.id, id); await reloadTins(); }} />
               <TowersPanel stationId={selected.id} stationName={selected.name} tracks={tracks} adjacent={adjacent}
                 readOnly={readOnly} lockReason={lockReason} />
+              <AnnotationsPanel stationId={selected.id} tracks={tracks} readOnly={readOnly} lockReason={lockReason} />
             </>
           )}
 
