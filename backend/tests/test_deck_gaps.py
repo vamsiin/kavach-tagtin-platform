@@ -181,3 +181,21 @@ def test_nearby_stations_only_linked_and_in_range():
     got = {n.name for n in nearby_stations(db, a)}
     assert got == {"B", "C"}              # linked through B; Other is unlinked; Far is linked but 400 km off
     assert nearby_stations(db, a)[1].tags == [("R-1", 1, 120100)] or nearby_stations(db, a)[0].tags
+
+
+# --- tag number parity follows the line (Aler CAD V2.0.3 directions) -------------------------------
+def test_parity_follows_the_line_not_the_tag_direction():
+    from app.rules.engine import check_brd_fr004_direction_parity as parity
+    up = Track(id=2, name="UP MAIN", track_type="Main", start_m=258024, end_m=266417, line_type="UP MAIN")
+    loop = Track(id=3, name="COMMON LOOP", track_type="Loop", start_m=262175, end_m=263146, line_type="COMMON LOOP")
+    stn = st(tracks=[DN, up, loop])
+    tags = [Tag(1, "R-785", "S", 261978, tag_number=785, track_id=1, direction="Reverse"),    # DN MAIN, odd, points Reverse
+            Tag(2, "R-792", "S", 262977, tag_number=792, track_id=2, direction="Nominal"),    # UP MAIN, even, points Nominal
+            Tag(3, "R-827", "S", 262213, tag_number=827, track_id=3, direction="Reverse"),    # common loop: not enforced
+            Tag(4, "R-786", "N", 263525, tag_number=786, track_id=1, direction="Nominal"),    # even on a DN line: wrong
+            Tag(5, "R-901", "N", 100, tag_number=901, direction="Reverse"),                   # no line: by its own direction
+            Tag(6, "R-838", "T", 262023, tag_number=838, track_id=1, direction="Reverse")]   # turnout tag: its own direction
+    res = {r.subject_ref: r.status for r in parity(tags, None, stn)}
+    assert res == {"R-785": "PASS", "R-792": "PASS", "R-827": "NA", "R-786": "FAIL", "R-901": "FAIL", "R-838": "PASS"}
+    # without station data the old direction-only judgement is kept
+    assert {r.subject_ref: r.status for r in parity(tags[:2])} == {"R-785": "FAIL", "R-792": "FAIL"}

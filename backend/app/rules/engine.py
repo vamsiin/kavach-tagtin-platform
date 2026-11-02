@@ -519,29 +519,53 @@ DIRECTION_PARITY_MAP = {
 }
 
 
-def check_brd_fr004_direction_parity(tags: list[Tag], p: dict | None = None) -> list[CheckResult]:
+def check_brd_fr004_direction_parity(tags: list[Tag], p: dict | None = None,
+                                     station: Station | None = None) -> list[CheckResult]:
+    """Odd / even numbering. The number follows the LINE the tag is on: a DN line takes the DN parity
+    and an UP line the UP parity, whichever way the tag itself is programmed -- on the approved Aler
+    layout R-785 (a BSLB tag pointing Reverse on DN MAIN) is odd and R-792 (a stop-board tag pointing
+    Nominal on UP MAIN) is even. A COMMON LOOP carries both directions, so no parity is enforced there.
+    A tag on a line of no known kind (or with no line) is judged by its own direction, as before."""
     parity_map = _params("fr004_parity", p)["parity_map"]
+    dn_dir = getattr(station, "dn_direction", "Nominal") if station is not None else "Nominal"
+    up_dir = "Reverse" if dn_dir == "Nominal" else "Nominal"
+    lines = {t.id: t for t in (station.tracks if station is not None else [])}
     results = []
     for t in tags:
-        if t.tag_number is None or not t.direction:
+        if t.tag_number is None:
             continue
-        expected_parity = parity_map.get(t.direction)
+        tr = lines.get(t.track_id)
+        lt = getattr(tr, "line_type", "") if tr is not None else ""
+        if t.tag_type == "T":
+            lt = ""                    # a turnout tag stands between two lines: judged by its own direction
+        if lt == "COMMON LOOP":
+            results.append(CheckResult(
+                "FR-004", "Tag number parity matches direction", "NA",
+                f"{t.tag_ref}: on the COMMON LOOP (both directions) -- number {t.tag_number} not held to odd / even",
+                subject_ref=t.tag_ref))
+            continue
+        if lt in ("DN MAIN", "DN LOOP", "UP MAIN", "UP LOOP"):
+            basis = dn_dir if lt.startswith("DN") else up_dir
+            expected_parity = parity_map.get(basis)
+            where = f"on {tr.name} ({'DN' if lt.startswith('DN') else 'UP'} line, {basis})"
+        else:
+            if not t.direction:
+                continue
+            basis = t.direction
+            expected_parity = parity_map.get(basis)
+            where = f"direction '{basis}'"
         if expected_parity is None:
             results.append(CheckResult(
                 "FR-004", "Tag number parity matches direction", "NA",
-                f"{t.tag_ref}: direction '{t.direction}' not recognized for the "
-                f"parity rule (expected one of {list(parity_map)})",
-                subject_ref=t.tag_ref,
-            ))
+                f"{t.tag_ref}: {where} not recognized for the parity rule (expected one of {list(parity_map)})",
+                subject_ref=t.tag_ref))
             continue
         actual_parity = "even" if t.tag_number % 2 == 0 else "odd"
         ok = actual_parity == expected_parity
         results.append(CheckResult(
             "FR-004", "Tag number parity matches direction", "PASS" if ok else "FAIL",
-            f"{t.tag_ref}: number {t.tag_number} is {actual_parity}, direction "
-            f"'{t.direction}' expects {expected_parity}",
-            subject_ref=t.tag_ref,
-        ))
+            f"{t.tag_ref}: number {t.tag_number} is {actual_parity}, {where} expects {expected_parity}",
+            subject_ref=t.tag_ref))
     return results
 
 

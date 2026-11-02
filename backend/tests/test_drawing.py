@@ -502,3 +502,17 @@ def test_lc_gate_keeps_tin_numbers_clear():
         half = text_len(lab.text, lab.size) / 2
         on_road = lab.x - half < x_hi and x_lo < lab.x + half and y_lo < lab.y < y_hi
         assert not on_road, lab.text
+
+
+def test_bslb_board_follows_its_line_and_its_tag_label_goes_to_the_other_side():
+    """Aler R-785: the BSLB's S tag is Reverse on the approved CAD, yet the board stands above DN MAIN
+    (the arriving side) with the tag's label below it."""
+    from app.drawing.layout import DTrack
+    tracks = [DTrack(1, "DN MAIN", 259740, 265279, line_type="DN MAIN"), DTrack(2, "UP MAIN", 258024, 266417, line_type="UP MAIN")]
+    d = aler(tracks=tracks, tins=[], tags=[DTag("R-785", "S", 261978, 1, 785, "Reverse", linked_ref="BSLB")],
+             elements=[DElement("BSLB", "BSLB Board", 261978, 1)], borders=[], annotations=[])
+    s = build(d)
+    line_y = next(i.y + i.h / 2 for i in s.items if type(i).__name__ == "Rect" and i.layer == "TRACKS" and i.h < 3)
+    board = next(i for i in s.items if type(i).__name__ == "Rect" and i.layer == "BOARDS")
+    label = next(i for i in s.items if isinstance(i, Text) and i.text == "R-785")
+    assert board.y > line_y and label.y < line_y

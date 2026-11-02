@@ -700,6 +700,12 @@ def _collect(d: DrawingData, tracks: list) -> tuple[dict, list]:
                                            "Whistle Board (W/L)"):
             continue
         trav = _travel(e.direction, d.dn_direction)
+        if trav is None and "BSLB" in e.element_type:
+            # a BSLB board stands for the trains arriving along the line, whichever way its S tag is
+            # programmed (Aler R-785: Reverse tag, board on the Nominal side), so it follows the line
+            from ..domain import expected_line_direction
+            trav = expected_line_direction(p.t.line_type, d.dn_direction)
+            trav = trav if trav in ("Nominal", "Reverse") else None
         if trav is None:
             foot = [t for t, _, _ in p.tags if t.tag_type == "S" and abs(t.location_m - e.location_m) <= 3]
             trav = _travel(foot[0].direction, d.dn_direction) if foot else None
@@ -958,6 +964,9 @@ def _arrange(d: DrawingData, order: list, turnouts: list, w: float, measure: boo
         for t, refs, group in p.tags:
             trav = _travel(t.direction, d.dn_direction) or "Nominal"
             side = -_sig_side(trav)                # tag labels opposite their signals
+            post = next((g for g in p.sigs if abs(g.m - t.location_m) <= 3), None) if t.tag_type == "S" else None
+            if post is not None:
+                side = -post.side                  # ... and a foot tag's label opposite the signal it is at
             if t.tag_type == "A" and t.abs2_m is not None:
                 where = [f"ABS-1 {km(t.location_m)}", f"ABS-2 {km(t.abs2_m)}"]
             else:
