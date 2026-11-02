@@ -49,9 +49,7 @@ BLUE = (0, 60, 200)
 RED = (210, 0, 0)
 LEADER = (140, 140, 140)
 POINTS = "Points / Turnout"
-LAMP_RGB = {"R": (220, 30, 30), "Y": (245, 195, 0), "YY": (245, 195, 0), "G": (0, 150, 60)}
 GREY = (190, 190, 190)
-YY_LAMPS = 1.55              # a double-yellow aspect is drawn as two overlapping yellow lamps
 UNIT_MM = 1.25               # wanted mm per axis unit (labels are written across, so need room)
 
 
@@ -396,6 +394,13 @@ class _Lane:
 # ---------------------------------------------------------------------------
 # Everything along one line
 # ---------------------------------------------------------------------------
+def lens_count(aspects: list) -> int:
+    """Lenses in a signal head. One per distinct aspect colour; a double-yellow aspect needs a second
+    yellow lens: R/Y/YY/G is 4 lenses (a home signal), G/YY/Y is 3 (a distant), R/G is 2 (a starter)."""
+    base = {a for a in aspects if a != "YY"}
+    return max(1, len(base) + (1 if "YY" in aspects else 0))
+
+
 @dataclass
 class _Sig:
     kind: str                 # signal | shunt | board
@@ -416,8 +421,7 @@ class _Sig:
             return 7.0 if self.board == "BSLB" else 6.0
         if self.kind == "shunt":
             return 3.6
-        n = max(1.0, sum(YY_LAMPS if a == "YY" else 1.0 for a in self.aspects))
-        return 1.0 + (1.7 * len(self.calling)) + 2 * LAMP * n + (1.4 if self.route else 0)
+        return 1.0 + (1.7 * len(self.calling)) + 2 * LAMP * lens_count(self.aspects) + (1.4 if self.route else 0)
 
     def extent(self) -> tuple[float, float]:
         """x range the head and its name take."""
@@ -768,6 +772,30 @@ def _collect(d: DrawingData, tracks: list) -> tuple[dict, list]:
     return plans, turnouts
 
 
+def _tin_label_homes(d: DrawingData, order: list) -> dict:
+    """tin_no -> (line id, from_m, to_m): where that TIN's number is written. A TIN that runs on
+    several lines (N-169 on DN MAIN and the COMMON LOOP) is labelled once, on the line where it
+    runs the longest (the first such line in sheet order on a tie)."""
+    best: dict = {}
+    for p in order:
+        spans: dict = {}
+        for n in d.tins:
+            if n.track_id != p.t.id:
+                continue
+            lo, hi = _clip(n, p.t)
+            if hi - lo < 0.5:
+                continue
+            vis = _visible(d, n, lo, hi)
+            if _is_piece(d, n) or (vis < 0.3 * (hi - lo) and vis < 30):
+                continue                   # hidden under the line's own TIN: don't label it
+            a, b = spans.get(n.tin_no, (lo, hi))
+            spans[n.tin_no] = (min(a, lo), max(b, hi))
+        for no, (lo, hi) in spans.items():
+            if no not in best or hi - lo > best[no][2] - best[no][1] + 0.5:
+                best[no] = (p.t.id, lo, hi)
+    return best
+
+
 def _zone_obstacles(p: "_LinePlan", ax) -> None:
     """What stands beside the line that labels must keep clear of: signal heads (with their
     names), and the reference-distance lines with their end ticks. Labels then sit right
@@ -784,10 +812,21 @@ def _zone_obstacles(p: "_LinePlan", ax) -> None:
         ob.append((xa, xb, off - 0.9, off + 2.8))
 
 
+DIM_MAX_M = 250.0      # approach distances are 150-250 m; shorter ones (< 150 m) for starters. Nothing longer is dimensioned.
+
+
+def _linked_element(d: DrawingData, t: DTag):
+    """The element a tag is placed for: same reference, on the tag's own line if there are several."""
+    c = [e for e in d.elements if t.linked_ref and e.ref == t.linked_ref]
+    return min(c, key=lambda e: (e.track_id != t.track_id, abs(e.location_m - t.location_m)), default=None)
+
+
 def _dims(d: DrawingData, plans: dict) -> None:
-    """Reference distances only (QFTL obs. 8): a signal-foot (S) tag to the tag in its
-    rear, a gate (G) tag to its LC gate, an adjacent-line (L) or dead-stop (D) tag
-    to the nearest signal-foot tag."""
+    """Reference distances, as on the approved layouts: from the tag in the rear (the approach tag, or a
+    shunt signal's foot tag) to the signal-foot (S) tag of a main or distant signal or a stop board -- 200 m,
+    or less for a starter (123 m, 125 m on Aler); and from a gate (G) tag to its LC gate (600 m).
+    Not dimensioned: shunt signals' own foot tags, adjacent-line (L) and dead-stop (D) tags, and any
+    distance over 250 m."""
     lcs = [e for e in d.elements if e.element_type == "LC Gate"]
     for p in plans.values():
         tags = sorted([t for t, _, _ in p.tags], key=lambda t: t.location_m)
@@ -803,20 +842,17 @@ def _dims(d: DrawingData, plans: dict) -> None:
             side = _sig_side(trav)
             bslb = any(sg.kind == "board" and sg.board == "BSLB" and abs(sg.m - t.location_m) <= 3 for sg in p.sigs)
             if t.tag_type == "S" and not bslb:
+                el = _linked_element(d, t)
+                if el is not None and any(k in el.element_type for k in ("Shunt", "Calling-on", "Calling on")):
+                    continue                                   # a shunt signal's foot tag
                 rear = tags[i - 1] if trav == "Nominal" and i > 0 else (tags[i + 1] if trav == "Reverse" and
                                                                          i + 1 < len(tags) else None)
-                if rear is not None and abs(rear.location_m - t.location_m) <= 1000:
+                if rear is not None and abs(rear.location_m - t.location_m) <= DIM_MAX_M:
                     add(rear.location_m, t.location_m, side)
             elif t.tag_type == "G" and lcs:
                 lc = min(lcs, key=lambda e: abs(e.location_m - t.location_m))
                 if abs(lc.location_m - t.location_m) <= 2000:
                     add(t.location_m, lc.location_m, side)
-            elif t.tag_type in ("L", "D"):
-                s_tags = [q for q in tags if q.tag_type == "S"]
-                if s_tags:
-                    q = min(s_tags, key=lambda q: abs(q.location_m - t.location_m))
-                    if abs(q.location_m - t.location_m) <= 600:
-                        add(q.location_m, t.location_m, side)
 
 
 # ---------------------------------------------------------------------------
@@ -913,6 +949,7 @@ def _arrange(d: DrawingData, order: list, turnouts: list, w: float, measure: boo
             p.dim_rows[side] = len(ends)
 
     # labels
+    tin_homes = _tin_label_homes(d, order)
     for p in order:
         for side in (1, -1):
             p.lanes[side].labs = []
@@ -929,20 +966,11 @@ def _arrange(d: DrawingData, order: list, turnouts: list, w: float, measure: boo
             lb = _tag_lab(ax(t.location_m), refs + num, where, (170, 110, 0) if t.is_border else BLUE)
             lb.anchor_off = TAG / 2
             p.lanes[side].labs.append(lb)
-        # TIN numbers in a red box beside the band (never on it), once per TIN per line
-        spans: dict = {}
-        for n in d.tins:
-            if n.track_id != p.t.id:
+        # TIN numbers in a red box beside the band (never on it): each TIN number once on the sheet,
+        # on the line where that TIN runs the longest (as on the approved layouts)
+        for no, (tid, lo, hi) in tin_homes.items():
+            if tid != p.t.id:
                 continue
-            lo, hi = _clip(n, p.t)
-            if hi - lo < 0.5:
-                continue
-            vis = _visible(d, n, lo, hi)
-            if _is_piece(d, n) or (vis < 0.3 * (hi - lo) and vis < 30):
-                continue                   # hidden under the line's own TIN: don't label it
-            a, b = spans.get(n.tin_no, (lo, hi))
-            spans[n.tin_no] = (min(a, lo), max(b, hi))
-        for no, (lo, hi) in spans.items():
             lb = _Lab((ax(lo) + ax(hi)) / 2, [(f"N-{no}", 2.1, RED, False, True)], BAND / 2)
             lb.pri = -1                                    # TIN numbers take the spots nearest their TIN
             p.lanes[1].labs.append(lb)
@@ -972,7 +1000,7 @@ def _arrange(d: DrawingData, order: list, turnouts: list, w: float, measure: boo
             p.lanes[-1].labs.append(_Lab(mid, [(a.label, 1.9, (60, 60, 60), True, False)], BAND / 2))
         elif a.kind == "Section note":
             p.lanes[1].labs.append(_Lab(mid, [(f"({a.label})", 1.9, INK, False, False)], BAND / 2))
-        else:
+        elif "hump" not in a.label.lower():       # a sand hump writes its own name beside the symbol
             p.lanes[1].labs.append(_Lab(mid, [(a.label.upper(), 1.9, (90, 50, 0), True, False)], BAND / 2))
     # turnout ends: points name and the A-end / B-end ABS beside each end
     for to in turnouts:
@@ -1330,12 +1358,17 @@ def _annotation_marks(s: Scene, d: DrawingData, plans: dict) -> None:
                 s.add(Line(x, y + BAND / 2, x, y + BAND / 2 + 1.6, "ANNOTATIONS", width=0.25))
             s.add(Line(xa, y + BAND / 2 + 1.6, xb, y + BAND / 2 + 1.6, "ANNOTATIONS", width=0.25, dash=True))
         elif "hump" in a.label.lower():
-            # sand hump: a mound of sand at the end of a line, drawn as a hatched triangle on the line
-            x = (xa + xb) / 2
-            s.add(Poly([(x - 3.0, y + BAND / 2), (x + 3.0, y + BAND / 2), (x, y + BAND / 2 + 3.2)], "ANNOTATIONS",
-                       stroke=INK, fill=(235, 220, 195), width=0.25),
-                  Line(x - 1.6, y + BAND / 2 + 1.2, x + 1.6, y + BAND / 2 + 1.2, "ANNOTATIONS", width=0.15),
-                  Line(x - 0.8, y + BAND / 2 + 2.2, x + 0.8, y + BAND / 2 + 2.2, "ANNOTATIONS", width=0.15))
+            # sand hump, as on the approved layouts: a half disc closing the end of the line, with a bar
+            # at the line end, and its name beside it. It sits on whichever end of the line is nearer.
+            left = abs(xa - p.x_from) <= abs(xa - p.x_to)
+            xe = p.x_from if left else p.x_to
+            sg = -1 if left else 1                              # outwards, away from the line
+            r = BAND * 1.25
+            arc = [(xe + sg * r * math.sin(k * math.pi / 12), y + r * math.cos(k * math.pi / 12)) for k in range(13)]
+            s.add(Poly(arc, "ANNOTATIONS", stroke=INK, fill=(255, 255, 255), width=0.35),
+                  Line(xe, y - r, xe, y + r, "ANNOTATIONS", width=0.5),
+                  Text(xe + sg * (r + 1.6), y - 0.7, a.label.upper(), 1.8, "ANNOTATIONS",
+                       anchor="end" if left else "start", bold=False))
         else:
             w = max(xb - xa, 4.0)
             x0 = (xa + xb) / 2 - w / 2
@@ -1592,6 +1625,14 @@ def _dim(s: Scene, xa: float, xb: float, y: float, side: int, off: float, metres
           Text((xa + xb) / 2, yy + 0.5, f"{metres:.0f}m", 1.6, "DIMENSIONS", anchor="middle"))
 
 
+def _lens(s: Scene, cx: float, cy: float, r: float) -> None:
+    """One lens of a signal head, as drawn on the approved layouts: an open circle with a diagonal
+    stroke (no colours, no letters)."""
+    k = r * 0.72
+    s.add(Poly(_circle(cx, cy, r, 16), "SIGNALS", fill=(255, 255, 255), width=0.22),
+          Line(cx - k, cy - k, cx + k, cy + k, "SIGNALS", width=0.22))
+
+
 def _signal(s: Scene, sg: _Sig, y: float) -> None:
     sd, tv, x = sg.side, sg.travel, sg.x
     arm = ARM + sg.tier * TIER
@@ -1632,28 +1673,15 @@ def _signal(s: Scene, sg: _Sig, y: float) -> None:
     for name in sg.calling:
         cx = cur + tv * 0.85
         ny = name_y + sd * (LBL + 0.6) if sg.stacked_names() else name_y
-        s.add(Poly(_circle(cx, ya, 0.75, 12), "SIGNALS", fill=(245, 195, 0), width=0.2),
-              Text(cx, ya - 0.38, "C", 0.9, "SIGNALS", anchor="middle", bold=True),
-              Text(cx, ny, name, LBL, "SIGNALS", anchor="middle", bold=True))
+        _lens(s, cx, ya, 0.75)
+        s.add(Text(cx, ny, name, LBL, "SIGNALS", anchor="middle", bold=True))
         if sg.stacked_names():
             s.add(Line(cx, ya + sd * 0.8, cx, ny - (0 if sd > 0 else -LBL) - sd * 0.2, "SIGNALS", LEADER, 0.12))
         cur += tv * 1.7
         s.add(Line(cur - tv * 0.1, ya, cur + tv * 0.2, ya, "SIGNALS", width=0.3))
-    lamps = sg.aspects or ["?"]
     start = cur
-    for i, lamp in enumerate(lamps):
-        rgb = LAMP_RGB.get(lamp, (255, 255, 255))
-        if lamp == "YY":        # double yellow: two yellow lamps side by side, overlapping
-            step = LAMP * 0.95
-            for k in (0, 1):
-                s.add(Poly(_circle(cur + tv * (LAMP + k * step), ya, LAMP, 16), "SIGNALS", fill=rgb, width=0.22))
-            s.add(Text(cur + tv * (LAMP + step / 2), ya - 0.4, "YY", 0.95, "SIGNALS", INK, anchor="middle", bold=True))
-            cur += tv * 2 * LAMP * YY_LAMPS
-            continue
-        cx = cur + tv * LAMP
-        s.add(Poly(_circle(cx, ya, LAMP, 16), "SIGNALS", fill=rgb, width=0.22))
-        s.add(Text(cx, ya - 0.45, lamp, 1.2, "SIGNALS",
-                   INK if lamp in ("Y", "?") else (255, 255, 255), anchor="middle", bold=True))
+    for _ in range(lens_count(sg.aspects or ["?"])):       # one lens symbol per lens of the head
+        _lens(s, cur + tv * LAMP, ya, LAMP)
         cur += tv * 2 * LAMP
     if sg.route:
         s.add(Line(cur, ya, cur + tv * 0.5, ya, "SIGNALS", width=0.3),
@@ -1817,21 +1845,21 @@ def _blocks(s: Scene, d: DrawingData, w: float = W) -> None:
     y = top - 3.2
     s.add(Text(x2, y, "Signals (head points in the running direction)", 1.7, "BLOCKS", bold=True))
     y -= 4.6
-    for lamps, text in ((["R", "Y", "YY", "G"], "R red · Y yellow · YY double yellow · G green"),
-                        (["G", "YY", "Y"], "Distant: no red (permissive)")):
+    for lens, text in ((4, "Home: 4 lenses (R, Y, G and a 2nd Y for double yellow)"),
+                       (3, "Distant: 3 lenses (Y, G and a 2nd Y; no red)"),
+                       (2, "Starter: 2 lenses (R, G)")):
         s.add(Line(x2, y - 1.4, x2, y + 1.4, "BLOCKS", width=0.3), Line(x2, y, x2 + 0.8, y, "BLOCKS", width=0.3))
-        for i, lamp in enumerate(lamps):
-            cx = x2 + 0.8 + LAMP + i * 2 * LAMP
-            s.add(Poly(_circle(cx, y, LAMP, 14), "BLOCKS", fill=LAMP_RGB[lamp], width=0.2))
+        for i in range(lens):
+            _lens(s, x2 + 0.8 + LAMP + i * 2 * LAMP, y, LAMP)
         s.add(Text(x2 + 12, y - 0.6, text, 1.6, "BLOCKS"))
         y -= 4.2
-    s.add(Line(x2, y - 1.4, x2, y + 1.4, "BLOCKS", width=0.3), Line(x2, y, x2 + 0.8, y, "BLOCKS", width=0.3),
-          Poly(_circle(x2 + 1.65, y, 0.75, 12), "BLOCKS", fill=(245, 195, 0), width=0.2),
-          Poly(_circle(x2 + 2.5 + LAMP, y, LAMP, 14), "BLOCKS", fill=LAMP_RGB["R"], width=0.2),
-          Line(x2 + 2.5 + 2 * LAMP, y, x2 + 3.0 + 2 * LAMP, y, "BLOCKS", width=0.3),
+    s.add(Line(x2, y - 1.4, x2, y + 1.4, "BLOCKS", width=0.3), Line(x2, y, x2 + 0.8, y, "BLOCKS", width=0.3))
+    _lens(s, x2 + 1.65, y, 0.75)
+    _lens(s, x2 + 2.5 + LAMP, y, LAMP)
+    s.add(Line(x2 + 2.5 + 2 * LAMP, y, x2 + 3.0 + 2 * LAMP, y, "BLOCKS", width=0.3),
           Line(x2 + 3.0 + 2 * LAMP, y, x2 + 4.1 + 2 * LAMP, y + 1.1, "BLOCKS", width=0.4),
           Line(x2 + 3.0 + 2 * LAMP, y, x2 + 4.1 + 2 * LAMP, y - 1.1, "BLOCKS", width=0.4),
-          Text(x2 + 12, y - 0.6, "C calling-on (before the main head) · > route indicator", 1.6, "BLOCKS"))
+          Text(x2 + 12, y - 0.6, "Small lens: calling-on (before the main head) · > route indicator", 1.6, "BLOCKS"))
     y -= 4.2
     r = 2.4
     s.add(Poly([(x2 + 0.4, y - r / 2)] + [(x2 + 0.4 + r * math.cos(a), y - r / 2 + r * math.sin(a))

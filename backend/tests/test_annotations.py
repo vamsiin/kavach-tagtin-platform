@@ -53,7 +53,9 @@ def test_annotations_appear_on_the_layout():
     t = texts(s)
     assert "DMAT" in t and "(Axle Counter Section)" in t and "SAND HUMP" in t and "LOST" not in t
     assert any(i.layer == "ANNOTATIONS" for i in s.items)
-    assert sum(isinstance(i, Line) and i.layer == "ANNOTATIONS" for i in s.items) >= 7   # ticks, bracket, hatch
+    assert sum(isinstance(i, Line) and i.layer == "ANNOTATIONS" for i in s.items) >= 6   # ticks, bracket, hump bar
+    hump = [i for i in s.items if type(i).__name__ == "Poly" and i.layer == "ANNOTATIONS"]
+    assert len(hump) == 1 and len(hump[0].points) == 13                                  # the half disc
 
 
 def test_annotations_survive_the_renderers():

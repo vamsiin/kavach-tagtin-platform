@@ -57,6 +57,11 @@ def is_signal_type(element_type: str | None) -> bool:
     return element_type in SIGNAL_ELEMENT_TYPES and element_type not in NON_ASPECT_TYPES
 
 
+# Starters show red / green only (two lenses), as drawn on the approved Aler layout (S3, S28, S27, S6, S25).
+TWO_ASPECT_STARTERS = {"Mainline Starter", "Loopline Starter", "Intermediate Starter", "Advanced Starter Signal",
+                       "Various types of Starter Signals"}
+
+
 def default_aspects(element_type: str | None) -> str | None:
     t = element_type or ""
     if not is_signal_type(t):
@@ -73,6 +78,8 @@ def default_aspects(element_type: str | None) -> str | None:
     is_stop = any(w in lo for w in stop_words)
     if "distant" in lo and not is_stop:
         return "G/YY/Y"                       # permissive distant / inner distant: no red
+    if t in TWO_ASPECT_STARTERS:
+        return "R/G"                          # starters: red / green (two lenses), as on the approved layouts
     ri = "+RI" if "with junction" in lo else ""
     if "home" in lo or "distant" in lo:       # home, and stop signals that also act as a distant
         return "R/Y/YY/G" + ri

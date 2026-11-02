@@ -5,16 +5,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-# Named TIN colours as written on layouts -> RGB. Unknown names fall back to grey and
+# Named TIN colours as written on layouts -> RGB. Blue, light blue (cyan), yellow, pink (rose), orange,
+# dark green and light green are the exact shades of the approved Aler CAD (V2.0.3).
+# Unknown names fall back to grey and
 # are listed on the sheet, so a typo never silently becomes a wrong colour.
 COLOURS = {
     "black": (0, 0, 0), "white": (255, 255, 255), "red": (220, 30, 30), "green": (0, 150, 60),
-    "light green": (140, 220, 140), "dark green": (0, 100, 40), "blue": (30, 80, 220),
-    "light blue": (120, 190, 240), "sky blue": (110, 190, 245), "dark blue": (10, 40, 140), "yellow": (240, 200, 0),
-    "orange": (245, 140, 20), "pink": (240, 120, 180), "light pink": (250, 185, 210),
+    "light green": (175, 217, 170), "dark green": (19, 103, 52), "blue": (39, 118, 187),
+    "light blue": (0, 255, 255), "sky blue": (110, 190, 245), "dark blue": (10, 40, 140), "yellow": (248, 215, 49),
+    "orange": (242, 103, 34), "pink": (236, 64, 122), "light pink": (250, 185, 210),
     "magenta": (210, 0, 170), "violet": (140, 70, 200), "purple": (120, 40, 150),
     "brown": (140, 80, 30), "grey": (140, 140, 140), "gray": (140, 140, 140),
-    "cyan": (0, 190, 210), "maroon": (120, 20, 30), "olive": (120, 120, 20),
+    "cyan": (0, 255, 255), "maroon": (120, 20, 30), "olive": (120, 120, 20),
 }
 INK = (0, 0, 0)
 FAINT = (120, 120, 120)

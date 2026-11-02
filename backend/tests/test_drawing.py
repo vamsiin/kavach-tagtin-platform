@@ -14,9 +14,12 @@ from fastapi.testclient import TestClient
 from app.drawing import render
 from app.drawing.layout import (X0, X1, Axis, DAllotRow, DBorder, DElement, DrawingData, DTag, DTin,
                                 DTrack, build, drawing_number)
-from app.drawing.scene import Text
+from app.drawing.scene import Text, colour
 
 os.environ.setdefault("JWT_SECRET", "test-secret-for-drawing-tests")
+
+
+INK_FILL = (0, 0, 0)
 
 
 def aler(**kw):
@@ -227,7 +230,7 @@ def test_turnouts_coloured_by_tin_at_each_end_with_a_and_b_ends():
     toes = [i for i in sc.items if type(i).__name__ == "Poly" and i.layer == "POINTS" and i.fill == (0, 0, 0)]
     assert len(toes) == 2                                                      # one turnout each
     fills = {i.fill for i in sc.items if type(i).__name__ == "Poly" and i.layer == "POINTS"}
-    assert (240, 200, 0) in fills and (110, 190, 245) in fills                     # yellow A-end, sky blue B-end
+    assert colour("yellow") in fills and colour("sky blue") in fills                     # yellow A-end, sky blue B-end
     t = texts(sc)
     assert "A 262.067" in t and "B 261.978" in t and "A 262.150" in t and "B 262.254" in t      # obs. 11
     assert "R-838  262.023" in t                                                   # T tag on the turnout
@@ -244,11 +247,12 @@ def test_only_reference_distances():
     assert "'SPL' CLASS LC GATE NO. 38" in t and "264.174" in t                 # obs. 3
 
 
-def test_signal_aspects_drawn_in_colour():
+def test_signal_aspects_and_lens_symbols():
     from app.domain import default_aspects, normalise_aspects
     assert default_aspects("Distant Signal") == "G/YY/Y"
     assert default_aspects("Main Home with Junction Route Indicator") == "R/Y/YY/G+RI"
     assert default_aspects("Gate-cum-Inner Distant Signal").startswith("R/")
+    assert default_aspects("Mainline Starter") == "R/G" and default_aspects("Advanced Starter Signal") == "R/G"
     assert default_aspects("BSLB Board") is None and default_aspects("LC Gate") is None
     assert normalise_aspects(" r y g ") == "R/Y/G" and normalise_aspects("R-Y-YY-G + JRI") == "R/Y/YY/G+RI"
     with pytest.raises(ValueError):
@@ -260,9 +264,12 @@ def test_signal_aspects_drawn_in_colour():
                        DElement("S3", "Mainline Starter", 262910, 1, direction="Down", aspects="R/Y/G",
                                 aspects_default=True)])
     sc = build(d)
-    fills = [i.fill for i in sc.items if type(i).__name__ == "Poly" and i.layer == "SIGNALS"]
-    assert (220, 30, 30) in fills and (0, 150, 60) in fills
+    # lenses are open circles with a diagonal stroke, not coloured lamps, and carry no letters
+    fills = {i.fill for i in sc.items if type(i).__name__ == "Poly" and i.layer == "SIGNALS" and i.fill}
+    assert fills <= {(255, 255, 255), INK_FILL}
     t = texts(sc)
+    sig_texts = [i.text for i in sc.items if type(i).__name__ == "Text" and i.layer == "SIGNALS"]
+    assert not any(x in ("R", "Y", "G", "YY", "C") for x in sig_texts)
     assert "S1D" in t and "S3*" in t and "S1" in t and "S1A" in t                    # calling-on named, one post
     sig = [i for i in sc.items if type(i).__name__ == "Text" and i.layer == "SIGNALS" and i.text in ("S1", "S1A")]
     assert abs(sig[0].x - sig[1].x) > 1.5                                           # names don't overlap
@@ -353,7 +360,7 @@ def test_line_keeps_its_own_tin_where_turnout_pieces_overlap():
     sc = build(d)
     cl_y = max(i.y for i in sc.items if type(i).__name__ == "Rect" and i.layer == "TINS")   # top line = COMMON LOOP
     cl = [i for i in sc.items if type(i).__name__ == "Rect" and i.layer == "TINS" and abs(i.y - cl_y) < 0.01]
-    assert {r.fill for r in cl} == {(240, 200, 0)}                         # yellow N-186 only
+    assert {r.fill for r in cl} == {colour("yellow")}                         # yellow N-186 only
     boxes = [x.text for x in sc.items if type(x).__name__ == "Text" and x.layer == "LABELS" and x.text.startswith("N-")]
     assert boxes.count("N-186") == 1 and boxes.count("N-171") == 1 and boxes.count("N-177") == 1   # 171/177 on DN/UP only
 
@@ -467,17 +474,22 @@ def test_stub_turnout_is_drawn_as_a_siding_to_a_buffer_stop():
     assert any(type(i).__name__ == "Line" and i.layer == "POINTS" and i.width >= 0.7 for i in s.items)   # the buffer stop
 
 
-def test_double_yellow_is_two_lamps_and_calling_on_name_gets_its_own_row():
-    from app.drawing.layout import _Sig, YY_LAMPS
-    assert _Sig("signal", 0, 1, 1, aspects=["R", "Y", "YY", "G"]).head_w() > _Sig("signal", 0, 1, 1, aspects=["R", "Y", "G", "G"]).head_w()
-    assert YY_LAMPS > 1
+def test_lens_counts_and_calling_on_name_row():
+    from app.drawing.layout import _Sig, lens_count
+    assert lens_count(["R", "Y", "YY", "G"]) == 4            # home: R, Y, G and a second Y for double yellow
+    assert lens_count(["G", "YY", "Y"]) == 3                 # distant
+    assert lens_count(["R", "G"]) == 2 and lens_count(["R", "Y", "G"]) == 3 and lens_count([]) == 1
+    assert _Sig("signal", 0, 1, 1, aspects=["R", "Y", "YY", "G"]).head_w() > _Sig("signal", 0, 1, 1, aspects=["R", "G"]).head_w()
     home = _Sig("signal", 0, 1, 1, names=["S29"], calling=["S29A"], aspects=["R", "Y", "YY", "G"], default=True)
     assert home.stacked_names()
     assert not _Sig("signal", 0, 1, 1, names=["S29"], aspects=["R", "Y", "G"]).stacked_names()
     d = aler(elements=[DElement("S29", "Main Home without Junction Route Indicator", 262910, 1, aspects="R/Y/YY/G"),
                        DElement("S29A", "Calling-on Signal", 262910, 1, aspects="C")])
-    t = texts(build(d))
-    assert "YY" in t and "S29A" in t and any(x.startswith("S29") and x != "S29A" for x in t)
+    s = build(d)
+    assert "S29A" in texts(s) and any(x.startswith("S29") and x != "S29A" for x in texts(s))
+    # 4 main lenses + 1 small calling-on lens on the post, each a circle with a stroke through it
+    circles = [i for i in s.items if type(i).__name__ == "Poly" and i.layer == "SIGNALS" and len(i.points) == 16]
+    assert len(circles) >= 5
 
 
 def test_lc_gate_keeps_tin_numbers_clear():
