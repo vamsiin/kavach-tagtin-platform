@@ -54,6 +54,8 @@ class ElementCreate(BaseModel):
                                                           "blank = default for the signal type")
     b_end_m: float | None = Field(default=None, description="Points only: B-end ABS (m) on the line the "
                                                             "turnout leads to; location_m is the A-end")
+    signal_side: str | None = Field(default=None, description="Signals only: drawn Above or Below the line; "
+                                                              "blank = automatic (Nominal above, Reverse below)")
 
 
 
@@ -182,6 +184,7 @@ class AdjacentStationCreate(BaseModel):
     name: str
     side: str
     kavach_station_id: str | None = None
+    short_code: str | None = Field(default=None, description="Short code shown on the layout, e.g. WP")
     border_m: float | None = Field(default=None, description="Single border location; use `borders` "
                                    "when it differs by line")
     distance_m: float | None = None

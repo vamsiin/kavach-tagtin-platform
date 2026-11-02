@@ -43,6 +43,7 @@ _ALIASES = {
         "aspects": ["aspects", "aspect", "signalaspects", "aspectsofsignal", "lamps"],
         "b_end_m": ["bendm", "bend", "bendabs", "bendlocation", "bendlocationm", "bendabsm", "bendchainage",
                     "bendchainagem", "toendm"],
+        "signal_side": ["signalside", "drawnside", "drawn", "drawnabovebelow"],
         "remarks": ["remarks", "remark", "notes"],
     },
     "tags": {
@@ -422,6 +423,10 @@ def preview(db, station: models.StationORM, kind: str, rows: list[dict[str, str]
                         errs.append(str(ex))
                 else:
                     warns.append(f"Aspects ignored: {etype} is not a signal")
+            side_pref = (rec.get("signal_side") or "").strip().capitalize() or None
+            if side_pref not in (None, "Above", "Below"):
+                errs.append(f"Drawn side '{rec.get('signal_side')}' must be Above or Below")
+                side_pref = None
             key = (ref.upper(), tid)
             if (key, loc) in seen:
                 errs.append(f"{ref} appears twice in the file on the same line at the same chainage")
@@ -429,7 +434,7 @@ def preview(db, station: models.StationORM, kind: str, rows: list[dict[str, str]
             r = RowResult(i, f"{ref}" + (f" ({rec.get('line')})" if rec.get("line") else ""), errors=errs, warnings=warns,
                           data=dict(element_ref=ref, element_type=etype, location_m=loc, track_id=tid,
                                     to_track_id=to, direction=(rec.get("direction") or "").strip() or None,
-                                    lc_class=lc_class, lc_manning=lc_man, aspects=aspects, b_end_m=b_end,
+                                    lc_class=lc_class, lc_manning=lc_man, aspects=aspects, b_end_m=b_end, signal_side=side_pref,
                                     remarks=(rec.get("remarks") or "").strip() or None))
             old = _match(existing.get(key, []), lambda e: e.location_m == loc, claimed)
             if old is not None:

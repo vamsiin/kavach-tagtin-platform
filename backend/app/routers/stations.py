@@ -148,7 +148,7 @@ def _validate_source_document(station_id: int, doc_id: int | None, db: Session) 
 
 # Fields added after the first clients shipped: only changed when the client sends
 # them, so an older client can't wipe them on every edit.
-_SEND_TO_CHANGE = ("source_document_id", "track_id", "to_track_id", "lc_class", "lc_manning", "abs2_m", "aspects", "b_end_m")
+_SEND_TO_CHANGE = ("source_document_id", "track_id", "to_track_id", "lc_class", "lc_manning", "abs2_m", "aspects", "b_end_m", "signal_side")
 
 
 def _update_fields(payload) -> dict:
@@ -207,6 +207,11 @@ def _clean_element(station_id: int, data: dict, el: "models.ElementORM | None", 
         data["b_end_m"] = None
     if data.get("b_end_m") is not None and data["b_end_m"] < 0:
         raise HTTPException(422, "B-end ABS cannot be negative")
+    side = (data.get("signal_side") or "").strip().capitalize() or None
+    if side not in (None, "Above", "Below"):
+        raise HTTPException(422, "signal_side must be Above or Below (blank = automatic)")
+    if "signal_side" in data:
+        data["signal_side"] = side
     if data.get("lc_class") is not None and data["lc_class"] not in LC_CLASSES:
         raise HTTPException(422, f"lc_class must be one of {LC_CLASSES}")
     if data.get("lc_manning") is not None and data["lc_manning"] not in LC_MANNING:

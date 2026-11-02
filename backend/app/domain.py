@@ -57,9 +57,12 @@ def is_signal_type(element_type: str | None) -> bool:
     return element_type in SIGNAL_ELEMENT_TYPES and element_type not in NON_ASPECT_TYPES
 
 
-# Starters show red / green only (two lenses), as drawn on the approved Aler layout (S3, S28, S27, S6, S25).
-TWO_ASPECT_STARTERS = {"Mainline Starter", "Loopline Starter", "Intermediate Starter", "Advanced Starter Signal",
-                       "Various types of Starter Signals"}
+# Aspects (lenses) per signal type, as drawn on the approved Aler layout V2.0.3: mainline starter R/Y/G, loop-line
+# starter R/Y (no green), advanced / intermediate starter R/G, home R/Y/G, distant Y/G + a second Y, and a
+# home that also acts as a distant (gate-cum-inner-distant) R/Y/G + a second Y. A signal's own stated aspects
+# (from the SIP) always replace these.
+STARTER_ASPECTS = {"Mainline Starter": "R/Y/G", "Loopline Starter": "R/Y", "Advanced Starter Signal": "R/G",
+                   "Intermediate Starter": "R/G", "Various types of Starter Signals": "R/Y/G"}
 
 
 def default_aspects(element_type: str | None) -> str | None:
@@ -78,10 +81,12 @@ def default_aspects(element_type: str | None) -> str | None:
     is_stop = any(w in lo for w in stop_words)
     if "distant" in lo and not is_stop:
         return "G/YY/Y"                       # permissive distant / inner distant: no red
-    if t in TWO_ASPECT_STARTERS:
-        return "R/G"                          # starters: red / green (two lenses), as on the approved layouts
+    if t in STARTER_ASPECTS:
+        return STARTER_ASPECTS[t]
     ri = "+RI" if "with junction" in lo else ""
-    if "home" in lo or "distant" in lo:       # home, and stop signals that also act as a distant
+    if "home" in lo and "distant" not in lo:  # a home signal: red / yellow / green
+        return "R/Y/G" + ri
+    if "home" in lo or "distant" in lo:       # stop signals that also act as a distant: a second yellow lens
         return "R/Y/YY/G" + ri
     return "R/Y/G" + ri
 
@@ -312,6 +317,7 @@ class AdjacentStation:
     name: str
     side: str                        # direction towards it, e.g. "Nominal" / "Reverse"
     kavach_station_id: str = ""
+    short_code: str = ""             # the station's short code as written on layouts (WP, PBP, SC)
     border_m: float | None = None    # absolute location of the station border line
     distance_m: float | None = None  # centre line to centre line, as on the layout
     line_config: str | None = None   # one of LINE_CONFIGS
@@ -397,6 +403,7 @@ class Element:
     lc_manning: str | None = None    # LC gates only
     aspects: str | None = None       # signals only; blank -> default_aspects(type)
     b_end_m: float | None = None     # points only: B-end ABS (on to_track); location_m is the A-end
+    signal_side: str | None = None   # signals: drawn "Above" / "Below" the line; None = by direction
 
 
 @dataclass

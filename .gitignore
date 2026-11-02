@@ -11,3 +11,10 @@ uploads/
 
 # server data (DB, uploads, backups)
 data/
+
+# local backups, review scratch, offline packages (copied to the VM by hand, never committed)
+Claude outputs/
+*.db.bak*
+.pytest_cache/
+deploy/windows-offline/*.zip
+deploy/*.bundle

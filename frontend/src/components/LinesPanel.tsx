@@ -55,6 +55,7 @@ export function LinesPanel({ station, tracks, adjacent, readOnly, lockReason, on
   const adjCols: ColumnDef<AdjacentStation>[] = [
     { key: "name", label: "Station" },
     { key: "kavach_station_id", label: "KAVACH ID", render: (a) => a.kavach_station_id ?? "—" },
+    { key: "short_code", label: "Code", render: (a) => a.short_code ?? "—" },
     { key: "side", label: "Side" },
     { key: "border_m", label: "Line-wise border mapping",
       render: (a) => a.borders?.length
@@ -199,6 +200,7 @@ function AdjacentForm({ tracks, initial, onSubmit, onCancel, submitting }: {
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [kid, setKid] = useState(initial?.kavach_station_id ?? "");
+  const [code, setCode] = useState(initial?.short_code ?? "");
   const [side, setSide] = useState(initial?.side ?? "Lower km");
   const [dist, setDist] = useState(initial?.distance_m != null ? String(initial.distance_m) : "");
   const [remarks, setRemarks] = useState(initial?.remarks ?? "");
@@ -236,7 +238,7 @@ function AdjacentForm({ tracks, initial, onSubmit, onCancel, submitting }: {
       e.preventDefault();
       if (dupLine) return;
       const rows = borders.filter((b) => b.border_m.trim() !== "");
-      onSubmit({ name, kavach_station_id: kid || null, side, border_m: null, distance_m: num(dist),
+      onSubmit({ name, kavach_station_id: kid || null, short_code: code.trim() || null, side, border_m: null, distance_m: num(dist),
         line_config: null, remarks: remarks || null,
         borders: rows.map((b) => ({ line_label: b.line_label.trim() || trackById(b.track_id)?.name || "All lines",
           border_m: parseFloat(b.border_m), border_tag_ref: b.border_tag_ref.trim() || null,
@@ -245,6 +247,8 @@ function AdjacentForm({ tracks, initial, onSubmit, onCancel, submitting }: {
       <div className="inline-form wrap">
         <input placeholder="Station name (e.g. Aler-PBP-IB)" value={name} onChange={(e) => setName(e.target.value)} required />
         <input placeholder="KAVACH ID" value={kid} onChange={(e) => setKid(e.target.value)} style={{ width: 100 }} />
+        <input placeholder="Code (WP)" value={code} onChange={(e) => setCode(e.target.value)} style={{ width: 80 }}
+               title="The station's short code, written beside its name on the layout" />
         <select value={side} onChange={(e) => setSide(e.target.value)} title="Which side of this station the neighbour is on">
           {[...new Set([side, ...sides])].map((s) => <option key={s} value={s}>{s} side</option>)}
         </select>

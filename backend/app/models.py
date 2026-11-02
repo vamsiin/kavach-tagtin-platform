@@ -181,6 +181,7 @@ class ElementORM(Base):
     lc_manning = Column(String, nullable=True)
     aspects = Column(String, nullable=True)        # signals: "R/Y/G"; blank -> type default
     b_end_m = Column(Float, nullable=True)         # points: B-end ABS on the line they lead to
+    signal_side = Column(String, nullable=True)    # signals: drawn "Above" / "Below" the line; blank = automatic
 
     station = relationship("StationORM", back_populates="elements")
 
@@ -190,7 +191,7 @@ class ElementORM(Base):
             location_m=self.location_m, direction=self.direction,
             remarks=self.remarks or "", track_id=self.track_id, to_track_id=self.to_track_id,
             lc_class=self.lc_class, lc_manning=self.lc_manning, aspects=self.aspects,
-            b_end_m=self.b_end_m,
+            b_end_m=self.b_end_m, signal_side=self.signal_side,
         )
 
 
@@ -363,6 +364,7 @@ class AdjacentStationORM(Base):
     name = Column(String, nullable=False)
     side = Column(String, nullable=False)
     kavach_station_id = Column(String, nullable=True)
+    short_code = Column(String, nullable=True)       # e.g. WP, PBP, SC -- shown on the layout beside the name
     border_m = Column(Float, nullable=True)
     distance_m = Column(Float, nullable=True)
     line_config = Column(String, nullable=True)
@@ -375,7 +377,7 @@ class AdjacentStationORM(Base):
     def to_domain(self) -> domain.AdjacentStation:
         return domain.AdjacentStation(
             id=self.id, name=self.name, side=self.side, kavach_station_id=self.kavach_station_id or "",
-            border_m=self.border_m, distance_m=self.distance_m, line_config=self.line_config,
+            short_code=self.short_code or "", border_m=self.border_m, distance_m=self.distance_m, line_config=self.line_config,
             remarks=self.remarks or "",
             borders=[domain.StationBorder(line_label=b.line_label, border_m=b.border_m,
                                           border_tag_ref=b.border_tag_ref or "", track_id=b.track_id,

@@ -45,9 +45,10 @@ def build_data(db: Session, st: models.StationORM, user: models.UserORM) -> Draw
         d.elements.append(DElement(e.element_ref, e.element_type, e.location_m, e.track_id, e.to_track_id,
                                    e.direction, stated or default_aspects(e.element_type),
                                    aspects_default=stated is None and default_aspects(e.element_type) is not None,
-                                   b_end_m=e.b_end_m, lc_class=e.lc_class, lc_manning=e.lc_manning))
+                                   b_end_m=e.b_end_m, lc_class=e.lc_class, lc_manning=e.lc_manning,
+                                   side_pref=e.signal_side))
     for a in st.adjacent_stations:
-        d.neighbours.append((a.name, a.side, a.distance_m, a.kavach_station_id or ""))
+        d.neighbours.append((a.name, a.side, a.distance_m, a.kavach_station_id or "", a.short_code or ""))
         for b in a.borders:
             d.borders.append(DBorder(a.name, a.side, b.line_label, b.border_m, b.border_tag_ref or "", b.track_id))
         if not a.borders and a.border_m is not None:

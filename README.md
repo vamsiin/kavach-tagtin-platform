@@ -1,29 +1,16 @@
 # KAVACH RFID Tag/TIN Layout Design & Verification Platform
 
 Web platform for designing and verifying KAVACH RFID Tag/TIN layouts against
-RDSO/SPN/196/2020 Annexure-H (Amdt-5), with cross-validation against a station's
-own Table of Control (ToC) — see `backend/app/toc/cross_validate.py` for why that
-matters more than static distance-rule checking alone.
+RDSO/SPN/196/2020 Annexure-H (Amdt-5) and the QFTL New-TAN rules, with cross-validation against a
+station's own Table of Control (ToC) -- see `backend/app/toc/cross_validate.py` for why that matters
+more than static distance-rule checking alone.
 
-This is Phases 0–1 (+ core of 3–4) of the phased roadmap in the accompanying
-proposal document: core data model, a codified rules engine, ToC cross-validation,
-and a working (if visually basic) web app. The interactive chainage-based canvas
-editor (Phase 5) and calibrated AutoCAD import (Phase 2, needs a real sample .dxf)
-are the two pieces still ahead — see "Honest limitations" below.
-
-# KAVACH RFID Tag/TIN Layout Design & Verification Platform
-
-Web platform for designing and verifying KAVACH RFID Tag/TIN layouts against
-RDSO/SPN/196/2020 Annexure-H (Amdt-5), with cross-validation against a station's
-own Table of Control (ToC) — see `backend/app/toc/cross_validate.py` for why that
-matters more than static distance-rule checking alone.
-
-This is Phases 0–1 (+ core of 3–4) of the phased roadmap in the accompanying
-proposal document: core data model, a codified rules engine, ToC cross-validation,
-auth + Producer→Checker→Approver workflow, and a working (if visually basic) web
-app. The interactive chainage-based canvas editor (Phase 5) and calibrated AutoCAD
-import (Phase 2, needs a real sample .dxf) are the two pieces still ahead — see
-"Honest limitations" below.
+What it does today: registers for lines, elements, tags, TINs, towers / RSSI and drawing annotations (entered or
+uploaded as CSV / Excel); a configurable rules checklist with clause-cited results; ToC cross-validation;
+Producer -> Checker -> Approver workflow with observations, deviations and an audit trail; reports (PDF / DOCX);
+and a generated layout sheet (SVG / PDF / DXF for AutoCAD) drawn in the style of the approved QFTL layouts.
+What it does not do: it has no interactive canvas editor -- the sheet is generated from the registers, and
+AutoCAD import is a reviewable draft only. See "Honest limitations" at the end.
 
 ## Verification status
 
@@ -33,14 +20,13 @@ This platform has now been verified at three separate levels, not just unit test
 
 | Level | What was actually run | Result |
 |---|---|---|
-| Unit tests | `pytest tests/` — 71 tests covering rules engine, ToC parser/cross-validation, DXF import classification, password hashing + JWT, workflow state machine | ✅ **71/71 pass** |
+| Unit and API tests | `pytest tests/` — 380 tests: rules engine, ToC parser / cross-validation, DXF import, password hashing + JWT, workflow state machine, registers and CSV import, the layout drawing (scene content, overlaps, renderers), annotations | ✅ **380/380 pass** (Nov 2026) |
 | Backend integration | Real `uvicorn` process, hit over actual HTTP: register → login → create station → add elements → submit for check → run verification → **full forgot-password lifecycle** (request reset, capture console-logged token, reset password, confirm old password rejected, confirm new password works, confirm the token cannot be replayed) | ✅ All flows confirmed working end-to-end, not just at the function level |
-| Frontend build | Real `npm install` + `npm run build` (`tsc -b && vite build`) — the actual TypeScript compiler and Vite bundler, not a filtered/simulated check | ✅ **Zero errors**, clean production bundle. Real `npm run dev` server also confirmed serving. CORS confirmed to correctly allow the frontend origin. |
+| Frontend build | Real `npm run build` (`tsc -b && vite build`) — the actual TypeScript compiler and Vite bundler | ✅ **Zero errors**, clean production bundle. Real `npm run dev` server confirmed serving; CORS confirmed. |
+| Browser click-through | Nov 2026, local dev server on a scratch copy of the Aler database, logged in as a designer: dashboard, Aler's registers (new Code column, element "Drawn" setting, exit-tag Programming dropdown), adding a Feature annotation (sand hump) through the form, and the Drawing tab loading the generated sheet from the API | ✅ Worked; the sand hump added in the UI appeared in the generated SVG. Not covered: every other tab, and the Chrome / Edge differences. |
 
-What's genuinely still unverified: nobody has clicked through the UI in a real
-browser yet (a headless-browser click-through was attempted but blocked by a
-sandboxed environment's network restrictions on the Chromium download — not a code
-issue). Everything underneath the UI (the API it calls) has been exercised for real.
+What is still unverified: the browser click-through above was one session on one machine; the workflow, reports,
+configuration and user-management tabs have only been exercised through the API and unit tests.
 
 Two real bugs were caught and fixed during this verification process, both worth
 knowing about even though they're already fixed:
@@ -55,7 +41,7 @@ Run the tests yourself:
 ```bash
 cd backend
 pip install -r requirements.txt
-pytest tests/          # 71 tests
+pytest tests/          # 380 tests (about 6-8 minutes)
 ```
 (A stdlib-only runner also exists at `backend/tests/run_tests.py` for environments
 where `pip install` isn't available — same tests, zero dependencies.)
@@ -671,6 +657,58 @@ When updating, an empty cell keeps the recorded value. Import elements before ta
 refer to them. API: `POST /stations/{id}/registers/{elements|tags|tins}/import?apply=&update_existing=`,
 `GET .../template`.
 
+## Layout sheet vs the approved CAD (Nov 2026)
+
+The generated sheet was compared with the approved Aler V2.0.3 CAD plot at full resolution (the vector PDF: every
+number and symbol was read from it). `docs/layout-review/FINDINGS.md` lists what matched and what did not;
+`docs/layout-review/compare_*.png` put the two side by side. What the drawing now does, as on the CAD:
+
+- **Placement.** Tag and TIN labels sit right beside their line, clear of signals, reference-distance lines, border
+  boxes, turnout bands and LC gates; each TIN number is written once (on the line where that TIN runs longest).
+- **Turnouts.** A rectangular T tag at the centre of the points (a missing B-end is worked out as 2 x T tag - A-end,
+  using only a T tag on the turnout's own lines); the A-end / B-end ABS in metres written vertically beside each end
+  with the points' name; both TIN halves coloured from the TIN at each end (nearest TIN within 60 m if none exactly there).
+  A siding that leaves the KAVACH lines is drawn to a buffer stop and named.
+- **Signals.** Lens symbols: red two vertical bars, yellow a diagonal, green a horizontal bar; no colours or letters.
+  Defaults per type (from the CAD): home R,Y,G; mainline starter R,Y,G; loop-line starter R,Y; advanced / intermediate
+  starter R,G; distant Y,G,Y; a stop signal that is also a distant R,Y,G,Y. A signal's own stated aspects (from the SIP) always win.
+  Calling-on lens and name on their own row; a shunt signal named inside another's name ("S5/SH8") gets its own symbol;
+  BSLB (box with X and a circle) and stop boards (box, post and connector) in CAD size and shape.
+- **Reference distances** only for the approach to a main or distant signal or stop board (200 m, or less for a
+  starter), and the 600 m gate tag to its LC gate.
+- **Sides.** Signals stand Nominal above / Reverse below the line unless the element's **Drawn** setting (Above / Below)
+  says otherwise (the CAD puts some on the other side for drafting reasons -- S26, S28, SH21, SH22 above on Aler). A
+  BSLB board follows its line's direction whatever its S tag is programmed to.
+- **Heading and blocks.** North arrow, station building at the centre line, neighbour name with its code, KAVACH ID and
+  distance, TIN colours in the CAD shades, legend explaining the lens patterns.
+
+### Drawing annotations (Registers tab)
+
+Things the CAD shows that are not tags, TINs or signals: **track circuit names** (DMAT, UMAT ... over a stretch, with
+joint ticks), **section notes** ("Axle Counter Section", "IB/BPAC Section", dashed bracket) and **site features**
+(sand hump -- a half disc closing the line end; tower wagon shed; any other block). Add them in *Registers > Drawing
+annotations*; API `GET/POST/PUT/DELETE /stations/{id}/annotations`. They are drawn only and take no part in verification.
+Fouling marks entered as elements (type *Fouling Mark*) are drawn as an F-over-M box with their ABS.
+
+### Tag directions and numbering parity
+
+A tag's **direction** is the way its triangle points on the CAD (the movement it serves). It can differ from its line:
+Aler's R-785 (BSLB) points Reverse on DN MAIN, R-792 (stop board) points Nominal on UP MAIN. Tag **numbers** follow
+the **line**: DN lines take the DN parity (odd), UP lines the UP parity (even), the parity map is editable in the
+checklist, and nothing is enforced on a common loop. Turnout (T) tags are judged by their own direction.
+
+### Checking a station against approved data
+
+`backend/scripts/compare_approved.py --station-id N --import-json <approved import json> --toc <ToC file>` compares
+the registers with the approved drawing's data and with the Table of Control (tag chains and distances, TIN numbers).
+Read-only; point `DATABASE_URL` at a copy of the database to keep a live one untouched.
+
+### Updating the offline Windows VM
+
+`deploy/windows-offline/kavach-update-nov.zip` holds the code, the built frontend, the two Aler correction CSVs and a
+`README_UPDATE.txt` with the steps (it does not contain the database, uploads or the `.venv`; no new Python packages
+are needed). The database upgrades itself on the first start.
+
 ## Honest limitations (read before demoing this to anyone)
 
 
@@ -690,15 +728,15 @@ refer to them. API: `POST /stations/{id}/registers/{elements|tags|tins}/import?a
 - **JWT has no revocation.** Logging a user out client-side doesn't invalidate their
   existing token before it expires — acceptable for a pilot, not for production
   (see `auth/security.py` docstring for what a hardening pass should add).
-- **Frontend has no canvas/schematic editor.** It's functional CRUD tables + a
-  verification results view + login/workflow/admin screens — Phase 5 (the
-  chainage-based drawing surface matching the house drawing style) is still ahead
-  and is, per the proposal, the single largest remaining cost item.
+- **There is no interactive canvas editor.** The layout sheet is generated from the registers (SVG / PDF / DXF); to
+  change it you change the registers, the annotations or a signal's Drawn setting. Hand drafting details the registers
+  cannot express (e.g. which side of a line a signal is drawn on) are covered by settings, not free placement.
 - **The G-tag distance rule (H2.9) was corrected during this build** from the
   550–850m range used in the earlier Excel tool (sourced from a secondary deck) to
   the ≥600m minimum actually stated in the Annexure-H text. If the 550–850m figure
   came from a Railway-specific circular rather than an error, flag it — the code
-  currently follows the primary RDSO document.
+  currently follows the primary RDSO document. (The QFTL design deck of Nov 2026 says 550-850 m; the limits are
+  editable in the checklist if QFTL confirms that.)
 - **`.xlsx`/`.xls`/`.docx` ToC parsing has not been tested against a real
   Railway/vendor-exported file in either format** — only synthetic files built for
   this test suite. If a real export has a different column layout than the CSV,

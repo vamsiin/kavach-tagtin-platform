@@ -140,6 +140,7 @@ export interface AdjacentStation {
   name: string;
   side: string;
   kavach_station_id: string | null;
+  short_code?: string | null;
   border_m: number | null;
   distance_m: number | null;
   line_config: string | null;
@@ -191,6 +192,7 @@ export interface Element {
   lc_manning?: string | null;
   aspects?: string | null;
   b_end_m?: number | null;
+  signal_side?: string | null;     // signals: drawn Above / Below the line; blank = automatic
 }
 
 /** Signal aspects (mirrors backend domain.default_aspects). R red, Y yellow, YY double
@@ -208,7 +210,11 @@ export function defaultAspects(t: string): string | null {
   const stop = ["starter", "gate stop", "gate-cum", "gate cum", "ib signal", "ib stop", "home", "auto", "semi",
     "stop signal"].some((w) => lo.includes(w));
   if (lo.includes("distant") && !stop) return "G/YY/Y";
+  const starters: Record<string, string> = { "Mainline Starter": "R/Y/G", "Loopline Starter": "R/Y",
+    "Advanced Starter Signal": "R/G", "Intermediate Starter": "R/G", "Various types of Starter Signals": "R/Y/G" };
+  if (starters[t]) return starters[t];
   const ri = lo.includes("with junction") ? "+RI" : "";
+  if (lo.includes("home") && !lo.includes("distant")) return "R/Y/G" + ri;
   return (lo.includes("home") || lo.includes("distant") ? "R/Y/YY/G" : "R/Y/G") + ri;
 }
 

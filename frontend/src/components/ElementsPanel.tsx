@@ -85,6 +85,7 @@ function ElementForm({ tracks, initial, onSubmit, onCancel, submitting }: {
   const [lcClass, setLcClass] = useState(initial?.lc_class ?? "");
   const [lcManning, setLcManning] = useState(initial?.lc_manning ?? "");
   const [aspects, setAspects] = useState(initial?.aspects ?? "");
+  const [side, setSide] = useState(initial?.signal_side ?? "");
   const [bEnd, setBEnd] = useState(initial?.b_end_m != null ? String(initial.b_end_m) : "");
   const id = (v: string) => (v ? parseInt(v) : null);
 
@@ -98,6 +99,7 @@ function ElementForm({ tracks, initial, onSubmit, onCancel, submitting }: {
         lc_class: type === LC_GATE ? lcClass || null : null,
         lc_manning: type === LC_GATE ? lcManning || null : null,
         aspects: isSignalType(type) ? aspects.trim() || null : null,
+        signal_side: isSignalType(type) ? side || null : null,
         b_end_m: type === POINTS && bEnd.trim() ? parseFloat(bEnd) : null,
       });
     }}>
@@ -135,9 +137,17 @@ function ElementForm({ tracks, initial, onSubmit, onCancel, submitting }: {
         </>
       )}
       {isSignalType(type) && (
+        <>
+        <select value={side} onChange={(e) => setSide(e.target.value)}
+                title="Which side of the line the signal is drawn on; automatic = Nominal above, Reverse below">
+          <option value="">Drawn: automatic</option>
+          <option value="Above">Drawn above the line</option>
+          <option value="Below">Drawn below the line</option>
+        </select>
         <input placeholder={`Aspects (default ${defaultAspects(type) ?? "—"})`} value={aspects}
                onChange={(e) => setAspects(e.target.value)} style={{ width: 170 }}
                title="Lamps from the SIP, e.g. R/Y/G or R/Y/YY/G+RI (R red, Y yellow, YY double yellow, G green, C calling-on, SH shunt, +RI route indicator). Leave blank to use the default for the signal type." />
+        </>
       )}
       <input placeholder="Remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} />
       <button type="submit" disabled={submitting}>

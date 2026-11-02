@@ -117,6 +117,7 @@ class DElement:
     b_end_m: float | None = None       # points: B-end, on to_track
     lc_class: str | None = None
     lc_manning: str | None = None
+    side_pref: str | None = None       # signals: "Above" / "Below" the line; None = by direction
 
 
 @dataclass
@@ -334,6 +335,7 @@ class _Lane:
     def __init__(self):
         self.labs: list[_Lab] = []
         self.obstacles: list = []      # (x_lo, x_hi, off_lo, off_hi): things in this lane labels keep clear of
+        self.soft: list = []           # the same, but a label's leader may pass through (a low name beside a points)
         self.start = 0.0
         self.top = 0.0                 # outer edge of the outermost label, mm from the line
 
@@ -344,9 +346,9 @@ class _Lane:
             w, h = lb.w, lb.h
             # a line's name may slide along its line to find room; tag labels stay near their tag
             shifts = ([i * 3.0 for i in range(60)] if getattr(lb, "arrow", 0)
-                      else (0, -1.5, 1.5, -3, 3, -4.5, 4.5, -6, 6, -9, 9, -12, 12))
+                      else (0, -1.5, 1.5, -3, 3, -4.5, 4.5, -6, 6, -9, 9, -12, 12, -15, 15, -18, 18, -22, 22))
             offs = sorted({self.start} | {q.off + q.h + ROW_GAP for q in placed}
-                          | {o[3] + 0.4 for o in self.obstacles if o[3] + 0.4 > self.start})
+                          | {o[3] + 0.4 for o in self.obstacles + self.soft if o[3] + 0.4 > self.start})
             done = False
             for off in offs:
                 for shift in shifts:
@@ -360,7 +362,7 @@ class _Lane:
             if not done:                                   # nowhere clear: stack outside everything
                 lb.px = lb.x
                 lb.off = max([self.start] + [q.off + q.h + ROW_GAP for q in placed]
-                             + [o[3] + 0.4 for o in self.obstacles])
+                             + [o[3] + 0.4 for o in self.obstacles + self.soft])
             lb.row = 0 if lb.off - self.start < 0.5 else 1
             placed.append(lb)
             self.top = max(self.top, lb.off + h)
@@ -382,6 +384,9 @@ class _Lane:
                 return False
             if leader and x_lo < lb.x < x_hi and f_lo < off and lb.anchor_off < f_hi:    # leader through it
                 return False
+        for x_lo, x_hi, f_lo, f_hi in self.soft:
+            if x_lo < hi and lo < x_hi and f_lo < o_hi and off < f_hi:
+                return False
         return True
 
     def depth(self) -> float:
@@ -394,11 +399,17 @@ class _Lane:
 # ---------------------------------------------------------------------------
 # Everything along one line
 # ---------------------------------------------------------------------------
+def lens_sequence(aspects: list) -> list:
+    """The lenses of a signal head, nearest the post first, as on the approved layouts: red, yellow, green in
+    that order, and a second yellow last where the signal gives a double yellow (R/Y/YY/G is R, Y, G, Y; a distant
+    G/YY/Y is Y, G, Y; a loop-line starter R/Y is R, Y)."""
+    have = {a for a in aspects if a in ("R", "Y", "G")} | ({"Y"} if "YY" in aspects else set())
+    seq = [c for c in ("R", "Y", "G") if c in have] + (["Y"] if "YY" in aspects else [])
+    return seq or ["?"]
+
+
 def lens_count(aspects: list) -> int:
-    """Lenses in a signal head. One per distinct aspect colour; a double-yellow aspect needs a second
-    yellow lens: R/Y/YY/G is 4 lenses (a home signal), G/YY/Y is 3 (a distant), R/G is 2 (a starter)."""
-    base = {a for a in aspects if a != "YY"}
-    return max(1, len(base) + (1 if "YY" in aspects else 0))
+    return len(lens_sequence(aspects))
 
 
 @dataclass
@@ -418,15 +429,17 @@ class _Sig:
 
     def head_w(self) -> float:
         if self.kind == "board":
-            return 7.0 if self.board == "BSLB" else 6.0
+            return 11.6 if self.board == "BSLB" else 11.0
         if self.kind == "shunt":
             return 3.6
-        return 1.0 + (1.7 * len(self.calling)) + 2 * LAMP * lens_count(self.aspects) + (1.4 if self.route else 0)
+        return 1.0 + (1.7 * len(self.calling)) + 2 * LAMP * len(lens_sequence(self.aspects)) + (1.4 if self.route else 0)
 
     def extent(self) -> tuple[float, float]:
         """x range the head and its name take."""
         w = self.head_w()
         name_w = text_len(" ".join(self.calling + self.names) + ("*" if self.default else ""), LBL, True)
+        if self.kind == "shunt":      # the symbol runs on in the travel direction, the name behind the post
+            return (self.x - name_w - 1.0, self.x + 4.2) if self.travel > 0 else (self.x - 4.2, self.x + name_w + 1.0)
         w = max(w, name_w * 0.7)
         if self.kind == "board":
             return self.x - w / 2, self.x + w / 2 + 2
@@ -713,6 +726,9 @@ def _collect(d: DrawingData, tracks: list) -> tuple[dict, list]:
             from ..domain import expected_line_direction
             trav = expected_line_direction(p.t.line_type, d.dn_direction) or "Nominal"
         side, tv = _sig_side(trav), (1 if trav == "Nominal" else -1)
+        pref = (e.side_pref or "").lower()
+        if pref in ("above", "below"):                  # the designer's choice of side overrides the direction rule
+            side = 1 if pref == "above" else -1
         et = e.element_type
         key = (p.t.id, side, round(e.location_m))
         lamps, route = _aspect_list(e.aspects)
@@ -809,6 +825,8 @@ def _zone_obstacles(p: "_LinePlan", ax) -> None:
     for sg in p.sigs:
         lo, hi = sg.extent()
         p.lanes[sg.side].obstacles.append((lo - 0.4, hi + 0.4, 0.0, sg.top() + 0.4))
+    for fx in getattr(p, "fouling", []):
+        p.lanes[1].obstacles.append((fx - 1.6, fx + 3.6, 0.0, 7.0))
     for dm in p.dims:
         off = p.dim_off(dm.side, dm.row)
         xa, xb = ax(dm.a), ax(dm.b)
@@ -911,11 +929,22 @@ def _axis_points(d: DrawingData, tracks: list, turnouts: list) -> list:
 
 
 END_W = 48.0               # each end of the plan: main lines run on, adjacent station named
+ABS_LEN = 7.4              # length of the vertical ABS text written beside a turnout end
 SIDING_LEN = 22.0          # a siding that leaves the KAVACH lines (a stub turnout) runs on this far, to a buffer stop
 
 
 def _x_range(w: float, ends: bool = True) -> tuple[float, float]:
     return (X0 + END_W, w - 20.0 - END_W) if ends else (X0, w - 20.0)
+
+
+def _sync_dims(order: list) -> None:
+    """A reference distance is drawn on the same side as the signal it belongs to (a signal set to the other
+    side of the line takes its distance with it)."""
+    for p in order:
+        for dm in p.dims:
+            post = next((g for g in p.sigs if g.kind != "board" and (abs(g.m - dm.a) <= 3 or abs(g.m - dm.b) <= 3)), None)
+            if post is not None:
+                dm.side = post.side
 
 
 def _arrange(d: DrawingData, order: list, turnouts: list, w: float, measure: bool, h: float = 0.0) -> float:
@@ -927,6 +956,8 @@ def _arrange(d: DrawingData, order: list, turnouts: list, w: float, measure: boo
     d._ax = ax
     idx = {p.t.id: i for i, p in enumerate(order)}
     plans = {p.t.id: p for p in order}
+
+    _sync_dims(order)
 
     # signal tiers: two heads (with their names) that would touch go on different tiers
     for p in order:
@@ -960,6 +991,8 @@ def _arrange(d: DrawingData, order: list, turnouts: list, w: float, measure: boo
         for side in (1, -1):
             p.lanes[side].labs = []
             p.lanes[side].obstacles = []
+            p.lanes[side].soft = []
+        p.fouling = [ax(e.location_m) for e in d.elements if e.element_type == "Fouling Mark" and e.track_id == p.t.id]
         _zone_obstacles(p, ax)
         for t, refs, group in p.tags:
             trav = _travel(t.direction, d.dn_direction) or "Nominal"
@@ -967,6 +1000,10 @@ def _arrange(d: DrawingData, order: list, turnouts: list, w: float, measure: boo
             post = next((g for g in p.sigs if abs(g.m - t.location_m) <= 3), None) if t.tag_type == "S" else None
             if post is not None:
                 side = -post.side                  # ... and a foot tag's label opposite the signal it is at
+            else:                                  # an approach tag follows the signal it is dimensioned to
+                dm = next((q for q in p.dims if abs(q.a - t.location_m) <= 1 or abs(q.b - t.location_m) <= 1), None)
+                if dm is not None:
+                    side = -dm.side
             if t.tag_type == "A" and t.abs2_m is not None:
                 where = [f"ABS-1 {km(t.location_m)}", f"ABS-2 {km(t.abs2_m)}"]
             else:
@@ -1011,22 +1048,42 @@ def _arrange(d: DrawingData, order: list, turnouts: list, w: float, measure: boo
             p.lanes[1].labs.append(_Lab(mid, [(f"({a.label})", 1.9, INK, False, False)], BAND / 2))
         elif "hump" not in a.label.lower():       # a sand hump writes its own name beside the symbol
             p.lanes[1].labs.append(_Lab(mid, [(a.label.upper(), 1.9, (90, 50, 0), True, False)], BAND / 2))
-    # turnout ends: points name and the A-end / B-end ABS beside each end
+    # turnout ends: the points' name is written beside each end (left of it, level with the tab) and the
+    # A-end / B-end ABS vertically beside it, as on the approved layouts (see _point_abs); labels keep clear
     for to in turnouts:
         pa = plans[to.ta]
+        names = _end_names(to)
+
+        def zone(lane, x, nm, away):
+            """The vertical ABS (a narrow column, tall) and the name (a low strip beyond it)."""
+            w = text_len(nm, LBL, True)
+            if away < 0:
+                lane.obstacles.append((x - 3.6, x - 0.9, 0.0, ABS_LEN + 2.4))
+                lane.soft.append((x - 4.4 - w, x - 3.6, 0.0, 4.8))
+            else:
+                lane.obstacles.append((x + 0.9, x + 3.6, 0.0, ABS_LEN + 2.4))
+                lane.soft.append((x + 3.6, x + 4.4 + w, 0.0, 4.8))
+        xa_, xb_ = ax(to.a_m), ax(to.b_m)
+
+        def end_side(plan, x, nm, away, want):
+            """The side of the line the end's text goes on: the side facing the other line, or the far side
+            when a signal head or board stands there at that x."""
+            w = text_len(nm, LBL, True)
+            lo, hi = (x - 4.8 - w, x + 1.0) if away < 0 else (x - 1.0, x + 4.8 + w)
+            bad = any(g.side == want and g.extent()[0] < hi and lo < g.extent()[1] for g in plan.sigs)
+            return -want if bad else want
         if to.tb is not None:
             pb = plans[to.tb]
-            sa = 1 if idx[to.tb] < idx[to.ta] else -1
-            pa.lanes[sa].labs.append(_Lab(ax(to.a_m), [(to.e.ref, LBL, INK, True, False),
-                                                       (f"A {km(to.a_m)}", 1.6, INK, False, False)], BAND / 2))
-            mate = getattr(to, "mate", None)
-            bname = mate.ref if mate is not None else to.e.ref
-            pb.lanes[-sa].labs.append(_Lab(ax(to.b_m), [(bname, LBL, INK, True, False),
-                                                        (("B " if to.b_given else "B ~") + km(to.b_m), 1.6,
-                                                         INK if to.b_given else FAINT, False, False)], BAND / 2))
+            to.sa = 1 if idx[to.tb] < idx[to.ta] else -1
+            away_a, away_b = (-1 if xb_ >= xa_ else 1), (-1 if xa_ >= xb_ else 1)
+            to.side_a = end_side(pa, xa_, names[0], away_a, to.sa)
+            to.side_b = end_side(pb, xb_, names[1], away_b, -to.sa)
+            zone(pa.lanes[to.side_a], xa_, names[0], away_a)
+            zone(pb.lanes[to.side_b], xb_, names[1], away_b)
         else:
-            pa.lanes[to.stub].labs.append(_Lab(ax(to.a_m), [(to.e.ref + " (siding)", LBL, INK, True, False),
-                                                            (f"A {km(to.a_m)}", 1.6, INK, False, False)], BAND / 2))
+            to.sa = to.stub
+            to.side_a = end_side(pa, xa_, names[0], -1, to.stub)
+            zone(pa.lanes[to.side_a], xa_, names[0], -1)
     # LC gate caption beside the topmost line it crosses (QFTL obs. 3)
     for e in [e for e in d.elements if e.element_type == "LC Gate"]:
         crossed = _lc_crossed(e, order)
@@ -1061,7 +1118,7 @@ def _arrange(d: DrawingData, order: list, turnouts: list, w: float, measure: boo
             ln.place_offsets()
     gaps = [a.extent(-1) + b.extent(1) + 3 for a, b in zip(order, order[1:])]
     gaps = [max(g, 22.0) for g in gaps]
-    top_room = order[0].extent(1) + 12.0         # + the running-direction legend
+    top_room = order[0].extent(1) + 14.0         # + the running-direction legend
     bottom_room = order[-1].extent(-1)
     need_plan = top_room + sum(gaps) + bottom_room
     need_h = need_plan + BLOCKS_TOP + 6 + 22 + TITLE_H + MARGIN + 6
@@ -1091,7 +1148,7 @@ def _arrange(d: DrawingData, order: list, turnouts: list, w: float, measure: boo
                 to.xb = to.xa + (6 if to.b_m >= to.a_m else -6)
             pb.x_from, pb.x_to = min(pb.x_from, to.xb), max(pb.x_to, to.xb)
         else:
-            to.xb, to.yb = to.xa + 8, pa.y + to.stub * 8
+            to.xb, to.yb = to.xa + 6, pa.y + to.stub * 12
         pa.x_from, pa.x_to = min(pa.x_from, to.xa), max(pa.x_to, to.xa)
         to.path = _turnout_path(to)
     for p in order:
@@ -1167,15 +1224,15 @@ def _draw(s: Scene, d: DrawingData, order: list, plans: dict, turnouts: list, w:
     if d.centre_line_m is not None:
         x = ax(d.centre_line_m)
         s.add(Rect(x - 3, plan_bottom - 12, 6, 4, "CENTRE", stroke=INK, fill=(255, 255, 255), width=0.25),
-              Line(x - 3, plan_bottom - 12, x + 3, plan_bottom - 8, "CENTRE", width=0.15),
-              Line(x - 3, plan_bottom - 8, x + 3, plan_bottom - 12, "CENTRE", width=0.15),
+              Rect(x - 2.3, plan_bottom - 11.4, 4.6, 2.8, "CENTRE", stroke=INK, fill=None, width=0.15),
+              Poly(_circle(x, plan_bottom - 10.0, 0.35, 8), "CENTRE", fill=INK, width=0.05),
               Text(x, plan_bottom - 15.2, "STATION BUILDING", 1.9, "CENTRE", anchor="middle"))
 
     # running directions, as on the manual layouts: "<- UP / DOWN ->", "<- REVERSE / NOMINAL ->"
     up_left = d.dn_direction == "Nominal"        # DN runs to higher km (left to right)
     for xc in (x0 + 22, x1 - 22):
         for i, (a, b) in enumerate((("UP", "DOWN") if up_left else ("DOWN", "UP"), ("REVERSE", "NOMINAL"))):
-            yy = plan_top + 8.6 - i * 4.2
+            yy = plan_top + 10.2 - i * 4.2
             txt = f"{a} / {b}"
             hw = text_len(txt, 2.0) / 2
             s.add(Text(xc, yy - 0.7, txt, 2.0, "TEXT", anchor="middle"),
@@ -1227,9 +1284,11 @@ def _draw(s: Scene, d: DrawingData, order: list, plans: dict, turnouts: list, w:
         s.add(Text(x0, plan_bottom - 19, "TIN colour(s) not recognised, drawn grey: " + ", ".join(sorted(unknown)),
                    2, "TINS", (200, 0, 0)))
 
-    # T tags on the turnouts (over the line bands)
+    # T tags on the turnouts (over the line bands), the ABS of each turnout end, and fouling marks
     for to in turnouts:
         _turnout_tag(s, to)
+        _point_abs(s, to)
+    _fouling_marks(s, d, plans)
 
     # borders (H2.16): a red box round the border tag and its signal, and the
     # "COMM. EXIT FOR ... <- | -> COMM. ENTRY FOR ..." note, as on the manual layouts
@@ -1325,20 +1384,21 @@ def _line_ends(s: Scene, d: DrawingData, order: list, w: float) -> None:
         name, side = nb[0], nb[1]
         dist = nb[2] if len(nb) > 2 else None
         kid = nb[3] if len(nb) > 3 else ""
+        code = nb[4] if len(nb) > 4 else ""
         low = "lower" in (side or "").lower() or "reverse" in (side or "").lower()
         if name not in [n[0] for n in sides[low]]:
-            sides[low].append((name, dist, kid))
+            sides[low].append((name, dist, kid, code))
     ys = sorted(p.y for p in mains)
     ymid = (ys[0] + ys[-1]) / 2 if len(ys) > 1 else ys[0] - 8
     for low, items in sides.items():
         # name, then "(KAVACH ID 00104: -10.45 KM)" -- the neighbour's ID and its distance from this
         # station's centre line, as the approved layouts write them
         step = 6.4
-        for i, (name, dist, kid) in enumerate(items):
+        for i, (name, dist, kid, code) in enumerate(items):
             xt = e0 + 1 if low else e1 - 1
             anchor = "start" if low else "end"
             y = ymid + 1.5 - i * step - (len(items) - 1) * step / 2 + (step / 2 if (dist is not None or kid) else 0)
-            s.add(Text(xt, y, name.upper(), 2.4, "TEXT", anchor=anchor, bold=True))
+            s.add(Text(xt, y, name.upper() + (f" ({code.upper()})" if code else ""), 2.4, "TEXT", anchor=anchor, bold=True))
             sub = []
             if kid:
                 sub.append(f"ID {str(kid).zfill(5) if str(kid).isdigit() else kid}")
@@ -1454,6 +1514,64 @@ def _siding(s: Scene, d: DrawingData, to: _Turnout, wd: float) -> None:
     up = to.stub > 0
     s.add(Text((x0 + x1) / 2, y + (wd / 2 + 1.0 if up else -(wd / 2 + 1.0) - 1.6), name.upper(), 1.7, "POINTS",
                anchor="middle", bold=True))
+
+
+def _vertical_abs(s: Scene, x: float, y: float, side: int, text: str, rgb=INK, away: int = -1) -> None:
+    """An ABS written vertically beside the end of a turnout or a fouling mark, with a small arrow
+    from the text to the line, as on the approved layouts ("262103"). `away` = -1 puts it to the left
+    of the end, +1 to the right (the side the turnout does not lean to)."""
+    y0 = y + side * (BAND / 2 + 1.6)
+    xt = x - 1.3 if away < 0 else x + 2.9           # rotated text: its glyphs lie to the left of this x
+    if side > 0:
+        s.add(Text(xt, y0 + 0.4, text, 1.5, "POINTS", rgb, angle=90, anchor="start", bold=True))
+    else:
+        s.add(Text(xt, y0 - 0.4, text, 1.5, "POINTS", rgb, angle=90, anchor="end", bold=True))
+    xa = xt - 0.75
+    yl = y + side * (BAND / 2 + 0.2)
+    s.add(Line(xa, y0, xa, yl, "POINTS", width=0.2),
+          Poly([(xa, yl), (xa - 0.45, yl + side * 0.9), (xa + 0.45, yl + side * 0.9)], "POINTS", fill=INK, width=0.05))
+
+
+def _end_names(to: _Turnout) -> tuple:
+    """The name written beside the A-end and the B-end of a turnout (a crossover's other half has its own)."""
+    if to.tb is None:
+        return (to.e.ref + " (siding)", "")
+    mate = getattr(to, "mate", None)
+    return (to.e.ref, mate.ref if mate is not None else to.e.ref)
+
+
+def _point_abs(s: Scene, to: _Turnout) -> None:
+    """The points' name and the A-end / B-end ABS (metres, vertical) beside each end of a turnout, on the side
+    the turnout does not lean to. A B-end that is not stated (worked out or estimated) is grey with a ~."""
+    sa = getattr(to, "sa", 1)
+    names = _end_names(to)
+
+    def end(x, y, side, away, abs_text, rgb, text):
+        _vertical_abs(s, x, y, side, abs_text, rgb, away)
+        yb = y + side * (BAND / 2 + 1.0) - (LBL if side < 0 else 0)
+        if away < 0:
+            s.add(Text(x - 3.6, yb, text, LBL, "POINTS", anchor="end", bold=True))
+        else:
+            s.add(Text(x + 3.9, yb, text, LBL, "POINTS", anchor="start", bold=True))
+    end(to.xa, to.ya, getattr(to, "side_a", sa), -1 if to.xb >= to.xa else 1, f"{to.a_m:.0f}", INK, names[0])
+    if to.tb is not None:
+        end(to.xb, to.yb, getattr(to, "side_b", -sa), -1 if to.xa >= to.xb else 1,
+            ("" if to.b_given else "~") + f"{to.b_m:.0f}", INK if to.b_given else FAINT, names[1])
+
+
+def _fouling_marks(s: Scene, d: DrawingData, plans: dict) -> None:
+    """Fouling marks (as entered in the elements register): a small box with F over M beside the line,
+    and its ABS written vertically next to it."""
+    ax = d._ax
+    for e in d.elements:
+        p = plans.get(e.track_id)
+        if e.element_type != "Fouling Mark" or p is None:
+            continue
+        x, y = ax(e.location_m), p.y
+        s.add(Rect(x - 1.1, y + BAND / 2 + 0.6, 2.2, 4.6, "POINTS", stroke=INK, fill=(255, 255, 255), width=0.25),
+              Text(x, y + BAND / 2 + 3.4, "F", 1.5, "POINTS", anchor="middle", bold=True),
+              Text(x, y + BAND / 2 + 1.1, "M", 1.5, "POINTS", anchor="middle", bold=True),
+              Text(x + 1.9, y + BAND / 2 + 0.8, f"{e.location_m:.0f}", 1.5, "POINTS", angle=90, anchor="start", bold=True))
 
 
 def _turnout_tag(s: Scene, to: _Turnout) -> None:
@@ -1634,12 +1752,19 @@ def _dim(s: Scene, xa: float, xb: float, y: float, side: int, off: float, metres
           Text((xa + xb) / 2, yy + 0.5, f"{metres:.0f}m", 1.6, "DIMENSIONS", anchor="middle"))
 
 
-def _lens(s: Scene, cx: float, cy: float, r: float) -> None:
-    """One lens of a signal head, as drawn on the approved layouts: an open circle with a diagonal
-    stroke (no colours, no letters)."""
+def _lens(s: Scene, cx: float, cy: float, r: float, colour: str = "Y") -> None:
+    """One lens of a signal head, as drawn on the approved layouts: an open circle whose pattern says the
+    colour -- red two vertical bars, yellow a diagonal, green a horizontal bar (no colours, no letters)."""
     k = r * 0.72
-    s.add(Poly(_circle(cx, cy, r, 16), "SIGNALS", fill=(255, 255, 255), width=0.22),
-          Line(cx - k, cy - k, cx + k, cy + k, "SIGNALS", width=0.22))
+    s.add(Poly(_circle(cx, cy, r, 16), "SIGNALS", fill=(255, 255, 255), width=0.22))
+    if colour == "R":
+        h = r * 0.9
+        s.add(Line(cx - r * 0.32, cy - h, cx - r * 0.32, cy + h, "SIGNALS", width=0.2),
+              Line(cx + r * 0.32, cy - h, cx + r * 0.32, cy + h, "SIGNALS", width=0.2))
+    elif colour == "G":
+        s.add(Line(cx - r, cy, cx + r, cy, "SIGNALS", width=0.22))
+    elif colour == "Y":
+        s.add(Line(cx - k, cy - k, cx + k, cy + k, "SIGNALS", width=0.22))
 
 
 def _signal(s: Scene, sg: _Sig, y: float) -> None:
@@ -1652,16 +1777,20 @@ def _signal(s: Scene, sg: _Sig, y: float) -> None:
                 (x + 0.5, y + sd * (BAND / 2 + 1.3))], "SIGNALS", fill=INK, width=0.05))
     name_y = ya + sd * (LAMP + 0.9) - (0 if sd > 0 else LBL)
     if sg.kind == "board":
-        bw = 6.0 if sg.board == "SB" else 7.0
-        cx = x + tv * (bw / 2 + 0.6)
-        s.add(Line(x, ya, cx - tv * bw / 2, ya, "BOARDS", width=0.3),
-              Rect(cx - bw / 2, ya - 1.4, bw, 2.8, "BOARDS", fill=(255, 255, 255), width=0.3))
+        # as on the approved layouts: the post runs a little past the connector, which meets the board
+        # (SB: a plain box; BSLB: a box crossed by an X with a small circle at its end)
+        bw, bh = (9.4, 4.4) if sg.board == "SB" else (10.0, 4.6)
+        cx = x + tv * (bw / 2 + 1.6)
+        s.add(Line(x, ya, x, ya + sd * 2.4, "BOARDS", width=0.3),
+              Line(x, ya, cx - tv * bw / 2, ya, "BOARDS", width=0.3),
+              Rect(cx - bw / 2, ya - bh / 2, bw, bh, "BOARDS", fill=(255, 255, 255), width=0.3))
         if sg.board == "BSLB":
-            s.add(Line(cx - bw / 2, ya - 1.4, cx + bw / 2, ya + 1.4, "BOARDS", width=0.2),
-                  Line(cx - bw / 2, ya + 1.4, cx + bw / 2, ya - 1.4, "BOARDS", width=0.2))
-            s.add(Text(cx, ya + sd * 2.2 - (0 if sd > 0 else LBL), "BSLB", LBL, "SIGNALS", anchor="middle", bold=True))
+            s.add(Line(cx - bw / 2, ya - bh / 2, cx + bw / 2, ya + bh / 2, "BOARDS", width=0.2),
+                  Line(cx - bw / 2, ya + bh / 2, cx + bw / 2, ya - bh / 2, "BOARDS", width=0.2),
+                  Poly(_circle(cx - tv * (bw / 2 - 1.3), ya, 0.7, 10), "BOARDS", fill=(255, 255, 255), width=0.2))
+            s.add(Text(cx, ya + sd * (bh / 2 + 0.8) - (0 if sd > 0 else LBL), "BSLB", LBL, "SIGNALS", anchor="middle", bold=True))
         else:
-            s.add(Text(cx, ya - 0.7, sg.board, 1.7, "BOARDS", anchor="middle", bold=True))
+            s.add(Text(cx, ya - 0.85, sg.board, 2.3, "BOARDS", anchor="middle"))
         return
     if sg.kind == "shunt":
         # position-light shunt signal: a quarter disc with its lamps
@@ -1670,8 +1799,8 @@ def _signal(s: Scene, sg: _Sig, y: float) -> None:
         pts = [(cx, ya - r / 2)] + [(cx + tv * r * math.cos(a), ya - r / 2 + r * math.sin(a))
                                     for a in [i * math.pi / 2 / 8 for i in range(9)]]
         s.add(Poly(pts, "SIGNALS", fill=(255, 255, 255), width=0.25))
-        for dx, dy in ((0.7, 0.2), (1.5, 0.9), (1.5, -0.4)):
-            s.add(Poly(_circle(cx + tv * dx, ya - r / 2 + dy + 0.3, 0.3, 8), "SIGNALS", fill=INK, width=0.05))
+        for dx, dy in ((0.8, 0.2), (1.7, 1.0), (1.7, -0.5)):
+            s.add(Poly(_circle(cx + tv * dx, ya - r / 2 + dy + 0.3, 0.35, 8), "SIGNALS", fill=(255, 255, 255), width=0.15))
         s.add(Text(x - tv * 0.8, ya - 0.6, sg.names[0] if sg.names else "", LBL, "SIGNALS",
                    anchor="end" if tv > 0 else "start", bold=True))
         return
@@ -1682,15 +1811,16 @@ def _signal(s: Scene, sg: _Sig, y: float) -> None:
     for name in sg.calling:
         cx = cur + tv * 0.85
         ny = name_y + sd * (LBL + 0.6) if sg.stacked_names() else name_y
-        _lens(s, cx, ya, 0.75)
-        s.add(Text(cx, ny, name, LBL, "SIGNALS", anchor="middle", bold=True))
+        s.add(Poly(_circle(cx, ya, 0.75, 12), "SIGNALS", fill=(255, 255, 255), width=0.2),
+              Text(cx, ya - 0.34, "C", 0.85, "SIGNALS", anchor="middle", bold=True),
+              Text(cx, ny, name, LBL, "SIGNALS", anchor="middle", bold=True))
         if sg.stacked_names():
             s.add(Line(cx, ya + sd * 0.8, cx, ny - (0 if sd > 0 else -LBL) - sd * 0.2, "SIGNALS", LEADER, 0.12))
         cur += tv * 1.7
         s.add(Line(cur - tv * 0.1, ya, cur + tv * 0.2, ya, "SIGNALS", width=0.3))
     start = cur
-    for _ in range(lens_count(sg.aspects or ["?"])):       # one lens symbol per lens of the head
-        _lens(s, cur + tv * LAMP, ya, LAMP)
+    for colour in lens_sequence(sg.aspects or ["?"]):      # one lens symbol per lens of the head
+        _lens(s, cur + tv * LAMP, ya, LAMP, colour)
         cur += tv * 2 * LAMP
     if sg.route:
         s.add(Line(cur, ya, cur + tv * 0.5, ya, "SIGNALS", width=0.3),
@@ -1854,21 +1984,25 @@ def _blocks(s: Scene, d: DrawingData, w: float = W) -> None:
     y = top - 3.2
     s.add(Text(x2, y, "Signals (head points in the running direction)", 1.7, "BLOCKS", bold=True))
     y -= 4.6
-    for lens, text in ((4, "Home: 4 lenses (R, Y, G and a 2nd Y for double yellow)"),
-                       (3, "Distant: 3 lenses (Y, G and a 2nd Y; no red)"),
-                       (2, "Starter: 2 lenses (R, G)")):
+    for lens, text in ((["R", "Y", "G"], "Home / main starter: R, Y, G"),
+                       (["Y", "G", "Y"], "Distant: Y, G and a 2nd Y (no red)"),
+                       (["R", "Y", "G", "Y"], "Home + distant: R, Y, G, 2nd Y"),
+                       (["R", "Y"], "Loop-line starter: R, Y;  advanced starter: R, G")):
         s.add(Line(x2, y - 1.4, x2, y + 1.4, "BLOCKS", width=0.3), Line(x2, y, x2 + 0.8, y, "BLOCKS", width=0.3))
-        for i in range(lens):
-            _lens(s, x2 + 0.8 + LAMP + i * 2 * LAMP, y, LAMP)
+        for i, colour in enumerate(lens):
+            _lens(s, x2 + 0.8 + LAMP + i * 2 * LAMP, y, LAMP, colour)
         s.add(Text(x2 + 12, y - 0.6, text, 1.6, "BLOCKS"))
         y -= 4.2
+    s.add(Text(x2, y - 0.4, "Lens: R = two vertical bars, Y = diagonal, G = horizontal bar", 1.5, "BLOCKS"))
+    y -= 4.0
     s.add(Line(x2, y - 1.4, x2, y + 1.4, "BLOCKS", width=0.3), Line(x2, y, x2 + 0.8, y, "BLOCKS", width=0.3))
-    _lens(s, x2 + 1.65, y, 0.75)
-    _lens(s, x2 + 2.5 + LAMP, y, LAMP)
+    s.add(Poly(_circle(x2 + 1.65, y, 0.75, 12), "BLOCKS", fill=(255, 255, 255), width=0.2),
+          Text(x2 + 1.65, y - 0.34, "C", 0.85, "BLOCKS", anchor="middle", bold=True))
+    _lens(s, x2 + 2.5 + LAMP, y, LAMP, "R")
     s.add(Line(x2 + 2.5 + 2 * LAMP, y, x2 + 3.0 + 2 * LAMP, y, "BLOCKS", width=0.3),
           Line(x2 + 3.0 + 2 * LAMP, y, x2 + 4.1 + 2 * LAMP, y + 1.1, "BLOCKS", width=0.4),
           Line(x2 + 3.0 + 2 * LAMP, y, x2 + 4.1 + 2 * LAMP, y - 1.1, "BLOCKS", width=0.4),
-          Text(x2 + 12, y - 0.6, "Small lens: calling-on (before the main head) · > route indicator", 1.6, "BLOCKS"))
+          Text(x2 + 12, y - 0.6, "Small lens C: calling-on (before the main head) · > route indicator", 1.6, "BLOCKS"))
     y -= 4.2
     r = 2.4
     s.add(Poly([(x2 + 0.4, y - r / 2)] + [(x2 + 0.4 + r * math.cos(a), y - r / 2 + r * math.sin(a))

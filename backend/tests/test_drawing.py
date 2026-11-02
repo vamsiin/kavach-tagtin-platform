@@ -227,12 +227,15 @@ def test_turnouts_coloured_by_tin_at_each_end_with_a_and_b_ends():
              elements=[DElement("P11", "Points / Turnout", 262067, 1, 2, b_end_m=261978),
                        DElement("P13", "Points / Turnout", 262150, 2, 3, b_end_m=262254)])
     sc = build(d)
-    toes = [i for i in sc.items if type(i).__name__ == "Poly" and i.layer == "POINTS" and i.fill == (0, 0, 0)]
+    toes = [i for i in sc.items if type(i).__name__ == "Poly" and i.layer == "POINTS" and i.fill == (0, 0, 0)
+            and len(i.points) == 8]
     assert len(toes) == 2                                                      # one turnout each
     fills = {i.fill for i in sc.items if type(i).__name__ == "Poly" and i.layer == "POINTS"}
     assert colour("yellow") in fills and colour("sky blue") in fills                     # yellow A-end, sky blue B-end
     t = texts(sc)
-    assert "A 262.067" in t and "B 261.978" in t and "A 262.150" in t and "B 262.254" in t      # obs. 11
+    # the A-end / B-end ABS of each turnout, in metres, written vertically beside its end (as on the CAD)
+    vert = [i.text for i in sc.items if isinstance(i, Text) and i.layer == "POINTS" and i.angle == 90]
+    assert {"262067", "261978", "262150", "262254"} <= set(vert)
     assert "R-838  262.023" in t                                                   # T tag on the turnout
 
 
@@ -250,9 +253,11 @@ def test_only_reference_distances():
 def test_signal_aspects_and_lens_symbols():
     from app.domain import default_aspects, normalise_aspects
     assert default_aspects("Distant Signal") == "G/YY/Y"
-    assert default_aspects("Main Home with Junction Route Indicator") == "R/Y/YY/G+RI"
+    assert default_aspects("Main Home with Junction Route Indicator") == "R/Y/G+RI"      # CAD: a home is R, Y, G
+    assert default_aspects("Main Home without Junction Route Indicator") == "R/Y/G"
     assert default_aspects("Gate-cum-Inner Distant Signal").startswith("R/")
-    assert default_aspects("Mainline Starter") == "R/G" and default_aspects("Advanced Starter Signal") == "R/G"
+    assert default_aspects("Mainline Starter") == "R/Y/G" and default_aspects("Loopline Starter") == "R/Y"
+    assert default_aspects("Advanced Starter Signal") == "R/G"                          # as on the Aler CAD
     assert default_aspects("BSLB Board") is None and default_aspects("LC Gate") is None
     assert normalise_aspects(" r y g ") == "R/Y/G" and normalise_aspects("R-Y-YY-G + JRI") == "R/Y/YY/G+RI"
     with pytest.raises(ValueError):
@@ -269,7 +274,7 @@ def test_signal_aspects_and_lens_symbols():
     assert fills <= {(255, 255, 255), INK_FILL}
     t = texts(sc)
     sig_texts = [i.text for i in sc.items if type(i).__name__ == "Text" and i.layer == "SIGNALS"]
-    assert not any(x in ("R", "Y", "G", "YY", "C") for x in sig_texts)
+    assert not any(x in ("R", "Y", "G", "YY") for x in sig_texts)           # no colour letters in the lenses
     assert "S1D" in t and "S3*" in t and "S1" in t and "S1A" in t                    # calling-on named, one post
     sig = [i for i in sc.items if type(i).__name__ == "Text" and i.layer == "SIGNALS" and i.text in ("S1", "S1A")]
     assert abs(sig[0].x - sig[1].x) > 1.5                                           # names don't overlap
@@ -516,3 +521,81 @@ def test_bslb_board_follows_its_line_and_its_tag_label_goes_to_the_other_side():
     board = next(i for i in s.items if type(i).__name__ == "Rect" and i.layer == "BOARDS")
     label = next(i for i in s.items if isinstance(i, Text) and i.text == "R-785")
     assert board.y > line_y and label.y < line_y
+
+
+def test_fouling_marks_station_codes_and_unstated_b_ends():
+    d = aler(elements=[DElement("FM-1", "Fouling Mark", 262198, 1), DElement("P12", "Points / Turnout", 262103, 1, 2)],
+             tags=[DTag("R-834", "T", 262150, 1, 834, "Nominal")],
+             neighbours=[("Wangapalli", "Lower km", 10450, "104", "wp")])
+    s = build(d)
+    t = texts(s)
+    assert "WANGAPALLI (WP)" in t and "(ID 00104: -10.45 KM)" in t                   # the station's short code
+    box = [i for i in s.items if type(i).__name__ == "Rect" and i.layer == "POINTS" and abs(i.w - 2.2) < 1e-6]
+    assert len(box) == 1 and {"F", "M"} <= set(t)                                     # fouling mark: F over M
+    vert = {i.text: i.rgb for i in s.items if isinstance(i, Text) and i.layer == "POINTS" and i.angle == 90}
+    assert "262198" in vert and "262103" in vert
+    assert "~262197" in vert or "~262197" in "".join(vert)                           # B-end worked out from the T tag
+
+
+def test_lens_sequence_and_patterns_follow_the_cad():
+    from app.drawing.layout import lens_sequence
+    assert lens_sequence(["R", "Y", "YY", "G"]) == ["R", "Y", "G", "Y"]      # home that is also a distant
+    assert lens_sequence(["G", "YY", "Y"]) == ["Y", "G", "Y"]                # distant
+    assert lens_sequence(["R", "Y"]) == ["R", "Y"] and lens_sequence(["R", "G"]) == ["R", "G"]
+    # red = two vertical bars, yellow = a diagonal, green = a horizontal bar, inside each lens circle
+    d = aler(tracks=[DTrack(1, "DN MAIN", 259740, 265279)], tins=[], tags=[], borders=[], annotations=[],
+             elements=[DElement("S3", "Mainline Starter", 262910, 1, direction="Down", aspects="R/Y/G")])
+    s = build(d)
+    circles = sorted([i for i in s.items if type(i).__name__ == "Poly" and i.layer == "SIGNALS" and len(i.points) == 16
+                      and i.points[0][1] > 110],                                   # on the plan, not in the legend
+                     key=lambda c: c.points[0][0])
+    lines = [i for i in s.items if type(i).__name__ == "Line" and i.layer == "SIGNALS"]
+
+    def kind(c):
+        xs, ys = [p[0] for p in c.points], [p[1] for p in c.points]
+        x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+        inside = [l for l in lines if x0 - 0.01 <= min(l.x1, l.x2) and max(l.x1, l.x2) <= x1 + 0.01
+                  and y0 - 0.01 <= min(l.y1, l.y2) and max(l.y1, l.y2) <= y1 + 0.01]
+        vert = sum(1 for l in inside if abs(l.x1 - l.x2) < 1e-9)
+        horiz = sum(1 for l in inside if abs(l.y1 - l.y2) < 1e-9)
+        diag = sum(1 for l in inside if abs(l.x1 - l.x2) > 1e-9 and abs(l.y1 - l.y2) > 1e-9)
+        return "R" if vert == 2 and not horiz and not diag else "G" if horiz == 1 and not vert else "Y" if diag == 1 else "?"
+    assert [kind(c) for c in circles] == ["R", "Y", "G"]                      # post-first order of the starter's head
+
+
+def test_signal_side_setting_overrides_the_direction_rule_and_dims_follow():
+    """Aler S28 (a Reverse starter on UP MAIN) is drawn ABOVE the line on the CAD; set to Above it goes there,
+    its reference distance with it, while S25 (no setting) keeps the Reverse side, below."""
+    tracks = [DTrack(1, "DN MAIN", 259740, 265279, line_type="DN MAIN"), DTrack(2, "UP MAIN", 258024, 266417, line_type="UP MAIN")]
+    els = [DElement("S28", "Mainline Starter", 262265, 2, direction="Up", side_pref="Above"),
+           DElement("S25", "Advanced Starter Signal", 261824, 2, direction="Up")]
+    tags = [DTag("R-798", "S", 262265, 2, 798, "Reverse", linked_ref="S28"), DTag("R-796", "N", 262465, 2, 796, "Reverse"),
+            DTag("R-802", "S", 261824, 2, 802, "Reverse", linked_ref="S25")]
+    s = build(aler(tracks=tracks, elements=els, tags=tags, tins=[], borders=[], annotations=[]))
+    y_up_main = min(r.y + r.h / 2 for r in s.items if type(r).__name__ == "Rect" and r.layer == "TRACKS" and r.h < 3)
+    name = {i.text.rstrip("*"): i for i in s.items if isinstance(i, Text) and i.layer == "SIGNALS"}
+    assert name["S28"].y > y_up_main and name["S25"].y < y_up_main
+    dim = next(i for i in s.items if isinstance(i, Text) and i.layer == "DIMENSIONS" and i.text == "200m")
+    assert dim.y > y_up_main                                       # the 200 m line is on S28's side
+
+
+def test_shunt_signal_extent_covers_its_name_and_boards_are_cad_sized():
+    from app.drawing.layout import _Sig
+    nominal = _Sig("shunt", 0, 1, 1, names=["SH21"]); nominal.x = 100.0
+    reverse = _Sig("shunt", 0, 1, -1, names=["SH21"]); reverse.x = 100.0
+    assert nominal.extent()[0] < 100 - 5 and reverse.extent()[1] > 100 + 5           # the name sits behind the post
+    assert _Sig("board", 0, 1, 1, board="SB").head_w() > 9 and _Sig("board", 0, 1, 1, board="BSLB").head_w() > 9
+
+
+def test_no_two_texts_overlap_on_the_sample_station():
+    from app.drawing.scene import text_len
+    s = build(aler())
+    boxes = []
+    for i in s.items:
+        if isinstance(i, Text) and i.layer not in ("BLOCKS", "TITLE", "FRAME") and i.text.strip() and not i.angle:
+            w = text_len(i.text, i.size, i.bold) * 0.9
+            x0 = i.x - (w / 2 if i.anchor == "middle" else (w if i.anchor == "end" else 0))
+            boxes.append((x0, i.y, x0 + w, i.y + i.size, i.text))
+    clash = [(a[4], b[4]) for n, a in enumerate(boxes) for b in boxes[n + 1:]
+             if min(a[2], b[2]) - max(a[0], b[0]) > 0.3 and min(a[3], b[3]) - max(a[1], b[1]) > 0.3]
+    assert clash == []
