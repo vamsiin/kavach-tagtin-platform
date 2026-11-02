@@ -372,7 +372,7 @@ def test_signal_entered_on_two_lines_is_drawn_once():
     """QFTL (Oct 2026): repeated signals at the ends of N-170 / N-171 / N-172 / N-178 --
     loop signals also entered on the main lines. One copy is drawn (the one on a line
     that fits its type, at its signal-foot tag); names only on the other copy carry
-    over (S5/SH8 -> 'S5 / SH8'); the data check names the extra rows."""
+    over as a shunt symbol (S5/SH8 -> S5 and SH8); the data check names the extra rows."""
     from app.domain import Element, Station, Tag as DomTag, Track as DomTrack
     from app.rules.layout_rules import check_duplicate_elements
     tracks = [DTrack(1, "DN MAIN", 259740, 265279, line_type="DN MAIN"),
@@ -388,8 +388,10 @@ def test_signal_entered_on_two_lines_is_drawn_once():
            DElement("SB", "Stop Board/Buffer Stop", 262977, 2, direction="Up")]
     t = [x.text for x in build(aler(tracks=tracks, tags=tags, elements=els)).items
          if type(x).__name__ == "Text" and x.layer == "SIGNALS"]
-    assert t.count("S26*") + t.count("S26") == 1 and any(x.startswith("S5 / SH8") for x in t)
-    assert not any(x.startswith("S5/SH8") for x in t)
+    assert t.count("S26*") + t.count("S26") == 1
+    # the shunt signal named on the dropped copy (S5/SH8) is drawn as its own shunt symbol on S5's post
+    assert t.count("SH8") == 1 and any(x.startswith("S5") and "SH8" not in x for x in t)
+    assert not any(x.startswith("S5/SH8") or x.startswith("S5 / SH8") for x in t)
 
     st = Station(name="Aler", tracks=[DomTrack(id=i.id, name=i.name, track_type="Main", start_m=0, end_m=1,
                                                line_type=i.line_type) for i in tracks])
@@ -409,3 +411,82 @@ def test_neighbours_show_id_and_distance_north_arrow_and_station_building():
     assert "PEMBARTI" in t and "(ID 00102: +8.83 KM)" in t
     assert "ALER-WP-IB" in t
     assert "N" in t and "STATION BUILDING" in t
+
+
+# --- QFTL review (Nov 2026): placement, T tags, sidings, signal heads ------------------------------
+def _turnouts_of(d):
+    from app.drawing.layout import _collect, ordered_tracks
+    return _collect(d, ordered_tracks(d.tracks))[1]
+
+
+def test_t_tag_is_a_rectangle_at_the_point_centre_and_gives_the_b_end():
+    from app.drawing.layout import TAG, TAG_W
+    pts = DElement("P-101", "Points / Turnout", 262400, 1, 2)                        # B-end not stated
+    d = aler(elements=[pts], tags=[DTag("R-840", "T", 262430, 1, 840, "Nominal"),    # centre of 262400 .. 262460
+                                   DTag("R-841", "T", 261000, 2, 841, "Nominal")])    # far away, other line: not its tag
+    to = _turnouts_of(d)[0]
+    assert to.tag.ref == "R-840" and to.b_inferred and to.b_m == 262460
+    s = build(d)
+    t_rects = [i for i in s.items if type(i).__name__ == "Rect" and i.layer == "TAGS"
+               and abs(i.w - TAG_W) < 1e-6 and abs(i.h - TAG) < 1e-6]
+    assert t_rects and TAG_W > TAG                                                   # a rectangle, not a square
+    xa, xb = d._ax(262400), d._ax(262460)
+    assert any(abs(r.x + r.w / 2 - (xa + xb) / 2) < 0.8 for r in t_rects)            # at the middle of the turnout
+    # a stated B-end is never overridden
+    d2 = aler(elements=[DElement("P-101", "Points / Turnout", 262400, 1, 2, b_end_m=262500)],
+              tags=[DTag("R-840", "T", 262430, 1, 840, "Nominal")])
+    to2 = _turnouts_of(d2)[0]
+    assert to2.b_m == 262500 and not to2.b_inferred
+
+
+def test_two_t_tags_pair_with_the_turnouts_on_their_own_lines():
+    """Aler P18 / P19: each T tag goes to the points whose lines include the tag's line, not just
+    to the nearest A-end."""
+    from app.drawing.layout import DTrack
+    tracks = [DTrack(1, "DN MAIN", 259740, 265279, line_type="DN MAIN"), DTrack(2, "UP MAIN", 258024, 266417, line_type="UP MAIN"),
+              DTrack(3, "COMMON LOOP", 262175, 263146, line_type="COMMON LOOP"), DTrack(4, "UP LOOP", 262169, 263031, line_type="UP LOOP")]
+    els = [DElement("P18", "Points / Turnout", 262992, 2, 4), DElement("P19", "Points / Turnout", 263009, 1, 3)]
+    tags = [DTag("R-836", "T", 262966, 1, 836, "Nominal"), DTag("R-842", "T", 263039, 2, 842, "Reverse")]
+    got = {to.e.ref: (to.tag.ref, to.b_m) for to in _turnouts_of(aler(tracks=tracks, elements=els, tags=tags))}
+    assert got == {"P18": ("R-842", 263086), "P19": ("R-836", 262923)}
+
+
+def test_tag_labels_and_tin_numbers_sit_beside_their_line():
+    s = build(aler())
+    bands = [i for i in s.items if type(i).__name__ == "Rect" and i.layer == "TRACKS" and i.h < 3]
+    for text in ("R-793", "N-222"):
+        lab = next(i for i in s.items if isinstance(i, Text) and i.text == text)
+        near = min(abs(lab.y - (b.y + b.h / 2)) for b in bands if b.x <= lab.x <= b.x + b.w)
+        assert near < 9.0, (text, near)         # was 12-20 mm out, beyond the signals and reference distances
+
+
+def test_stub_turnout_is_drawn_as_a_siding_to_a_buffer_stop():
+    d = aler(elements=[DElement("P17", "Points / Turnout", 262400, 1)])             # leads nowhere recorded: a siding
+    s = build(d)
+    assert "SIDING" in texts(s)
+    assert any(type(i).__name__ == "Line" and i.layer == "POINTS" and i.width >= 0.7 for i in s.items)   # the buffer stop
+
+
+def test_double_yellow_is_two_lamps_and_calling_on_name_gets_its_own_row():
+    from app.drawing.layout import _Sig, YY_LAMPS
+    assert _Sig("signal", 0, 1, 1, aspects=["R", "Y", "YY", "G"]).head_w() > _Sig("signal", 0, 1, 1, aspects=["R", "Y", "G", "G"]).head_w()
+    assert YY_LAMPS > 1
+    home = _Sig("signal", 0, 1, 1, names=["S29"], calling=["S29A"], aspects=["R", "Y", "YY", "G"], default=True)
+    assert home.stacked_names()
+    assert not _Sig("signal", 0, 1, 1, names=["S29"], aspects=["R", "Y", "G"]).stacked_names()
+    d = aler(elements=[DElement("S29", "Main Home without Junction Route Indicator", 262910, 1, aspects="R/Y/YY/G"),
+                       DElement("S29A", "Calling-on Signal", 262910, 1, aspects="C")])
+    t = texts(build(d))
+    assert "YY" in t and "S29A" in t and any(x.startswith("S29") and x != "S29A" for x in t)
+
+
+def test_lc_gate_keeps_tin_numbers_clear():
+    from app.drawing.scene import text_len
+    s = build(aler())
+    road = [i for i in s.items if type(i).__name__ == "Line" and i.layer == "LC" and i.dash]
+    x_lo, x_hi = min(r.x1 for r in road), max(r.x1 for r in road)
+    y_lo, y_hi = min(min(r.y1, r.y2) for r in road), max(max(r.y1, r.y2) for r in road)
+    for lab in (i for i in s.items if isinstance(i, Text) and i.text.startswith("N-")):
+        half = text_len(lab.text, lab.size) / 2
+        on_road = lab.x - half < x_hi and x_lo < lab.x + half and y_lo < lab.y < y_hi
+        assert not on_road, lab.text

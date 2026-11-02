@@ -38,7 +38,8 @@ NAME_W = X0 - MARGIN - 4
 BLOCKS_TOP = 96.0            # bottom blocks (legend, allotment, revisions, signatures, title)
 TITLE_H = 20.0
 BAND = 2.6                   # line band (TIN colour)
-TAG = 3.4                    # tag symbol, drawn on the line
+TAG = 3.4                    # tag symbol, drawn on the line (its height)
+TAG_W = 4.8                  # width of a rectangle tag (T tags, co-located main + duplicate): a rectangle, not a square
 LAMP = 1.15                  # signal lamp radius
 ARM = 6.0                    # first signal tier: arm height out from the line
 TIER = 6.2                   # next tier out, when two signal heads would touch
@@ -50,6 +51,7 @@ LEADER = (140, 140, 140)
 POINTS = "Points / Turnout"
 LAMP_RGB = {"R": (220, 30, 30), "Y": (245, 195, 0), "YY": (245, 195, 0), "G": (0, 150, 60)}
 GREY = (190, 190, 190)
+YY_LAMPS = 1.55              # a double-yellow aspect is drawn as two overlapping yellow lamps
 UNIT_MM = 1.25               # wanted mm per axis unit (labels are written across, so need room)
 
 
@@ -306,8 +308,9 @@ class _Lab:
     lines: list                # [(text, size, rgb, bold, boxed)] nearest-the-line first
     anchor_off: float = 1.4    # where the leader starts, mm out from the line centre
     px: float = 0.0            # placed centre x
-    row: int = 0
+    row: int = 0               # 0 = at the lane's start (no leader needed unless shifted), 1 = further out
     off: float = 0.0           # placed: distance from line centre to the label's inner edge
+    pri: int = 0               # lower packs first, so takes the spot nearest its anchor (TIN numbers)
 
     @property
     def w(self) -> float:
@@ -325,73 +328,69 @@ def _tag_lab(x: float, ref: str, where: list[str], rgb=BLUE) -> _Lab:
 
 
 class _Lane:
-    """One side of one line: rows of labels outward from `start` (mm from the line)."""
+    """One side of one line. Labels sit as close to the line as they can: each at the
+    smallest distance from the line, and the smallest shift along it, where it touches no
+    other label, no obstacle (signal heads, reference-distance lines, border boxes, turnout
+    bands) and no leader."""
 
     def __init__(self):
         self.labs: list[_Lab] = []
-        self.obstacles: list = []      # (x_lo, x_hi, off_lo, off_hi): turnouts crossing this lane
+        self.obstacles: list = []      # (x_lo, x_hi, off_lo, off_hi): things in this lane labels keep clear of
         self.start = 0.0
-        self.rows: list[float] = []    # height of each row
+        self.top = 0.0                 # outer edge of the outermost label, mm from the line
 
     def pack(self, x_lo: float, x_hi: float) -> None:
-        """Place labels: each at its own x in the first row where it fits; otherwise
-        shifted a little; otherwise the next row out. A label in an outer row keeps a
-        clear path for its leader through the inner rows."""
         placed: list[_Lab] = []
-        self.rows = []
-        row_h = 0.0
-        for lb in sorted(self.labs, key=lambda q: (bool(getattr(q, 'arrow', 0)), q.x)):
-            w = lb.w
-            done = False
+        self.top = self.start
+        for lb in sorted(self.labs, key=lambda q: (bool(getattr(q, 'arrow', 0)), q.pri, q.x)):
+            w, h = lb.w, lb.h
             # a line's name may slide along its line to find room; tag labels stay near their tag
             shifts = ([i * 3.0 for i in range(60)] if getattr(lb, "arrow", 0)
                       else (0, -1.5, 1.5, -3, 3, -4.5, 4.5, -6, 6, -9, 9, -12, 12))
-            for row in range(12):
-                while len(self.rows) <= row:
-                    self.rows.append(0.0)
+            offs = sorted({self.start} | {q.off + q.h + ROW_GAP for q in placed}
+                          | {o[3] + 0.4 for o in self.obstacles if o[3] + 0.4 > self.start})
+            done = False
+            for off in offs:
                 for shift in shifts:
                     cx = min(max(lb.x + shift, x_lo + w / 2), x_hi - w / 2)
-                    if self._fits(cx, w, row, lb, placed):
-                        lb.px, lb.row = cx, row
-                        self.rows[row] = max(self.rows[row], lb.h)
-                        placed.append(lb)
+                    if self._fits(cx, w, off, h, lb, placed):
+                        lb.px, lb.off = cx, off
                         done = True
                         break
                 if done:
                     break
-            if not done:
-                lb.px, lb.row = lb.x, len(self.rows)
-                self.rows.append(lb.h)
-                placed.append(lb)
-        del row_h
+            if not done:                                   # nowhere clear: stack outside everything
+                lb.px = lb.x
+                lb.off = max([self.start] + [q.off + q.h + ROW_GAP for q in placed]
+                             + [o[3] + 0.4 for o in self.obstacles])
+            lb.row = 0 if lb.off - self.start < 0.5 else 1
+            placed.append(lb)
+            self.top = max(self.top, lb.off + h)
 
-    def _row_off(self, row: int) -> tuple[float, float]:
-        off = self.start + sum(h + ROW_GAP for h in self.rows[:row] if h > 0)     # empty rows take no room
-        return off, off + (self.rows[row] if row < len(self.rows) else 6.0)
-
-    def _fits(self, cx: float, w: float, row: int, lb: _Lab, placed: list) -> bool:
+    def _fits(self, cx: float, w: float, off: float, h: float, lb: _Lab, placed: list) -> bool:
         lo, hi = cx - w / 2 - 0.6, cx + w / 2 + 0.6
-        o_lo, o_hi = self._row_off(row)
-        o_hi = max(o_hi, o_lo + lb.h)
+        o_hi = off + h
+        leader = off - lb.anchor_off > 1.2 or abs(cx - lb.x) > 0.3
         for q in placed:
             qlo, qhi = q.px - q.w / 2, q.px + q.w / 2
-            if q.row == row and qlo < hi and lo < qhi:
+            if qlo < hi and lo < qhi and q.off < o_hi + ROW_GAP and off < q.off + q.h + ROW_GAP:
                 return False
-            if q.row > row and lo < q.x < hi:                      # would sit on q's leader
+            if q.off > off and lo < q.x < hi:                      # would sit on q's leader
+                return False
+            if leader and q.off < off and qlo - 0.3 < lb.x < qhi + 0.3:   # its own leader would cross q
                 return False
         for x_lo, x_hi, f_lo, f_hi in self.obstacles:
-            if x_lo < hi and lo < x_hi and f_lo < o_hi and o_lo < f_hi:
+            if x_lo < hi and lo < x_hi and f_lo < o_hi and off < f_hi:
+                return False
+            if leader and x_lo < lb.x < x_hi and f_lo < off and lb.anchor_off < f_hi:    # leader through it
                 return False
         return True
 
     def depth(self) -> float:
-        if not self.labs:
-            return 0.0
-        return sum(h + ROW_GAP for h in self.rows if h > 0)
+        return max(0.0, self.top - self.start) if self.labs else 0.0
 
     def place_offsets(self) -> None:
-        for lb in self.labs:
-            lb.off = self._row_off(lb.row)[0]
+        """Offsets are set while packing; kept so callers read the same either way."""
 
 
 # ---------------------------------------------------------------------------
@@ -417,7 +416,7 @@ class _Sig:
             return 7.0 if self.board == "BSLB" else 6.0
         if self.kind == "shunt":
             return 3.6
-        n = max(1, len(self.aspects))
+        n = max(1.0, sum(YY_LAMPS if a == "YY" else 1.0 for a in self.aspects))
         return 1.0 + (1.7 * len(self.calling)) + 2 * LAMP * n + (1.4 if self.route else 0)
 
     def extent(self) -> tuple[float, float]:
@@ -429,9 +428,20 @@ class _Sig:
             return self.x - w / 2, self.x + w / 2 + 2
         return (self.x - 0.8, self.x + w + 0.8) if self.travel > 0 else (self.x - w - 0.8, self.x + 0.8)
 
+    def stacked_names(self) -> bool:
+        """The calling-on name (over its small lamp) and the main name (over the main lamps) would
+        run into each other on one row, so the calling-on name goes on a row of its own above."""
+        if not (self.calling and self.names and self.kind == "signal"):
+            return False
+        c = text_len(" ".join(self.calling), LBL, True)
+        m = text_len(" ".join(self.names) + ("*" if self.default else ""), LBL, True)
+        main_w = self.head_w() - 1.0 - 1.7 * len(self.calling)
+        dist = 1.7 * len(self.calling) + main_w / 2 - 0.85         # calling-on name centre to main name centre
+        return c / 2 + m / 2 + 0.8 > dist
+
     def top(self) -> float:
         """Outer edge, mm from the line centre."""
-        return ARM + self.tier * TIER + LAMP + 0.6 + LBL + 1.0
+        return ARM + self.tier * TIER + LAMP + 0.6 + LBL + 1.0 + (LBL + 0.6 if self.stacked_names() else 0)
 
 
 @dataclass
@@ -464,11 +474,16 @@ class _LinePlan:
     def dim_off(self, side: int, row: int) -> float:
         return self.sig_top(side) + 1.6 + row * 3.4
 
-    def lane_start(self, side: int) -> float:
+    def zone(self, side: int) -> float:
+        """Out to where this side's signals and reference-distance lines end."""
         return self.sig_top(side) + (self.dim_rows[side] * 3.4 + 1.6 if self.dim_rows[side] else 0) + 0.6
 
+    def lane_start(self, side: int) -> float:
+        """Labels start right beside the line (clear of the band and the tag symbols)."""
+        return TAG / 2 + 0.9
+
     def extent(self, side: int) -> float:
-        return max(self.lane_start(side) + self.lanes[side].depth(), 6.0) + (self.lc_top if side > 0 else 0)
+        return max(self.zone(side), self.lane_start(side) + self.lanes[side].depth(), 6.0) +             (self.lc_top if side > 0 else 0)
 
 
 # ---------------------------------------------------------------------------
@@ -521,6 +536,18 @@ def _tin_at(d: DrawingData, track_id: int, m: float):
     return min(real, key=lambda n: _tin_rank(d, n), default=None)
 
 
+def _tin_near(d: DrawingData, track_id: int, m: float, reach: float = 60.0):
+    """The TIN at chainage m on a line; failing that the nearest one within `reach` m (a turnout's
+    far end often lies a little beyond the TIN rows entered for the line it leads to)."""
+    n = _tin_at(d, track_id, m)
+    if n is not None:
+        return n
+    cands = [(max(min(o.start_m, o.end_m) - m, m - max(o.start_m, o.end_m), 0.0), o) for o in d.tins
+             if o.track_id == track_id]
+    cands = [(dist, o) for dist, o in cands if dist <= reach and not _is_piece(d, o)] or             [(dist, o) for dist, o in cands if dist <= reach]
+    return min(cands, key=lambda c: (c[0], _tin_rank(d, c[1])), default=(0, None))[1]
+
+
 def _visible(d: DrawingData, n, lo: float, hi: float) -> float:
     """Length of [lo, hi] of row n not covered by a likelier TIN row on its line."""
     better = sorted((max(lo, min(o.start_m, o.end_m)), min(hi, max(o.start_m, o.end_m))) for o in d.tins
@@ -549,6 +576,7 @@ class _Turnout:
     def __init__(self, e: DElement, ta: int, tb: int | None, a_m: float, b_m: float, b_given: bool):
         self.e, self.ta, self.tb, self.a_m, self.b_m, self.b_given = e, ta, tb, a_m, b_m, b_given
         self.tag: DTag | None = None
+        self.b_inferred = False        # B-end worked out from the T tag (the point centre), not stated
         self.stub = 0
         self.xa = self.xb = self.ya = self.yb = 0.0
 
@@ -592,7 +620,27 @@ def _turnouts(d: DrawingData, plans: dict, order: list) -> list[_Turnout]:
     for to in out:
         to.tag = next((t for t in d.tags if t.tag_type == "T" and t.linked_ref
                        and t.linked_ref in (to.e.ref, getattr(to, "mate", to.e).ref)), None)
+    # The T tag stands at the centre of its points -- half way between the A-end and the B-end.
+    # So where the B-end is not stated, it is 2 x (T tag) - A-end. Each such turnout takes the
+    # nearest T tag (within 250 m of its A-end) that is on one of its two lines and that no other
+    # turnout has linked or taken. Entering the B-end, or linking the T tag, always overrides this.
     claimed = {id(to.tag) for to in out if to.tag is not None}
+    for to in out:
+        if to.tb is not None and not to.b_given and to.tag is not None:
+            to.b_m, to.b_inferred = 2 * to.tag.location_m - to.a_m, True
+    pairs = sorted(((abs(t.location_m - to.a_m), i, j) for i, to in enumerate(out)
+                    if to.tb is not None and not to.b_given and to.tag is None
+                    for j, t in enumerate(d.tags) if t.tag_type == "T" and id(t) not in claimed and not t.linked_ref
+                    and t.track_id in (to.ta, to.tb)),          # on one of the points' own two lines
+                   key=lambda x: x[0])
+    taken: set = set()
+    for dist, i, j in pairs:
+        t, to = d.tags[j], out[i]
+        if dist > 250 or i in taken or id(t) in claimed:
+            continue
+        taken.add(i)
+        claimed.add(id(t))
+        to.tag, to.b_m, to.b_inferred = t, 2 * t.location_m - to.a_m, True
     for to in sorted([o for o in out if o.tag is None and o.tb is not None], key=lambda o: abs(o.b_m - o.a_m)):
         lo, hi = min(to.a_m, to.b_m) - 5, max(to.a_m, to.b_m) + 5
         cands = [t for t in d.tags if t.tag_type == "T" and id(t) not in claimed and not t.linked_ref
@@ -694,7 +742,46 @@ def _collect(d: DrawingData, tracks: list) -> tuple[dict, list]:
                 parts = n.replace(" ", "").split("/")
                 if not all(any(q.replace(" ", "") == pp for q in old.names + old.calling) for pp in parts):
                     old.names.append(n)
+    # a shunt signal named inside a main signal's name ("S5/SH8"): it stands on the same post, so
+    # it is drawn as its own position-light symbol (a second head), not left as text
+    import re
+    for p in order:
+        for sg in list(p.sigs):
+            if sg.kind != "signal":
+                continue
+            shunts = [n for nm in sg.names for n in nm.replace(" ", "").split("/") if re.match(r"^SH\d+[A-Z]?$", n, re.I)]
+            if not shunts:
+                continue
+            have = {n.upper() for q in p.sigs if q.kind == "shunt" for n in q.names}
+            keep = []
+            for nm in sg.names:
+                parts = [x for x in nm.replace(" ", "").split("/") if x]
+                rest = [x for x in parts if not re.match(r"^SH\d+[A-Z]?$", x, re.I)]
+                if rest:
+                    keep.append("/".join(rest))
+            if keep:
+                sg.names = keep
+            for n in shunts:
+                if n.upper() not in have:
+                    p.sigs.append(_Sig("shunt", sg.m, sg.side, sg.travel, names=[n]))
+                    have.add(n.upper())
     return plans, turnouts
+
+
+def _zone_obstacles(p: "_LinePlan", ax) -> None:
+    """What stands beside the line that labels must keep clear of: signal heads (with their
+    names), and the reference-distance lines with their end ticks. Labels then sit right
+    beside the line wherever nothing is in the way, instead of outside everything."""
+    for sg in p.sigs:
+        lo, hi = sg.extent()
+        p.lanes[sg.side].obstacles.append((lo - 0.4, hi + 0.4, 0.0, sg.top() + 0.4))
+    for dm in p.dims:
+        off = p.dim_off(dm.side, dm.row)
+        xa, xb = ax(dm.a), ax(dm.b)
+        ob = p.lanes[dm.side].obstacles
+        ob.append((xa - 0.7, xa + 0.7, 0.0, off + 0.8))
+        ob.append((xb - 0.7, xb + 0.7, 0.0, off + 0.8))
+        ob.append((xa, xb, off - 0.9, off + 2.8))
 
 
 def _dims(d: DrawingData, plans: dict) -> None:
@@ -782,6 +869,7 @@ def _axis_points(d: DrawingData, tracks: list, turnouts: list) -> list:
 
 
 END_W = 48.0               # each end of the plan: main lines run on, adjacent station named
+SIDING_LEN = 22.0          # a siding that leaves the KAVACH lines (a stub turnout) runs on this far, to a buffer stop
 
 
 def _x_range(w: float, ends: bool = True) -> tuple[float, float]:
@@ -829,6 +917,7 @@ def _arrange(d: DrawingData, order: list, turnouts: list, w: float, measure: boo
         for side in (1, -1):
             p.lanes[side].labs = []
             p.lanes[side].obstacles = []
+        _zone_obstacles(p, ax)
         for t, refs, group in p.tags:
             trav = _travel(t.direction, d.dn_direction) or "Nominal"
             side = -_sig_side(trav)                # tag labels opposite their signals
@@ -855,14 +944,22 @@ def _arrange(d: DrawingData, order: list, turnouts: list, w: float, measure: boo
             spans[n.tin_no] = (min(a, lo), max(b, hi))
         for no, (lo, hi) in spans.items():
             lb = _Lab((ax(lo) + ax(hi)) / 2, [(f"N-{no}", 2.1, RED, False, True)], BAND / 2)
+            lb.pri = -1                                    # TIN numbers take the spots nearest their TIN
             p.lanes[1].labs.append(lb)
         # signal names are drawn with the head; LC gates get their caption at the top
     for b in d.borders:
         p = plans.get(b.track_id)
         if p is not None:
             side, texts_ = _comm_texts(d, b)
-            lb = _Lab(ax(b.location_m), [(f"{texts_[0]}      |      {texts_[1]}", 1.7, INK, False, False)],
-                      _border_box_top(p, b, side))
+            top_ = _border_box_top(p, b, side)
+            bx = ax(b.location_m)
+            sg_ = next((g for g in p.sigs if g.side == side and abs(g.m - b.location_m) <= 3), None)
+            blo, bhi = bx - TAG / 2 - 1.2, bx + TAG / 2 + 1.2
+            if sg_ is not None:
+                ea, ec = sg_.extent()
+                blo, bhi = min(blo, ea - 0.6), max(bhi, ec + 0.6)
+            p.lanes[side].obstacles.append((blo - 0.4, bhi + 0.4, 0.0, top_ + 0.4))
+            lb = _Lab(bx, [(f"{texts_[0]}      |      {texts_[1]}", 1.7, INK, False, False)], top_)
             lb.comm = texts_
             p.lanes[side].labs.append(lb)
     # annotations: track circuit names under the line, section notes and site features above it
@@ -909,6 +1006,15 @@ def _arrange(d: DrawingData, order: list, turnouts: list, w: float, measure: boo
         lb.arrow = {"Nominal": 1, "Reverse": -1}.get(expected_line_direction(p.t.line_type, d.dn_direction) or "", 0)
         p.lanes[1].labs.append(lb)
 
+    # an LC gate's road crosses the lines it spans: labels keep clear of its edges, booms and ABS text
+    # (its own caption, above the top line, ends up beyond the boom)
+    for e in [e for e in d.elements if e.element_type == "LC Gate"]:
+        gx = ax(e.location_m)
+        crossed = _lc_crossed(e, order)
+        for p in crossed:
+            for side in (1, -1):
+                p.lanes[side].obstacles.append((gx - 2.9, gx + 6.4, 0.0, 12.0))
+
     # pack labels once without turnouts in the way, to size the gaps between lines
     for p in order:
         for side in (1, -1):
@@ -918,7 +1024,7 @@ def _arrange(d: DrawingData, order: list, turnouts: list, w: float, measure: boo
             ln.place_offsets()
     gaps = [a.extent(-1) + b.extent(1) + 3 for a, b in zip(order, order[1:])]
     gaps = [max(g, 22.0) for g in gaps]
-    top_room = order[0].extent(1) + 9.0          # + the running-direction legend
+    top_room = order[0].extent(1) + 12.0         # + the running-direction legend
     bottom_room = order[-1].extent(-1)
     need_plan = top_room + sum(gaps) + bottom_room
     need_h = need_plan + BLOCKS_TOP + 6 + 22 + TITLE_H + MARGIN + 6
@@ -964,9 +1070,10 @@ def _arrange(d: DrawingData, order: list, turnouts: list, w: float, measure: boo
                         if lo_y <= yy <= hi_y and hi_y > lo_y:
                             xx = xa + (xb - xa) * (yy - ya) / (yb - ya)
                             ln.obstacles.append((xx - 2.2, xx + 2.2, ln.start + f0 - 1, ln.start + f0 + 3))
-                    if to.tag is not None:
-                        # the T tag's caption sits beside the band, mid-way
-                        pass
+                    if to.tb is None and to.ta == p.t.id and side == to.stub:
+                        # a siding leaving this line: its stub and the siding line beyond it
+                        ln.obstacles.append((to.xa - 2.0, to.xb + SIDING_LEN + 2.5, 0.0,
+                                             abs(to.yb - p.y) + BAND + 4.0))
             ln.pack(x0, x1)
             ln.place_offsets()
     return need_h
@@ -1031,7 +1138,7 @@ def _draw(s: Scene, d: DrawingData, order: list, plans: dict, turnouts: list, w:
     up_left = d.dn_direction == "Nominal"        # DN runs to higher km (left to right)
     for xc in (x0 + 22, x1 - 22):
         for i, (a, b) in enumerate((("UP", "DOWN") if up_left else ("DOWN", "UP"), ("REVERSE", "NOMINAL"))):
-            yy = plan_top + 4 - i * 4.2
+            yy = plan_top + 8.6 - i * 4.2
             txt = f"{a} / {b}"
             hw = text_len(txt, 2.0) / 2
             s.add(Text(xc, yy - 0.7, txt, 2.0, "TEXT", anchor="middle"),
@@ -1222,6 +1329,13 @@ def _annotation_marks(s: Scene, d: DrawingData, plans: dict) -> None:
             for x in (xa, xb):
                 s.add(Line(x, y + BAND / 2, x, y + BAND / 2 + 1.6, "ANNOTATIONS", width=0.25))
             s.add(Line(xa, y + BAND / 2 + 1.6, xb, y + BAND / 2 + 1.6, "ANNOTATIONS", width=0.25, dash=True))
+        elif "hump" in a.label.lower():
+            # sand hump: a mound of sand at the end of a line, drawn as a hatched triangle on the line
+            x = (xa + xb) / 2
+            s.add(Poly([(x - 3.0, y + BAND / 2), (x + 3.0, y + BAND / 2), (x, y + BAND / 2 + 3.2)], "ANNOTATIONS",
+                       stroke=INK, fill=(235, 220, 195), width=0.25),
+                  Line(x - 1.6, y + BAND / 2 + 1.2, x + 1.6, y + BAND / 2 + 1.2, "ANNOTATIONS", width=0.15),
+                  Line(x - 0.8, y + BAND / 2 + 2.2, x + 0.8, y + BAND / 2 + 2.2, "ANNOTATIONS", width=0.15))
         else:
             w = max(xb - xa, 4.0)
             x0 = (xa + xb) / 2 - w / 2
@@ -1252,17 +1366,18 @@ def _turnout_path(to) -> list:
 
 
 def _split(to: _Turnout) -> float:
-    if to.tag is None or abs(to.b_m - to.a_m) < 0.5:
-        return 0.5
-    return min(max((to.tag.location_m - to.a_m) / (to.b_m - to.a_m), 0.2), 0.8)
+    """Where along the turnout its two TINs meet and its T tag stands: the point centre, half
+    way between the A-end and the B-end (the T tag's own chainage is not used -- on the
+    compressed axis it would not land at the centre)."""
+    return 0.5
 
 
 def _turnout(s: Scene, d: DrawingData, to: _Turnout, plans: dict) -> None:
     """The turnout as a band from its A-end to its B-end, each half in the colour of
     the TIN at that end, split at the turnout tag (QFTL obs. 2); cranked like the
     manual layouts, with a tab alongside each line."""
-    ca = _tin_rgb(_tin_at(d, to.ta, to.a_m))
-    cb = _tin_rgb(_tin_at(d, to.tb, to.b_m)) if to.tb is not None else (255, 255, 255)
+    ca = _tin_rgb(_tin_near(d, to.ta, to.a_m))
+    cb = _tin_rgb(_tin_near(d, to.tb, to.b_m)) if to.tb is not None else (255, 255, 255)
     (p0, p1, p2, p3) = to.path
     f = _split(to)
     pm = (p1[0] + (p2[0] - p1[0]) * f, p1[1] + (p2[1] - p1[1]) * f)
@@ -1278,7 +1393,25 @@ def _turnout(s: Scene, d: DrawingData, to: _Turnout, plans: dict) -> None:
         # a square end on each tab, closing it against the line
         for q in (p0, p3):
             s.add(Line(q[0], q[1] - wd / 2, q[0], q[1] + wd / 2, "POINTS", width=0.2))
+    else:
+        _siding(s, d, to, wd)
     s.add(Poly(_circle(to.xa, to.ya, 0.6, 8), "POINTS", fill=INK, width=0.1))
+
+
+def _siding(s: Scene, d: DrawingData, to: _Turnout, wd: float) -> None:
+    """A siding that leaves the KAVACH lines at these points (P17 on Aler): the line runs on past
+    the end of the turnout, outlined in white as a line outside KAVACH, to a buffer stop, and
+    is named. A name entered as a Feature annotation on the line near the points is used."""
+    x0, x1, y = to.xb, to.xb + SIDING_LEN, to.yb
+    s.add(Rect(x0, y - wd / 2, x1 - x0, wd, "POINTS", stroke=INK, fill=(255, 255, 255), width=0.2))
+    # buffer stop: a bar across the line end, with a small block behind it
+    s.add(Line(x1, y - BAND, x1, y + BAND, "POINTS", width=0.7),
+          Rect(x1, y - 0.7, 1.2, 1.4, "POINTS", stroke=INK, fill=INK, width=0.1))
+    name = next((a.label for a in d.annotations if a.kind == "Feature" and a.track_id == to.ta
+                 and "siding" in a.label.lower() and abs(a.start_m - to.a_m) <= 300), "SIDING")
+    up = to.stub > 0
+    s.add(Text((x0 + x1) / 2, y + (wd / 2 + 1.0 if up else -(wd / 2 + 1.0) - 1.6), name.upper(), 1.7, "POINTS",
+               anchor="middle", bold=True))
 
 
 def _turnout_tag(s: Scene, to: _Turnout) -> None:
@@ -1286,15 +1419,15 @@ def _turnout_tag(s: Scene, to: _Turnout) -> None:
         if to.tb is not None:          # flag it on the drawing rather than leave it silently blank
             (p0, p1, p2, p3) = to.path
             xm, ym = (p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2
-            s.add(Rect(xm - TAG / 2, ym - TAG / 2, TAG, TAG, "TAGS", stroke=RED, fill=(255, 255, 255), width=0.3),
+            s.add(Rect(xm - TAG_W / 2, ym - TAG / 2, TAG_W, TAG, "TAGS", stroke=RED, fill=(255, 255, 255), width=0.3),
                   Text(xm, ym - 0.75, "?", 1.7, "TAGS", RED, anchor="middle", bold=True),
-                  Text(xm + TAG / 2 + 1, ym - 0.6, f"no T tag on {to.e.ref}", 1.6, "TAGS", RED))
+                  Text(xm + TAG_W / 2 + 1, ym - 0.6, f"no T tag on {to.e.ref}", 1.6, "TAGS", RED))
         return
     f = _split(to)
     (p0, p1, p2, p3) = to.path
     xm, ym = p1[0] + (p2[0] - p1[0]) * f, p1[1] + (p2[1] - p1[1]) * f
     t = to.tag
-    s.add(Rect(xm - TAG / 2, ym - TAG / 2, TAG, TAG, "TAGS", fill=(255, 255, 255), width=0.3),
+    s.add(Rect(xm - TAG_W / 2, ym - TAG / 2, TAG_W, TAG, "TAGS", fill=(255, 255, 255), width=0.3),
           Text(xm, ym - 0.75, "T", 1.7, "TAGS", anchor="middle", bold=True))
     # its number and ABS along the band, beside it
     ang = math.degrees(math.atan2(p2[1] - p1[1], p2[0] - p1[0]))
@@ -1498,19 +1631,29 @@ def _signal(s: Scene, sg: _Sig, y: float) -> None:
     s.add(Line(x, ya, cur, ya, "SIGNALS", width=0.3))
     for name in sg.calling:
         cx = cur + tv * 0.85
+        ny = name_y + sd * (LBL + 0.6) if sg.stacked_names() else name_y
         s.add(Poly(_circle(cx, ya, 0.75, 12), "SIGNALS", fill=(245, 195, 0), width=0.2),
               Text(cx, ya - 0.38, "C", 0.9, "SIGNALS", anchor="middle", bold=True),
-              Text(cx, name_y, name, LBL, "SIGNALS", anchor="middle", bold=True))
+              Text(cx, ny, name, LBL, "SIGNALS", anchor="middle", bold=True))
+        if sg.stacked_names():
+            s.add(Line(cx, ya + sd * 0.8, cx, ny - (0 if sd > 0 else -LBL) - sd * 0.2, "SIGNALS", LEADER, 0.12))
         cur += tv * 1.7
         s.add(Line(cur - tv * 0.1, ya, cur + tv * 0.2, ya, "SIGNALS", width=0.3))
     lamps = sg.aspects or ["?"]
     start = cur
     for i, lamp in enumerate(lamps):
-        cx = cur + tv * LAMP
         rgb = LAMP_RGB.get(lamp, (255, 255, 255))
+        if lamp == "YY":        # double yellow: two yellow lamps side by side, overlapping
+            step = LAMP * 0.95
+            for k in (0, 1):
+                s.add(Poly(_circle(cur + tv * (LAMP + k * step), ya, LAMP, 16), "SIGNALS", fill=rgb, width=0.22))
+            s.add(Text(cur + tv * (LAMP + step / 2), ya - 0.4, "YY", 0.95, "SIGNALS", INK, anchor="middle", bold=True))
+            cur += tv * 2 * LAMP * YY_LAMPS
+            continue
+        cx = cur + tv * LAMP
         s.add(Poly(_circle(cx, ya, LAMP, 16), "SIGNALS", fill=rgb, width=0.22))
-        s.add(Text(cx, ya - 0.45, lamp, 0.95 if lamp == "YY" else 1.2, "SIGNALS",
-                   INK if lamp in ("Y", "YY", "?") else (255, 255, 255), anchor="middle", bold=True))
+        s.add(Text(cx, ya - 0.45, lamp, 1.2, "SIGNALS",
+                   INK if lamp in ("Y", "?") else (255, 255, 255), anchor="middle", bold=True))
         cur += tv * 2 * LAMP
     if sg.route:
         s.add(Line(cur, ya, cur + tv * 0.5, ya, "SIGNALS", width=0.3),
@@ -1537,7 +1680,7 @@ def _tag_symbol(s: Scene, t: DTag, x: float, y: float, group: list, dn_direction
         s.add(Poly([(back, base), (back, base + TAG), (tip, base + TAG / 2)], "TAGS", fill=fill, width=0.3))
         tx = x - (0.35 if ahead else -0.35)
     else:
-        s.add(Rect(x - TAG / 2, base, TAG, TAG, "TAGS", fill=fill, width=0.3))
+        s.add(Rect(x - TAG_W / 2, base, TAG_W, TAG, "TAGS", fill=fill, width=0.3))
         tx = x
     s.add(Text(tx, y - 0.65, t.tag_type, 1.5, "TAGS", anchor="middle", bold=True))
 
@@ -1647,17 +1790,17 @@ def _blocks(s: Scene, d: DrawingData, w: float = W) -> None:
     y = top - 5
     for code, text in types:
         if code == "T":
-            s.add(Rect(x, y - 0.6, 3.0, 3.0, "BLOCKS", fill=(255, 255, 255), width=0.2))
+            s.add(Rect(x, y - 0.6, 4.2, 3.0, "BLOCKS", fill=(255, 255, 255), width=0.2))
         else:
             s.add(Poly([(x, y - 0.6), (x, y + 2.4), (x + 3.0, y + 0.9)], "BLOCKS", fill=(255, 255, 255), width=0.2))
-        s.add(Text(x + (1.5 if code == "T" else 1.1), y + 0.3, code, 1.3, "BLOCKS", anchor="middle", bold=True),
-              Text(x + 5, y + 0.3, text, 1.8, "BLOCKS"))
+        s.add(Text(x + (2.1 if code == "T" else 1.1), y + 0.3, code, 1.3, "BLOCKS", anchor="middle", bold=True),
+              Text(x + 5.6, y + 0.3, text, 1.8, "BLOCKS"))
         y -= 3.9
-    s.add(Rect(x, y - 0.6, 3.0, 3.0, "BLOCKS", fill=(255, 255, 255), width=0.2),
-          Text(x + 5, y + 0.3, "Main & duplicate co-located", 1.8, "BLOCKS"))
+    s.add(Rect(x, y - 0.6, 4.2, 3.0, "BLOCKS", fill=(255, 255, 255), width=0.2),
+          Text(x + 5.6, y + 0.3, "Main & duplicate co-located", 1.8, "BLOCKS"))
     y -= 3.9
-    s.add(Rect(x, y - 0.6, 3.0, 3.0, "BLOCKS", fill=(255, 230, 120), width=0.2),
-          Text(x + 5, y + 0.3, "Border tag", 1.8, "BLOCKS"))
+    s.add(Rect(x, y - 0.6, 4.2, 3.0, "BLOCKS", fill=(255, 230, 120), width=0.2),
+          Text(x + 5.6, y + 0.3, "Border tag", 1.8, "BLOCKS"))
     y -= 3.9
     bw = text_len("R-775", 1.6) + 1.6
     s.add(Rect(x, y - 0.5, bw, 2.8, "BLOCKS", stroke=BLUE, fill=(255, 255, 255), width=0.2),
