@@ -182,6 +182,8 @@ class ElementORM(Base):
     aspects = Column(String, nullable=True)        # signals: "R/Y/G"; blank -> type default
     b_end_m = Column(Float, nullable=True)         # points: B-end ABS on the line they lead to
     signal_side = Column(String, nullable=True)    # signals: drawn "Above" / "Below" the line; blank = automatic
+    siding_name = Column(String, nullable=True)    # points to a siding: its name
+    siding_shed = Column(String, nullable=True)    # points to a siding: the shed on it
 
     station = relationship("StationORM", back_populates="elements")
 
@@ -191,7 +193,8 @@ class ElementORM(Base):
             location_m=self.location_m, direction=self.direction,
             remarks=self.remarks or "", track_id=self.track_id, to_track_id=self.to_track_id,
             lc_class=self.lc_class, lc_manning=self.lc_manning, aspects=self.aspects,
-            b_end_m=self.b_end_m, signal_side=self.signal_side,
+            b_end_m=self.b_end_m, signal_side=self.signal_side, siding_name=self.siding_name,
+            siding_shed=self.siding_shed,
         )
 
 

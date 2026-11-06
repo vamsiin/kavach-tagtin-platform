@@ -148,7 +148,7 @@ def _validate_source_document(station_id: int, doc_id: int | None, db: Session) 
 
 # Fields added after the first clients shipped: only changed when the client sends
 # them, so an older client can't wipe them on every edit.
-_SEND_TO_CHANGE = ("source_document_id", "track_id", "to_track_id", "lc_class", "lc_manning", "abs2_m", "aspects", "b_end_m", "signal_side")
+_SEND_TO_CHANGE = ("source_document_id", "track_id", "to_track_id", "lc_class", "lc_manning", "abs2_m", "aspects", "b_end_m", "signal_side", "siding_name", "siding_shed")
 
 
 def _update_fields(payload) -> dict:
@@ -207,6 +207,11 @@ def _clean_element(station_id: int, data: dict, el: "models.ElementORM | None", 
         data["b_end_m"] = None
     if data.get("b_end_m") is not None and data["b_end_m"] < 0:
         raise HTTPException(422, "B-end ABS cannot be negative")
+    for f in ("siding_name", "siding_shed"):
+        if f in data:
+            data[f] = (data[f] or "").strip() or None
+        if (etype != POINTS or data.get("to_track_id") is not None) and (f in data or (el is not None and getattr(el, f) is not None)):
+            data[f] = None                 # only points that lead to no line (a siding) carry a siding name / shed
     side = (data.get("signal_side") or "").strip().capitalize() or None
     if side not in (None, "Above", "Below"):
         raise HTTPException(422, "signal_side must be Above or Below (blank = automatic)")

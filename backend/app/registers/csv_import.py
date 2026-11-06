@@ -44,6 +44,8 @@ _ALIASES = {
         "b_end_m": ["bendm", "bend", "bendabs", "bendlocation", "bendlocationm", "bendabsm", "bendchainage",
                     "bendchainagem", "toendm"],
         "signal_side": ["signalside", "drawnside", "drawn", "drawnabovebelow"],
+        "siding_name": ["sidingname", "siding"],
+        "siding_shed": ["sidingshed", "shed"],
         "remarks": ["remarks", "remark", "notes"],
     },
     "tags": {
@@ -435,6 +437,8 @@ def preview(db, station: models.StationORM, kind: str, rows: list[dict[str, str]
                           data=dict(element_ref=ref, element_type=etype, location_m=loc, track_id=tid,
                                     to_track_id=to, direction=(rec.get("direction") or "").strip() or None,
                                     lc_class=lc_class, lc_manning=lc_man, aspects=aspects, b_end_m=b_end, signal_side=side_pref,
+                                    siding_name=((rec.get('siding_name') or '').strip() or None) if etype == POINTS and to is None else None,
+                                    siding_shed=((rec.get('siding_shed') or '').strip() or None) if etype == POINTS and to is None else None,
                                     remarks=(rec.get("remarks") or "").strip() or None))
             old = _match(existing.get(key, []), lambda e: e.location_m == loc, claimed)
             if old is not None:

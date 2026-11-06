@@ -46,7 +46,7 @@ def build_data(db: Session, st: models.StationORM, user: models.UserORM) -> Draw
                                    e.direction, stated or default_aspects(e.element_type),
                                    aspects_default=stated is None and default_aspects(e.element_type) is not None,
                                    b_end_m=e.b_end_m, lc_class=e.lc_class, lc_manning=e.lc_manning,
-                                   side_pref=e.signal_side))
+                                   side_pref=e.signal_side, siding_name=e.siding_name, siding_shed=e.siding_shed))
     for a in st.adjacent_stations:
         d.neighbours.append((a.name, a.side, a.distance_m, a.kavach_station_id or "", a.short_code or ""))
         for b in a.borders:

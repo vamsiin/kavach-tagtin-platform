@@ -236,7 +236,10 @@ def test_turnouts_coloured_by_tin_at_each_end_with_a_and_b_ends():
     # the A-end / B-end ABS of each turnout, in metres, written vertically beside its end (as on the CAD)
     vert = [i.text for i in sc.items if isinstance(i, Text) and i.layer == "POINTS" and i.angle == 90]
     assert {"262067", "261978", "262150", "262254"} <= set(vert)
-    assert "R-838  262.023" in t                                                   # T tag on the turnout
+    # the T tag's number and its ABS are separate: the number in a blue box, the ABS apart (not one run of text)
+    assert "R-838" in t and "262.023" in t and "R-838  262.023" not in t
+    boxes = [i for i in sc.items if type(i).__name__ == "Poly" and i.layer == "LABELS" and i.stroke == (0, 60, 200)]
+    assert len(boxes) == 1 and len(boxes[0].points) == 4
 
 
 def test_only_reference_distances():
@@ -332,7 +335,8 @@ def test_t_tag_found_on_its_turnout_from_any_line_and_flagged_when_missing():
                           DElement("P20", "Points / Turnout", 263044, 1, 2, b_end_m=263140)])
     good = build(aler(**base, tags=[DTag("R-836", "T", 262966, 3, 836), DTag("R-840", "T", 263092, 3, 840)]))
     t = texts(good)
-    assert "R-836  262.966" in t and "R-840  263.092" in t and not any("no T tag" in x for x in t)
+    assert {"R-836", "262.966", "R-840", "263.092"} <= set(t) and not any("no T tag" in x for x in t)
+    assert not any("R-836  " in x or "R-840  " in x for x in t)
     bad = build(aler(**base, tags=[DTag("R-836", "T", 262966, 3, 836), DTag("R-840", "T", 262966, 3, 840)]))
     assert "no T tag on P20" in texts(bad)
 
@@ -484,7 +488,7 @@ def test_lens_counts_and_calling_on_name_row():
     assert lens_count(["R", "Y", "YY", "G"]) == 4            # home: R, Y, G and a second Y for double yellow
     assert lens_count(["G", "YY", "Y"]) == 3                 # distant
     assert lens_count(["R", "G"]) == 2 and lens_count(["R", "Y", "G"]) == 3 and lens_count([]) == 1
-    assert _Sig("signal", 0, 1, 1, aspects=["R", "Y", "YY", "G"]).head_w() > _Sig("signal", 0, 1, 1, aspects=["R", "G"]).head_w()
+    assert _Sig("signal", 0, 1, 1, names=["S1"], aspects=["R", "Y", "YY", "G"]).head_w() >         _Sig("signal", 0, 1, 1, names=["S1"], aspects=["R", "G"]).head_w()
     home = _Sig("signal", 0, 1, 1, names=["S29"], calling=["S29A"], aspects=["R", "Y", "YY", "G"], default=True)
     assert home.stacked_names()
     assert not _Sig("signal", 0, 1, 1, names=["S29"], aspects=["R", "Y", "G"]).stacked_names()
@@ -579,12 +583,34 @@ def test_signal_side_setting_overrides_the_direction_rule_and_dims_follow():
     assert dim.y > y_up_main                                       # the 200 m line is on S28's side
 
 
-def test_shunt_signal_extent_covers_its_name_and_boards_are_cad_sized():
-    from app.drawing.layout import _Sig
+def test_shunt_signal_extent_covers_its_symbol_and_name_and_boards_are_cad_sized():
+    from app.drawing.layout import SHUNT_R, _Sig
     nominal = _Sig("shunt", 0, 1, 1, names=["SH21"]); nominal.x = 100.0
     reverse = _Sig("shunt", 0, 1, -1, names=["SH21"]); reverse.x = 100.0
-    assert nominal.extent()[0] < 100 - 5 and reverse.extent()[1] > 100 + 5           # the name sits behind the post
+    assert nominal.extent()[0] <= 100 and nominal.extent()[1] >= 100 + SHUNT_R        # runs on in the travel direction
+    assert reverse.extent()[1] >= 100 and reverse.extent()[0] <= 100 - SHUNT_R
     assert _Sig("board", 0, 1, 1, board="SB").head_w() > 9 and _Sig("board", 0, 1, 1, board="BSLB").head_w() > 9
+
+
+def test_calling_on_shows_its_c_marker_and_aspect_lens_and_a_shunt_sits_on_the_main_post():
+    """CAD: S1A is a C marker plus a small yellow-diagonal lens before the main head; S5/SH8 is a quarter-disc shunt
+    symbol in front of S5's lenses, on the same post."""
+    from app.domain import default_aspects
+    assert default_aspects("Calling-on Signal") == "C/Y"
+    tracks = [DTrack(1, "DN MAIN", 259740, 265279, line_type="DN MAIN")]
+    els = [DElement("S1", "Main Home without Junction Route Indicator", 261789, 1, direction="Down", aspects="R/Y/G"),
+           DElement("S1A", "Calling-on Signal", 261789, 1, direction="Down", aspects="C/Y"),
+           DElement("S5", "Loopline Starter", 263000, 1, direction="Down", aspects="R/Y"),
+           DElement("SH8", "Shunt Signal", 263000, 1, direction="Down", aspects="SH")]
+    s = build(aler(tracks=tracks, elements=els, tins=[], tags=[], borders=[], annotations=[]))
+    plan = [i for i in s.items if type(i).__name__ == "Poly" and i.layer == "SIGNALS" and i.points[0][1] > 110]
+    small = [p for p in plan if len(p.points) == 12]                       # C marker (12) ...
+    lenses = [p for p in plan if len(p.points) == 16]                      # ... and lenses (16)
+    assert len(small) == 1 and len(lenses) == 1 + 3 + 2                    # 1 small calling-on lens + S1 (3) + S5 (2)
+    names = [i.text for i in s.items if isinstance(i, Text) and i.layer == "SIGNALS"]
+    assert {"S1A", "S1", "S5", "SH8"} <= set(names) and "C" in names
+    quarter = [p for p in plan if len(p.points) == 14]                     # the shunt's quarter disc: corner + 13 arc points
+    assert len(quarter) == 1
 
 
 def test_no_two_texts_overlap_on_the_sample_station():

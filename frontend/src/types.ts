@@ -51,7 +51,7 @@ export const SIGNAL_ELEMENT_TYPES = [
 export const LC_GATE = "LC Gate";
 export const POINTS = "Points / Turnout";
 export const NON_SIGNAL_ELEMENT_TYPES = [
-  LC_GATE, POINTS, "Fouling Mark", "Marker Board", "Axle Counter", "Whistle Board (W/L)",
+  LC_GATE, POINTS, "Fouling Mark", "Marker Board", "Axle Counter", "Whistle Board (W/L)", "Sand Hump",
 ] as const;
 export const ELEMENT_TYPES: readonly string[] = [...SIGNAL_ELEMENT_TYPES, ...NON_SIGNAL_ELEMENT_TYPES];
 export const POINTS_TYPE = "Points / Turnout";
@@ -193,18 +193,20 @@ export interface Element {
   aspects?: string | null;
   b_end_m?: number | null;
   signal_side?: string | null;     // signals: drawn Above / Below the line; blank = automatic
+  siding_name?: string | null;     // points that lead to a siding: its name
+  siding_shed?: string | null;     // ... and the shed on it
 }
 
 /** Signal aspects (mirrors backend domain.default_aspects). R red, Y yellow, YY double
  *  yellow, G green, C calling-on, SH shunt; "+RI" = junction-type route indicator. */
 const NON_ASPECT = ["BSLB Board", "Stop Board/Buffer Stop", "Berthing Track End", "LC Gate", "Points / Turnout",
-  "Fouling Mark", "Marker Board", "Axle Counter", "Whistle Board (W/L)"];
+  "Fouling Mark", "Marker Board", "Axle Counter", "Whistle Board (W/L)", "Sand Hump"];
 export function isSignalType(t: string): boolean {
   return !NON_ASPECT.includes(t);
 }
 export function defaultAspects(t: string): string | null {
   if (!isSignalType(t) || t === "Other Misc Signals") return null;
-  if (t === "Calling-on Signal") return "C";
+  if (t === "Calling-on Signal") return "C/Y";
   if (t === "Shunt Signal") return "SH";
   const lo = t.toLowerCase();
   const stop = ["starter", "gate stop", "gate-cum", "gate cum", "ib signal", "ib stop", "home", "auto", "semi",

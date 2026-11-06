@@ -87,6 +87,9 @@ function ElementForm({ tracks, initial, onSubmit, onCancel, submitting }: {
   const [aspects, setAspects] = useState(initial?.aspects ?? "");
   const [side, setSide] = useState(initial?.signal_side ?? "");
   const [bEnd, setBEnd] = useState(initial?.b_end_m != null ? String(initial.b_end_m) : "");
+  const [sidingName, setSidingName] = useState(initial?.siding_name ?? "");
+  const [sidingShed, setSidingShed] = useState(initial?.siding_shed ?? "");
+  const isBoard = type === "BSLB Board" || type === "Stop Board/Buffer Stop";
   const id = (v: string) => (v ? parseInt(v) : null);
 
   return (
@@ -99,7 +102,9 @@ function ElementForm({ tracks, initial, onSubmit, onCancel, submitting }: {
         lc_class: type === LC_GATE ? lcClass || null : null,
         lc_manning: type === LC_GATE ? lcManning || null : null,
         aspects: isSignalType(type) ? aspects.trim() || null : null,
-        signal_side: isSignalType(type) ? side || null : null,
+        signal_side: isSignalType(type) || isBoard ? side || null : null,
+        siding_name: type === POINTS && !toTrack && sidingName.trim() ? sidingName.trim() : null,
+        siding_shed: type === POINTS && !toTrack && sidingShed.trim() ? sidingShed.trim() : null,
         b_end_m: type === POINTS && bEnd.trim() ? parseFloat(bEnd) : null,
       });
     }}>
@@ -124,6 +129,16 @@ function ElementForm({ tracks, initial, onSubmit, onCancel, submitting }: {
         <input type="number" step="0.001" placeholder="B-end ABS (m)" value={bEnd} onChange={(e) => setBEnd(e.target.value)}
                title="Points: B-end absolute location (m), where the turnout meets the line it leads to" style={{ width: 130 }} />
       )}
+      {type === POINTS && !toTrack && (
+        <>
+          <input placeholder="Siding name (e.g. Siding for sub station & tower wagon)" value={sidingName}
+                 onChange={(e) => setSidingName(e.target.value)} style={{ width: 300 }}
+                 title="Points that lead to no recorded line lead to a siding outside KAVACH. Its name is written over the siding, which is drawn as the line carrying straight on to a buffer stop (BS)." />
+          <input placeholder="Shed on it (e.g. Tower wagon shed)" value={sidingShed}
+                 onChange={(e) => setSidingShed(e.target.value)} style={{ width: 220 }}
+                 title="Optional: a shed standing on the siding, drawn as a long box named over it." />
+        </>
+      )}
       {type === LC_GATE && (
         <>
           <select value={lcClass} onChange={(e) => setLcClass(e.target.value)} title="LC gate class">
@@ -136,6 +151,19 @@ function ElementForm({ tracks, initial, onSubmit, onCancel, submitting }: {
           </select>
         </>
       )}
+      {isBoard && (
+        <select value={side} onChange={(e) => setSide(e.target.value)}
+                title="Which side of the line the board is drawn on. Leave on automatic to follow the Dir you set (set Dir to the direction of the Home signal this board serves) or, failing that, the line's direction. The BSLB box always stands behind its post.">
+          <option value="">Drawn: by Home signal direction</option>
+          <option value="Above">Drawn above the line</option>
+          <option value="Below">Drawn below the line</option>
+        </select>
+      )}
+      {type === "Sand Hump" && (
+        <span className="muted small" title="A sand hump closes the end of a line">
+          Chainage at the end of the line; drawn as a half disc with a bar, on the nearer end.
+        </span>
+      )}
       {isSignalType(type) && (
         <>
         <select value={side} onChange={(e) => setSide(e.target.value)}
@@ -146,7 +174,7 @@ function ElementForm({ tracks, initial, onSubmit, onCancel, submitting }: {
         </select>
         <input placeholder={`Aspects (default ${defaultAspects(type) ?? "—"})`} value={aspects}
                onChange={(e) => setAspects(e.target.value)} style={{ width: 170 }}
-               title="Lamps from the SIP, e.g. R/Y/G or R/Y/YY/G+RI (R red, Y yellow, YY double yellow, G green, C calling-on, SH shunt, +RI route indicator). Leave blank to use the default for the signal type." />
+               title="Lamps from the SIP, e.g. R/Y/G or R/Y/YY/G+RI (R red, Y yellow, YY double yellow, G green, C calling-on, SH shunt, +RI route indicator). A calling-on signal is its C marker followed by its calling-on aspect(s), e.g. C/Y (the default: marker + a small yellow lens). Leave blank to use the default for the signal type." />
         </>
       )}
       <input placeholder="Remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} />

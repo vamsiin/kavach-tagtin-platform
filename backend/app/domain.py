@@ -39,7 +39,7 @@ SIGNAL_ELEMENT_TYPES = [
 LC_GATE = "LC Gate"
 POINTS = "Points / Turnout"
 NON_SIGNAL_ELEMENT_TYPES = [
-    LC_GATE, POINTS, "Fouling Mark", "Marker Board", "Axle Counter", "Whistle Board (W/L)",
+    LC_GATE, POINTS, "Fouling Mark", "Marker Board", "Axle Counter", "Whistle Board (W/L)", "Sand Hump",
 ]
 ELEMENT_TYPES = SIGNAL_ELEMENT_TYPES + NON_SIGNAL_ELEMENT_TYPES
 
@@ -70,7 +70,7 @@ def default_aspects(element_type: str | None) -> str | None:
     if not is_signal_type(t):
         return None
     if t == "Calling-on Signal":
-        return "C"
+        return "C/Y"                          # the C marker and its calling-on aspect (a small yellow lens)
     if t == "Shunt Signal":
         return "SH"
     if t == "Other Misc Signals":
@@ -404,6 +404,8 @@ class Element:
     aspects: str | None = None       # signals only; blank -> default_aspects(type)
     b_end_m: float | None = None     # points only: B-end ABS (on to_track); location_m is the A-end
     signal_side: str | None = None   # signals: drawn "Above" / "Below" the line; None = by direction
+    siding_name: str | None = None   # points that lead to a siding (no "leads to" line): its name on the layout
+    siding_shed: str | None = None   # ... and the shed standing on it, if any (e.g. Tower wagon shed)
 
 
 @dataclass

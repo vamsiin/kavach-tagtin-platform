@@ -56,6 +56,9 @@ class ElementCreate(BaseModel):
                                                             "turnout leads to; location_m is the A-end")
     signal_side: str | None = Field(default=None, description="Signals only: drawn Above or Below the line; "
                                                               "blank = automatic (Nominal above, Reverse below)")
+    siding_name: str | None = Field(default=None, description="Points with no 'leads to' line only: the siding they "
+                                                              "lead to, e.g. Siding for sub station & tower wagon")
+    siding_shed: str | None = Field(default=None, description="Points to a siding only: the shed on it, e.g. Tower wagon shed")
 
 
 

@@ -682,6 +682,20 @@ number and symbol was read from it). `docs/layout-review/FINDINGS.md` lists what
 - **Heading and blocks.** North arrow, station building at the centre line, neighbour name with its code, KAVACH ID and
   distance, TIN colours in the CAD shades, legend explaining the lens patterns.
 
+### Input procedures (QFTL review, 6 Nov 2026)
+
+Each item below was compared with the approved layout (`docs/layout-review/nov6_*.png`, side by side).
+
+| Item | How to enter it | How it is drawn |
+|---|---|---|
+| **Calling-on aspects** | Elements > type *Calling-on Signal*, field Aspects: `C/Y` (the default) = the C marker plus a small yellow lens; `C/R`, `C/G` or `C/Y/G` change or add lenses. Put it on the same chainage and line as its Home signal. | From the post: C marker, the calling-on lens(es) (small, named S1A over them), then the main lenses (named S1). A calling-on signal with no Home beside it is drawn alone. |
+| **Shunt signals** | Elements > type *Shunt Signal* (aspects `SH`). A shunt on a main signal's post (the CAD's S5 / SH8) is entered with the same chainage and line as that signal, or its name is put inside the main signal's name ("S5/SH8"). | A quarter disc with three small lamp circles, its name over it. On a main signal's post it stands between the post (and any calling-on lens) and the main lenses. |
+| **BSLB position** | Elements > type *BSLB Board* at the end of the block section, on the Home signal's line. Set **Dir** to the direction of the Home signal it serves (Down / UP); leave **Drawn** on "by Home signal direction", or pick Above / Below. | The box (X, a small circle at its far end, a divider by the post) always stands **behind** its post, against the Home signal's running direction. Its side follows Dir, else the line's direction. |
+| **Turnout A-end / B-end ABS** | Elements > *Points / Turnout*: A-end chainage, **B-end ABS**, Leads to line. | At each end: an arrow whose tip touches the end's tab and the ABS (metres) written vertically beside it, with the points' name; no longer a label beside the end. |
+| **T tags** | Tags > type T, linked to its points. | A rotated box with the **tag number** along the diagonal and, outside it, the **ABS** as separate text, as the other tags show number over ABS. |
+| **Sand hump** | Elements > type *Sand Hump*, chainage at the end of the line, the line. (A *Feature* annotation named "sand hump" does the same.) | A half disc closing the nearer end of the line, a bar across the line a little inside it with a foot, and "SAND HUMP" beside it. |
+| **Siding** | Elements > *Points / Turnout* with **no** "Leads to line": the points lead to a siding outside KAVACH. Fill **Siding name** (e.g. *Siding for sub station & tower wagon*) and, if there is one, **Shed on it** (*Tower wagon shed*). The points should be within 300 m of the end of their line. | The line carries straight on in white past its last tag: the shed as a long box named over it, a buffer stop bar with "BS", and the siding's name with a leader. Points further than 300 m from a line end keep the older diagonal stub named SIDING. |
+
 ### Drawing annotations (Registers tab)
 
 Things the CAD shows that are not tags, TINs or signals: **track circuit names** (DMAT, UMAT ... over a stretch, with
