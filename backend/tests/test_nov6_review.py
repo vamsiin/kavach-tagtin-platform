@@ -95,3 +95,22 @@ def test_turnout_abs_arrow_ends_at_the_tab_and_the_text_is_beyond_it():
     for h in heads:                                              # the arrow tip is the tab's outer edge, 3.7 mm out
         tip_y = h.points[0][1]
         assert min(abs(tip_y - b) for b in bands) > BAND / 2 + 2.0
+
+
+def test_home_signal_marks_a_track_circuit_boundary_within_a_few_metres():
+    """CAD: a Home signal's head ends in a slanted tick where its track circuit (1AT) ends -- only for a Home signal
+    with a track circuit boundary within a few metres, on the head's side; a route indicator is the separate fork."""
+    from app.drawing.layout import DAnnotation, DrawingData  # noqa: F401
+    tracks = [DTrack(1, "DN MAIN", 259740, 265279, line_type="DN MAIN")]
+    els = [DElement("S1", "Main Home without Junction Route Indicator", 261789, 1, direction="Down", aspects="R/Y/G"),
+           DElement("S3", "Mainline Starter", 262910, 1, direction="Down", aspects="R/Y/G")]
+
+    def ticks(annotations):
+        s = build(aler(tracks=tracks, elements=els, tins=[], tags=[], borders=[], annotations=annotations))
+        return [i for i in s.items if type(i).__name__ == "Line" and i.layer == "SIGNALS" and i.width == 0.45
+                and abs(i.x1 - i.x2) > 1.0 and abs(i.y1 - i.y2) > 2.0 and i.y1 > 110]
+    near = [DAnnotation("Track circuit", "1AT", 1, 260000, 261791), DAnnotation("Track circuit", "DMAT", 1, 261791, 262910)]
+    assert len(ticks([])) == 0                                    # no track circuits entered: no mark
+    assert len(ticks(near)) == 1                                  # 1AT ends 2 m past S1: S1 gets the tick (S3, a starter, does not)
+    far = [DAnnotation("Track circuit", "1AT", 1, 260000, 261100)]
+    assert len(ticks(far)) == 0                                   # the boundary is 689 m away

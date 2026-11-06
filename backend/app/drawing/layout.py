@@ -424,6 +424,8 @@ class _Sig:
     calling: list = field(default_factory=list)   # calling-on name(s) on the same post
     calling_lens: list = field(default_factory=list)   # the calling-on aspect(s): small lenses after the C marker
     shunts: list = field(default_factory=list)    # shunt signal name(s) on the same post (drawn before the main head)
+    home: bool = False                            # a Home signal
+    tc_mark: bool = False                         # a track circuit starts / ends within a few metres: marked at the head's end
     aspects: list = field(default_factory=list)
     route: bool = False
     board: str = ""
@@ -437,7 +439,8 @@ class _Sig:
         if self.kind == "shunt":
             return SHUNT_R + 1.0
         main = 2 * LAMP * len(lens_sequence(self.aspects)) if self.names else 0.0
-        return (1.0 + self.calling_w() + (len(self.shunts) * (SHUNT_R + 0.8)) + main + (1.4 if self.route else 0))
+        return (1.0 + self.calling_w() + (len(self.shunts) * (SHUNT_R + 0.8)) + main + (1.4 if self.route else 0)
+                + (1.8 if self.tc_mark else 0))
 
     def calling_w(self) -> float:
         """Width of the calling-on part: per name the C marker and each calling-on lens (small lenses)."""
@@ -756,7 +759,7 @@ def _collect(d: DrawingData, tracks: list) -> tuple[dict, list]:
             sig = _Sig("shunt", e.location_m, side, tv, names=[e.ref])
         else:
             sig = _Sig("signal", e.location_m, side, tv, names=[e.ref], aspects=lamps, route=route,
-                       default=e.aspects_default)
+                       default=e.aspects_default, home="Home" in et)
         for nm in extra_names.get(id(e), []):
             if nm not in sig.names and nm not in sig.calling:
                 sig.names.append(nm)
@@ -780,6 +783,7 @@ def _collect(d: DrawingData, tracks: list) -> tuple[dict, list]:
             old.__dict__.update(sig.__dict__)
             continue
         old.calling_lens += [l for l in sig.calling_lens if l not in old.calling_lens]
+        old.home = old.home or sig.home
         old.calling += [c for c in sig.calling if c not in old.calling]
         if sig.aspects and (len(sig.aspects) + sig.route > len(old.aspects) + old.route):
             old.aspects, old.route, old.default = sig.aspects, sig.route, sig.default
@@ -789,6 +793,17 @@ def _collect(d: DrawingData, tracks: list) -> tuple[dict, list]:
                 parts = n.replace(" ", "").split("/")
                 if not all(any(q.replace(" ", "") == pp for q in old.names + old.calling) for pp in parts):
                     old.names.append(n)
+    # a Home signal whose track circuit starts or ends within a few metres of it: the boundary is marked at the
+    # end of its head, on the head's side (the CAD's slanted tick: "1AT track will end there")
+    for a in d.annotations:
+        if a.kind != "Track circuit" or a.track_id not in plans:
+            continue
+        for b in (a.start_m, a.end_m):
+            if b is None:
+                continue
+            for sg in plans[a.track_id].sigs:
+                if sg.kind == "signal" and sg.home and sg.names and abs(sg.m - b) <= TC_NEAR_M:
+                    sg.tc_mark = True
     # a shunt signal named inside a main signal's name ("S5/SH8") stands on that post: it is drawn as its own
     # position-light symbol in front of the main head, not left as text
     import re
@@ -952,6 +967,7 @@ def _axis_points(d: DrawingData, tracks: list, turnouts: list) -> list:
 
 
 END_W = 48.0               # each end of the plan: main lines run on, adjacent station named
+TC_NEAR_M = 6.0             # a track circuit boundary this near a Home signal is marked on its head
 SHUNT_R = 4.2             # a shunt signal's quarter disc, as on the approved layouts
 ABS_LEN = 12.0             # height of the vertical ABS (arrow and text) written at a turnout end
 SIDING_NEAR_M = 300.0       # points this near the end of their line lead to a siding that continues the line
@@ -1946,6 +1962,10 @@ def _signal(s: Scene, sg: _Sig, y: float) -> None:
                   Line(cur + tv * 0.5, ya, cur + tv * 1.6, ya + sd * 1.1, "SIGNALS", width=0.45),
                   Line(cur + tv * 0.5, ya, cur + tv * 1.6, ya - sd * 1.1, "SIGNALS", width=0.45))
             cur += tv * 1.6
+        if sg.tc_mark:                       # the track circuit boundary: a short arm and a slanted tick
+            s.add(Line(cur, ya, cur + tv * 0.6, ya, "SIGNALS", width=0.3),
+                  Line(cur + tv * 0.6, ya, cur + tv * 2.0, ya + sd * 2.4, "SIGNALS", width=0.45))
+            cur += tv * 1.8
         label = " / ".join(sg.names) + ("*" if sg.default else "")
         s.add(Text((start + cur) / 2, name_y, label, LBL, "SIGNALS", anchor="middle", bold=True))
 
