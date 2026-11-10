@@ -198,7 +198,7 @@ export interface Element {
 }
 
 /** Signal aspects (mirrors backend domain.default_aspects). R red, Y yellow, YY double
- *  yellow, G green, C calling-on, SH shunt; "+RI" = junction-type route indicator. */
+ *  yellow, G green, C calling-on, SH shunt; "+RI" = junction-type route indicator, "+RI:M:2" multi-lamp type showing 2, "+RI:S:B" stencil type showing B. */
 const NON_ASPECT = ["BSLB Board", "Stop Board/Buffer Stop", "Berthing Track End", "LC Gate", "Points / Turnout",
   "Fouling Mark", "Marker Board", "Axle Counter", "Whistle Board (W/L)", "Sand Hump"];
 export function isSignalType(t: string): boolean {

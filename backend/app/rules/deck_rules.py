@@ -255,3 +255,28 @@ def check_tin_bifurcation(station: Station, elements: list[Element], tins: list[
                                   "one TIN runs across both -- split it so a loco standing between them has its own TIN"),
                                subject_ref=a.element_ref))
     return out
+
+
+def check_route_indicator_position(station: Station, elements: list[Element], p: dict | None = None) -> list[CheckResult]:
+    """Route indicators are fixed on the first stop (Home) signal and on starters only; a multi-lamp or stencil
+    indicator must state the character it shows."""
+    from ..domain import RI_TYPES, default_aspects, is_route_indicator_signal, split_route_indicator
+    title = "Route indicator on a Home signal or starter"
+    out = []
+    for e in elements:
+        _, ri, ch = split_route_indicator(e.aspects or default_aspects(e.element_type))
+        if ri is None:
+            continue
+        if not is_route_indicator_signal(e.element_type):
+            out.append(CheckResult("DECK-RI", title, "FAIL",
+                                   f"{e.element_ref} ({e.element_type}): a route indicator is fixed on the first stop "
+                                   f"(Home) signal or a starter, not on this signal", subject_ref=e.element_ref))
+        elif ri in ("M", "S") and not ch:
+            out.append(CheckResult("DECK-RI", title, "FAIL",
+                                   f"{e.element_ref}: a {RI_TYPES[ri]} route indicator must state the character it shows",
+                                   subject_ref=e.element_ref))
+        else:
+            out.append(CheckResult("DECK-RI", title, "PASS",
+                                   f"{e.element_ref}: {RI_TYPES[ri]} route indicator" + (f" '{ch}'" if ch else ""),
+                                   subject_ref=e.element_ref))
+    return out

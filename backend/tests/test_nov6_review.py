@@ -114,3 +114,38 @@ def test_home_signal_marks_a_track_circuit_boundary_within_a_few_metres():
     assert len(ticks(near)) == 1                                  # 1AT ends 2 m past S1: S1 gets the tick (S3, a starter, does not)
     far = [DAnnotation("Track circuit", "1AT", 1, 260000, 261100)]
     assert len(ticks(far)) == 0                                   # the boundary is 689 m away
+
+
+def test_route_indicator_types_junction_multilamp_stencil():
+    """Route indicators (UG notes): junction type = fork, multi-lamp type = lamp matrix showing 0-9 / A-Z, stencil type =
+    a boxed letter; only on a first stop (Home) signal or a starter."""
+    import pytest
+    from app.domain import Element, Station, normalise_aspects, split_route_indicator
+    from app.rules.deck_rules import check_route_indicator_position
+    assert normalise_aspects("r y g + ri") == "R/Y/G+RI"
+    assert normalise_aspects("R/Y/G+RI:M:2") == "R/Y/G+RI:M:2"
+    assert normalise_aspects("R/Y+RI:S:b") == "R/Y+RI:S:B"
+    assert split_route_indicator("R/Y/G+RI:M:7") == ("R/Y/G", "M", "7")
+    with pytest.raises(ValueError):
+        normalise_aspects("R/Y/G+RI:S")                               # a stencil / multi-lamp indicator shows a character
+
+    tracks = [DTrack(1, "DN MAIN", 259740, 265279, line_type="DN MAIN")]
+
+    def texts_and_dots(asp):
+        els = [DElement("S29", "Main Home with Junction Route Indicator", 261789, 1, direction="Down", aspects=asp)]
+        s = build(aler(tracks=tracks, elements=els, tins=[], tags=[], borders=[]))
+        dots = [i for i in s.items if type(i).__name__ == "Poly" and i.layer == "SIGNALS" and len(i.points) == 6]
+        return [i.text for i in s.items if isinstance(i, Text) and i.layer == "SIGNALS"], len(dots), s
+    t_j, d_j, _ = texts_and_dots("R/Y/G+RI")
+    t_m, d_m, _ = texts_and_dots("R/Y/G+RI:M:2")
+    t_s, d_s, _ = texts_and_dots("R/Y+RI:S:B")
+    assert "2" in t_m and d_m == 16 and "2" not in t_j and d_j == 0     # multi-lamp: the character inside a lamp matrix
+    assert "B" in t_s and d_s == 0                                      # stencil: the boxed letter
+
+    def el(typ, asp):
+        return Element(1, "X1", typ, 100, aspects=asp)
+    st = Station(1, "Aler", "1", 100)
+    res = check_route_indicator_position(st, [el("Mainline Starter", "R/Y/G+RI:S:B"),
+                                              el("Distant Signal", "Y/G+RI"),
+                                              el("Main Home without Junction Route Indicator", "R/Y/G+RI:M")])
+    assert [r.status for r in res] == ["PASS", "FAIL", "FAIL"]

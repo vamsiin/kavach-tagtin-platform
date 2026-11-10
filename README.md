@@ -696,6 +696,10 @@ Each item below was compared with the approved layout (`docs/layout-review/nov6_
 | **Sand hump** | Elements > type *Sand Hump*, chainage at the end of the line, the line. (A *Feature* annotation named "sand hump" does the same.) | A half disc closing the nearer end of the line, a bar across the line a little inside it with a foot, and "SAND HUMP" beside it. |
 | **Siding** | Elements > *Points / Turnout* with **no** "Leads to line": the points lead to a siding outside KAVACH. Fill **Siding name** (e.g. *Siding for sub station & tower wagon*) and, if there is one, **Shed on it** (*Tower wagon shed*). The points should be within 300 m of the end of their line. | The line carries straight on in white past its last tag: the shed as a long box named over it, a buffer stop bar with "BS", and the siding's name with a leader. Points further than 300 m from a line end keep the older diagonal stub named SIDING. |
 
+### Route indicators (UG notes)
+
+Add to the signal's Aspects (Home signal or starter only; a rule warns elsewhere): `+RI` (junction type, the fork of lamps; speed above 15 km/h), `+RI:M:2` (multi-lamp type, shows 0-9 / A-Z; below 15 km/h, a lamp matrix round the character) or `+RI:S:B` (stencil type, a boxed letter, normally on starters).
+
 ### Drawing annotations (Registers tab)
 
 Things the CAD shows that are not tags, TINs or signals: **track circuit names** (DMAT, UMAT ... over a stretch, with

@@ -293,11 +293,11 @@ def _sig_side(travel: str | None) -> int:
     return -1 if travel == "Reverse" else 1
 
 
-def _aspect_list(text: str | None) -> tuple[list, bool]:
-    t = (text or "").upper()
-    route = "+RI" in t
-    lamps = [p for p in t.replace("+RI", "").split("/") if p]
-    return lamps, route
+def _aspect_list(text: str | None) -> tuple[list, bool, str, str]:
+    from ..domain import split_route_indicator
+    base, ri, char = split_route_indicator(text)
+    lamps = [p for p in base.split("/") if p]
+    return lamps, ri is not None, ri or "", char
 
 
 # ---------------------------------------------------------------------------
@@ -428,6 +428,8 @@ class _Sig:
     tc_mark: bool = False                         # a track circuit starts / ends within a few metres: marked at the head's end
     aspects: list = field(default_factory=list)
     route: bool = False
+    ri_type: str = ""                             # route indicator: J junction, M multi-lamp, S stencil
+    ri_char: str = ""
     board: str = ""
     default: bool = False
     tier: int = 0
@@ -439,8 +441,11 @@ class _Sig:
         if self.kind == "shunt":
             return SHUNT_R + 1.0
         main = 2 * LAMP * len(lens_sequence(self.aspects)) if self.names else 0.0
-        return (1.0 + self.calling_w() + (len(self.shunts) * (SHUNT_R + 0.8)) + main + (1.4 if self.route else 0)
+        return (1.0 + self.calling_w() + (len(self.shunts) * (SHUNT_R + 0.8)) + main + (self.ri_w() if self.route else 0)
                 + (1.8 if self.tc_mark else 0))
+
+    def ri_w(self) -> float:
+        return 1.4 if self.ri_type in ("", "J") else 3.6
 
     def calling_w(self) -> float:
         """Width of the calling-on part: per name the C marker and each calling-on lens (small lenses)."""
@@ -748,7 +753,7 @@ def _collect(d: DrawingData, tracks: list) -> tuple[dict, list]:
             side = 1 if pref == "above" else -1
         et = e.element_type
         key = (p.t.id, side, round(e.location_m))
-        lamps, route = _aspect_list(e.aspects)
+        lamps, route, ri_t, ri_c = _aspect_list(e.aspects)
         if "BSLB" in et or "Stop Board" in et or "Berthing" in et:
             board = "BSLB" if "BSLB" in et else "SB" if "Stop" in et else "BTE"
             sig = _Sig("board", e.location_m, side, tv, names=[e.ref], board=board)
@@ -758,7 +763,7 @@ def _collect(d: DrawingData, tracks: list) -> tuple[dict, list]:
         elif et == "Shunt Signal" or lamps == ["SH"]:
             sig = _Sig("shunt", e.location_m, side, tv, names=[e.ref])
         else:
-            sig = _Sig("signal", e.location_m, side, tv, names=[e.ref], aspects=lamps, route=route,
+            sig = _Sig("signal", e.location_m, side, tv, names=[e.ref], aspects=lamps, route=route, ri_type=ri_t, ri_char=ri_c,
                        default=e.aspects_default, home="Home" in et)
         for nm in extra_names.get(id(e), []):
             if nm not in sig.names and nm not in sig.calling:
@@ -787,6 +792,7 @@ def _collect(d: DrawingData, tracks: list) -> tuple[dict, list]:
         old.calling += [c for c in sig.calling if c not in old.calling]
         if sig.aspects and (len(sig.aspects) + sig.route > len(old.aspects) + old.route):
             old.aspects, old.route, old.default = sig.aspects, sig.route, sig.default
+            old.ri_type, old.ri_char = sig.ri_type, sig.ri_char
         for n in sig.names:
             if n not in old.names and not any(n == f"{a}/{b}" for a in old.names for b in old.calling + old.names):
                 # "S1/S1A" next to "S1" and "S1A" adds nothing
@@ -1957,7 +1963,10 @@ def _signal(s: Scene, sg: _Sig, y: float) -> None:
         for colour in lens_sequence(sg.aspects or ["?"]):      # one lens symbol per lens of the head
             _lens(s, cur + tv * LAMP, ya, LAMP, colour)
             cur += tv * 2 * LAMP
-        if sg.route:
+        if sg.route and sg.ri_type in ("M", "S"):
+            _route_box(s, cur, ya, sd, tv, sg.ri_type, sg.ri_char)
+            cur += tv * 3.6
+        elif sg.route:
             s.add(Line(cur, ya, cur + tv * 0.5, ya, "SIGNALS", width=0.3),
                   Line(cur + tv * 0.5, ya, cur + tv * 1.6, ya + sd * 1.1, "SIGNALS", width=0.45),
                   Line(cur + tv * 0.5, ya, cur + tv * 1.6, ya - sd * 1.1, "SIGNALS", width=0.45))
@@ -1968,6 +1977,23 @@ def _signal(s: Scene, sg: _Sig, y: float) -> None:
             cur += tv * 1.8
         label = " / ".join(sg.names) + ("*" if sg.default else "")
         s.add(Text((start + cur) / 2, name_y, label, LBL, "SIGNALS", anchor="middle", bold=True))
+
+
+def _route_box(s: Scene, cur: float, ya: float, sd: int, tv: int, ri: str, char: str) -> None:
+    """Multi-lamp route indicator: a square dot-matrix (lamps) with the character it shows; stencil type: a double-line
+    box with the letter. Both stand on the head's end, joined by a short arm."""
+    s.add(Line(cur, ya, cur + tv * 0.5, ya, "SIGNALS", width=0.3))
+    a, b = sorted((cur + tv * 0.5, cur + tv * 3.4))
+    for off, w in ((0.0, 0.3), (0.35, 0.15)) if ri == "S" else ((0.0, 0.3),):
+        s.add(Poly([(a + off, ya - 1.45 + off), (b - off, ya - 1.45 + off), (b - off, ya + 1.45 - off), (a + off, ya + 1.45 - off)],
+                   "SIGNALS", fill=(255, 255, 255), width=w))
+    mx = (a + b) / 2
+    if ri == "M":                                   # the lamp matrix: small dots round the character
+        for ix in range(5):
+            for iy in range(5):
+                if ix in (0, 4) or iy in (0, 4):
+                    s.add(Poly(_circle(a + 0.3 + ix * 0.6, ya - 1.2 + iy * 0.6, 0.12, 6), "SIGNALS", fill=(0, 0, 0), width=0.05))
+    s.add(Text(mx, ya - 0.5, char or "?", 1.3, "SIGNALS", anchor="middle", bold=True))
 
 
 def _shunt(s: Scene, x: float, y: float, ya: float, sd: int, tv: int, name: str, x0: float | None = None,
@@ -2159,7 +2185,7 @@ def _blocks(s: Scene, d: DrawingData, w: float = W) -> None:
     s.add(Line(x2 + 2.5 + 2 * LAMP, y, x2 + 3.0 + 2 * LAMP, y, "BLOCKS", width=0.3),
           Line(x2 + 3.0 + 2 * LAMP, y, x2 + 4.1 + 2 * LAMP, y + 1.1, "BLOCKS", width=0.4),
           Line(x2 + 3.0 + 2 * LAMP, y, x2 + 4.1 + 2 * LAMP, y - 1.1, "BLOCKS", width=0.4),
-          Text(x2 + 12, y - 0.6, "Small lens C: calling-on (before the main head) · > route indicator", 1.6, "BLOCKS"))
+          Text(x2 + 12, y - 0.6, "Small lens C: calling-on (before the main head) · > junction route indicator · dotted box multi-lamp · double box stencil", 1.6, "BLOCKS"))
     y -= 4.2
     r = 2.4
     s.add(Poly([(x2 + 0.4, y - r / 2)] + [(x2 + 0.4 + r * math.cos(a), y - r / 2 + r * math.sin(a))

@@ -221,6 +221,10 @@ def _register_builtins():
        [P("tolerance_m", "number", "Boundary within (m) of the signals", min=0),
         P("max_span_m", "number", "Shunt signal to starter at most (m)", min=0)],
        lambda st, el, tg, tn, p: D.check_tin_bifurcation(st, el, tn, p), severity="WARN")
+    _b("route_indicator", "DECK-RI", "Route indicator on a Home signal or starter",
+       "A route indicator (junction, multi-lamp or stencil type) is fixed on the first stop signal or a starter only; "
+       "a multi-lamp / stencil one states the character it shows.",
+       {}, [], lambda st, el, tg, tn, p: D.check_route_indicator_position(st, el, p), severity="WARN")
     _b("dir_conv", "DIR-CONV", "Tag direction matches its signal",
        "A tag linked to a signal runs in the signal's direction, using the workspace's convention "
        "(SCR: SIP Down = Nominal; ECR: SIP Up = Nominal).",
@@ -372,7 +376,7 @@ def validate_params(kind: str, builtin: str | None, params: dict) -> dict:
 _ORDER = ["data_units", "h2_1", "h2_2", "h2_5", "h2_6", "h2_7", "h2_9", "h2_11", "h2_12", "h2_13",
           "h2_15", "h2_16", "h2_18", "h2_21", "h2_23", "h2_28", "fr004_unique", "fr004_parity", "br001", "br005", "br005_rssi",
           "topology", "h2_8", "h2_17", "h2_20", "h2_22", "h2_26", "tan_dead_stop", "tan_l_tag", "tan_after_a", "dir_conv", "turnout_t_tags", "tin_overlaps", "dup_elements",
-          "h2_14_repeat", "h2_11_prog", "h2_7_merged", "tan_shunt_n", "virtual_bslb", "tin_bifurcation"]
+          "h2_14_repeat", "h2_11_prog", "h2_7_merged", "tan_shunt_n", "virtual_bslb", "tin_bifurcation", "route_indicator"]
 
 
 def _ensure():

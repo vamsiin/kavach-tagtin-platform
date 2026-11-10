@@ -174,7 +174,7 @@ function ElementForm({ tracks, initial, onSubmit, onCancel, submitting }: {
         </select>
         <input placeholder={`Aspects (default ${defaultAspects(type) ?? "—"})`} value={aspects}
                onChange={(e) => setAspects(e.target.value)} style={{ width: 170 }}
-               title="Lamps from the SIP, e.g. R/Y/G or R/Y/YY/G+RI (R red, Y yellow, YY double yellow, G green, C calling-on, SH shunt, +RI route indicator). A calling-on signal is its C marker followed by its calling-on aspect(s), e.g. C/Y (the default: marker + a small yellow lens). Leave blank to use the default for the signal type." />
+               title="Lamps from the SIP, e.g. R/Y/G or R/Y/YY/G+RI (R red, Y yellow, YY double yellow, G green, C calling-on, SH shunt, +RI route indicator, junction type; +RI:M:2 multi-lamp type showing 2; +RI:S:B stencil type showing B - only on a Home signal or starter). A calling-on signal is its C marker followed by its calling-on aspect(s), e.g. C/Y (the default: marker + a small yellow lens). Leave blank to use the default for the signal type." />
         </>
       )}
       <input placeholder="Remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} />

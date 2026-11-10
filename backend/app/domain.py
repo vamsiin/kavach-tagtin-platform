@@ -91,6 +91,33 @@ def default_aspects(element_type: str | None) -> str | None:
     return "R/Y/G" + ri
 
 
+RI_TYPES = {"J": "Junction", "M": "Multi-lamp", "S": "Stencil"}
+# Route indicator written in the aspects: "+RI" or "+RI:J" junction type (the fork of lamps; speed above 15 km/h),
+# "+RI:M:2" multi-lamp type (shows 0-9 / A-Z; speed below 15 km/h), "+RI:S:B" stencil type (a letter box, on starters).
+
+
+def split_route_indicator(text: str | None) -> tuple[str, str | None, str]:
+    """'R/Y/G+RI:M:2' -> ('R/Y/G', 'M', '2'); 'R/Y/G+RI' -> ('R/Y/G', 'J', ''); no indicator -> (text, None, '')."""
+    import re
+    raw = (text or "").upper()
+    m = re.search(r"\+\s*(?:J?RI|ROUTE\w*)(?:\s*:\s*(J|M|S)(?:\s*:\s*([0-9A-Z]))?)?", raw)
+    if not m:
+        return raw, None, ""
+    return (raw[:m.start()] + raw[m.end():]).strip(), (m.group(1) or "J"), (m.group(2) or "")
+
+
+def ri_suffix(ri: str | None, char: str = "") -> str:
+    if not ri:
+        return ""
+    return "+RI" if ri == "J" else f"+RI:{ri}" + (f":{char}" if char else "")
+
+
+def is_route_indicator_signal(element_type: str | None) -> bool:
+    """Route indicators are fixed on the first stop (Home) signal and on starters only."""
+    lo = (element_type or "").lower()
+    return "home" in lo or "starter" in lo
+
+
 def normalise_aspects(text: str | None) -> str | None:
     """'r y g', 'R-Y-G', 'R/Y/YY/G + RI' -> 'R/Y/G', 'R/Y/YY/G+RI'. Raises ValueError
     for an unknown lamp."""
@@ -98,13 +125,15 @@ def normalise_aspects(text: str | None) -> str | None:
     raw = (text or "").strip().upper()
     if not raw:
         return None
-    ri = bool(re.search(r"\+\s*(J?RI|ROUTE)", raw))
-    raw = re.sub(r"\+\s*(J?RI|ROUTE\w*)", "", raw)
+    raw, ri_t, ri_c = split_route_indicator(raw)
     lamps = [p for p in re.split(r"[\s/,\-]+", raw) if p]
     bad = [p for p in lamps if p not in ASPECT_LAMPS]
     if bad or not lamps:
         raise ValueError(f"Unknown aspect(s) {', '.join(bad) or raw}; use {'/'.join(ASPECT_LAMPS)} (and +RI)")
-    return "/".join(lamps) + ("+RI" if ri else "")
+    if ri_t in ("M", "S") and not ri_c:
+        raise ValueError(f"A {RI_TYPES[ri_t]} route indicator needs the character it shows, e.g. "
+                         f"+RI:{ri_t}:{'2' if ri_t == 'M' else 'B'}")
+    return "/".join(lamps) + ri_suffix(ri_t, ri_c)
 
 LC_CLASSES = ["Special", "A", "B", "C", "D"]
 LC_MANNING = ["Manned interlocked", "Manned non-interlocked", "Unmanned"]
