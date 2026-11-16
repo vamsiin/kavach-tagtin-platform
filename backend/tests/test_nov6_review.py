@@ -149,3 +149,29 @@ def test_route_indicator_types_junction_multilamp_stencil():
                                               el("Distant Signal", "Y/G+RI"),
                                               el("Main Home without Junction Route Indicator", "R/Y/G+RI:M")])
     assert [r.status for r in res] == ["PASS", "FAIL", "FAIL"]
+
+
+def test_turnout_t_tag_centre_single_tin_and_siding_tin():
+    """Team answers (16 Nov): the T tag stands at the midpoint of A and B, 0.5 m rounding up; a turnout whose two halves
+    are in one TIN needs no T tag; the TIN of a siding reaches its shunt signal."""
+    from app.domain import Element, Station, Tag, TIN, Track
+    from app.rules.layout_rules import check_siding_tin_to_shunt, check_turnout_t_tags, point_centre_m
+    assert point_centre_m(0, 80) == 40 and point_centre_m(0, 123) == 62 and point_centre_m(263009, 262922) == 262966
+    p12 = Element(1, "P12", "Points / Turnout", 262103, track_id=1, to_track_id=3, b_end_m=262197)
+    one = [TIN(169, "Station", 261978, 262221, track_id=1), TIN(169, "Station", 262175, 262213, track_id=3)]
+    two = [TIN(171, "Station", 261978, 262221, track_id=1), TIN(172, "Station", 262175, 262213, track_id=3)]
+    r = check_turnout_t_tags([], [p12], tins=one)
+    assert [x.status for x in r] == ["PASS"] and "no separate T tag" in r[0].message
+    assert [x.status for x in check_turnout_t_tags([], [p12], tins=two)] == ["WARN"]          # two TINs: the T tag is needed
+    ok = check_turnout_t_tags([Tag(1, "R-834", "T", 262150, track_id=3, linked_element_id=1)], [p12], tins=two)
+    assert [x.status for x in ok] == ["PASS"]
+    off = check_turnout_t_tags([Tag(1, "R-834", "T", 262140, track_id=3, linked_element_id=1)], [p12], tins=two)
+    assert [x.status for x in off] == ["PASS", "WARN"] and "point centre" in off[1].message and "262.150" in off[1].message
+
+    st = Station(1, "Aler", "1", 262750, tracks=[Track(3, "COMMON LOOP", "Loop", 262175, 263146)])
+    p17 = Element(2, "P17", "Points / Turnout", 263050, track_id=3)
+    sh22 = Element(3, "SH22", "Shunt Signal", 263066, track_id=3)
+    short = [TIN(186, "Station", 262907, 263060, track_id=3)]
+    full = [TIN(186, "Station", 262907, 263116, track_id=3)]
+    assert [x.status for x in check_siding_tin_to_shunt(st, [p17, sh22], short)] == ["WARN"]
+    assert [x.status for x in check_siding_tin_to_shunt(st, [p17, sh22], full)] == ["PASS"]

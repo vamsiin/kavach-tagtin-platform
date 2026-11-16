@@ -167,10 +167,16 @@ def _register_builtins():
        lambda st, el, tg, tn, p: L.check_tan_adjacent_line_tag(tg, el, p))
     _b("turnout_t_tags", "DATA-TURNOUT", "Turnout (T) tag on its turnout",
        "Every points / turnout has its T tag between its A-end and B-end, and every T tag lies on a "
-       "turnout (the points it is linked to, if linked). Flags a T tag entered at the wrong chainage.",
-       {"tolerance_m": 5.0},
-       [P("tolerance_m", "number", "Tolerance beyond the ends (m)", min=0)],
-       lambda st, el, tg, tn, p: L.check_turnout_t_tags(tg, el, p), severity="WARN")
+       "turnout (the points it is linked to, if linked), at the point centre (midpoint of A and B, 0.5 m rounds up). "
+       "Flags a T tag entered at the wrong chainage. Points whose two halves lie in one TIN need no T tag.",
+       {"tolerance_m": 5.0, "centre_tolerance_m": 1.0},
+       [P("tolerance_m", "number", "Tolerance beyond the ends (m)", min=0),
+        P("centre_tolerance_m", "number", "T tag within (m) of the point centre", min=0)],
+       lambda st, el, tg, tn, p: L.check_turnout_t_tags(tg, el, p, tn), severity="WARN")
+    _b("siding_tin", "DATA-SIDING-TIN", "Siding TIN up to its shunt signal",
+       "The TIN of a siding after points extends up to the shunt signal; the part outside KAVACH has no TIN (white line).",
+       {"max_distance_m": 300}, [P("max_distance_m", "number", "Shunt signal within (m) of the points", min=0)],
+       lambda st, el, tg, tn, p: L.check_siding_tin_to_shunt(st, el, tn, p), severity="WARN")
     _b("tin_overlaps", "DATA-TIN", "No two TINs overlap on one line",
        "Two different TINs on the same stretch of one line: usually a turnout piece entered as a TIN row "
        "on a loop. Names the likely stray row (ends at a turnout tag, or the TIN belongs to another line).",
@@ -376,7 +382,7 @@ def validate_params(kind: str, builtin: str | None, params: dict) -> dict:
 _ORDER = ["data_units", "h2_1", "h2_2", "h2_5", "h2_6", "h2_7", "h2_9", "h2_11", "h2_12", "h2_13",
           "h2_15", "h2_16", "h2_18", "h2_21", "h2_23", "h2_28", "fr004_unique", "fr004_parity", "br001", "br005", "br005_rssi",
           "topology", "h2_8", "h2_17", "h2_20", "h2_22", "h2_26", "tan_dead_stop", "tan_l_tag", "tan_after_a", "dir_conv", "turnout_t_tags", "tin_overlaps", "dup_elements",
-          "h2_14_repeat", "h2_11_prog", "h2_7_merged", "tan_shunt_n", "virtual_bslb", "tin_bifurcation", "route_indicator"]
+          "h2_14_repeat", "h2_11_prog", "h2_7_merged", "tan_shunt_n", "virtual_bslb", "tin_bifurcation", "route_indicator", "siding_tin"]
 
 
 def _ensure():

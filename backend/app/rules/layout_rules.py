@@ -423,7 +423,7 @@ def gate_tag_wl_alternative(tag: Tag, gate: Element, elements: list[Element], re
 
 __all__ = ["check_h2_8_tin_demarcation", "check_h2_17_tin_colours", "check_h2_20_exit_at_sidings",
            "check_h2_22_block_tin_extent", "check_h2_26_not_to_scale", "check_tan_dead_stop",
-           "check_tan_adjacent_line_tag", "check_tan_after_adjustment", "gate_tag_wl_alternative",
+           "check_tan_adjacent_line_tag", "check_siding_tin_to_shunt", "point_centre_m", "check_tan_after_adjustment", "gate_tag_wl_alternative",
            "neighbouring_tins", "LC_GATE"]
 
 
@@ -433,9 +433,30 @@ __all__ = ["check_h2_8_tin_demarcation", "check_h2_17_tin_colours", "check_h2_20
 # is linked to, if linked). Catches a T tag entered at the wrong chainage, which
 # otherwise just goes missing from its turnout on the drawing.
 # ---------------------------------------------------------------------------
-def check_turnout_t_tags(tags: list[Tag], elements: list[Element], p: dict | None = None) -> list[CheckResult]:
+def point_centre_m(a_m: float, b_m: float) -> int:
+    """The T tag's chainage: the exact midpoint of the A-end and B-end, rounded half up to the next metre
+    (80 m apart -> 40; 123 m apart -> 61.5 -> 62), as the QFTL team does it."""
+    import math
+    return int(math.floor((a_m + b_m) / 2 + 0.5))
+
+
+def _single_tin(e: Element, tins: list[TIN] | None) -> bool:
+    """Both halves of the turnout lie in the same TIN (P12, P18 on the approved layout): the points carry parallel
+    movements inside one TIN, so no separate T tag is required."""
+    if not tins or getattr(e, "b_end_m", None) is None or e.to_track_id is None:
+        return False
+
+    def at(track_id, m):
+        return {n.tin_no for n in tins if n.track_id == track_id and min(n.start_m, n.end_m) - 1 <= m <= max(n.start_m, n.end_m) + 1}
+    a, b = at(e.track_id, e.location_m), at(e.to_track_id, e.b_end_m)
+    return bool(a) and a == b and len(a) == 1
+
+
+def check_turnout_t_tags(tags: list[Tag], elements: list[Element], p: dict | None = None,
+                         tins: list[TIN] | None = None) -> list[CheckResult]:
     p = _params("turnout_t_tags", p)
     tol = float(p.get("tolerance_m", 5.0))
+    centre_tol = float(p.get("centre_tolerance_m", 1.0))
     title = "Turnout (T) tag between the A-end and B-end of its points"
     points = [e for e in elements if e.element_type == POINTS]
     els = {e.id: e for e in elements}
@@ -461,6 +482,14 @@ def check_turnout_t_tags(tags: list[Tag], elements: list[Element], p: dict | Non
                                    ("is on " if ok else "is not between the ends of ") + desc(linked),
                                    subject_ref=t.tag_ref))
             used.setdefault(linked.id, []).append(t)
+            if getattr(linked, "b_end_m", None) is not None:
+                want = point_centre_m(linked.location_m, linked.b_end_m)
+                if abs(t.location_m - want) > centre_tol:
+                    out.append(CheckResult("DATA-TURNOUT", title, "WARN",
+                                           f"{t.tag_ref} is not at the point centre of {linked.element_ref}: at "
+                                           f"{t.location_m / 1000:.3f}, the centre of A {linked.location_m / 1000:.3f} / B "
+                                           f"{linked.b_end_m / 1000:.3f} is {want / 1000:.3f} (midpoint, 0.5 m rounds up)",
+                                           subject_ref=t.tag_ref))
             continue
         on = [e for e in points if span(e)[0] <= t.location_m <= span(e)[1]]
         if not on:
@@ -479,7 +508,11 @@ def check_turnout_t_tags(tags: list[Tag], elements: list[Element], p: dict | Non
         if e.to_track_id is None:
             continue                       # leads off the KAVACH lines (siding): no T tag needed
         mine = used.get(e.id, [])
-        if not mine:
+        if not mine and _single_tin(e, tins):
+            out.append(CheckResult("DATA-TURNOUT", title, "PASS",
+                                   f"{e.element_ref}: one TIN on both halves (parallel movements), so no separate T tag is required",
+                                   subject_ref=e.element_ref))
+        elif not mine:
             out.append(CheckResult("DATA-TURNOUT", title, "WARN",
                                    f"No T tag between the ends of {desc(e)}", subject_ref=e.element_ref))
         elif len(mine) > 1 and len({round(t.location_m) for t in mine}) < len(mine):
@@ -487,6 +520,38 @@ def check_turnout_t_tags(tags: list[Tag], elements: list[Element], p: dict | Non
                                    f"{' and '.join(t.tag_ref for t in mine)} are at the same chainage on "
                                    f"{e.element_ref} -- one of them is probably entered at the wrong place",
                                    subject_ref=e.element_ref))
+    return out
+
+
+def check_siding_tin_to_shunt(station: Station, elements: list[Element], tins: list[TIN],
+                              p: dict | None = None) -> list[CheckResult]:
+    """QFTL: the TIN of a siding (points that lead off the KAVACH lines) is extended up to its shunt signal; what lies
+    beyond, outside KAVACH, has no TIN and is drawn as a white line."""
+    p = _params("siding_tin", p)
+    title = "Siding TIN extended up to its shunt signal"
+    out = []
+    reach = float(p.get("max_distance_m", 300))
+    for e in elements:
+        if e.element_type != POINTS or e.to_track_id is not None or e.track_id is None:
+            continue
+        tr = next((t for t in station.tracks if t.id == e.track_id), None)
+        if tr is None:
+            continue
+        end = min((tr.start_m, tr.end_m), key=lambda x: abs(x - e.location_m))
+        lo, hi = sorted((e.location_m, end))
+        shunts = [x for x in elements if x.element_type == "Shunt Signal" and x.track_id == tr.id
+                  and lo <= x.location_m <= hi and abs(x.location_m - e.location_m) <= reach]
+        if not shunts:
+            continue
+        sh = max(shunts, key=lambda x: abs(x.location_m - e.location_m))
+        covered = any(n.track_id == tr.id and min(n.start_m, n.end_m) - 1 <= sh.location_m <= max(n.start_m, n.end_m) + 1
+                      for n in tins)
+        out.append(CheckResult("DATA-SIDING-TIN", title, "PASS" if covered else "WARN",
+                               f"{e.element_ref} siding on {tr.name}: " +
+                               (f"TIN reaches the shunt signal {sh.element_ref} at {sh.location_m / 1000:.3f}" if covered else
+                                f"no TIN reaches the shunt signal {sh.element_ref} at {sh.location_m / 1000:.3f} -- extend "
+                                f"the TIN up to it (the part beyond, outside KAVACH, stays blank)"),
+                               subject_ref=e.element_ref))
     return out
 
 

@@ -86,3 +86,15 @@ two TINs of a turnout overlap or collide in the generated layout.
 | Date | Decision | Owner |
 |---|---|---|
 |  |  |  |
+
+## Team answers (16 Nov 2026) and what the tool does with them
+
+| Answer | In the tool |
+|---|---|
+| TIN placement and bifurcation follow the permitted train movements (TOC); the TIN inputs are correct | Drawn as entered; TINs are not inferred |
+| A turnout has one TIN (P12, P18: parallel movements) or two (P19: N-186 up to the point centre) | Colour per half from the TIN at each end; one TIN = one colour, one label |
+| A single-TIN turnout needs no separate T tag (as in the ECR project) | Rule `DATA-TURNOUT`: no "missing T tag" warning where both halves lie in one TIN |
+| T tag at the point centre = midpoint of A and B; 0.5 m and above rounds up (80 m -> 40, 123 m -> 61.5 -> 62) | Rule `DATA-TURNOUT`: warns when a linked T tag is more than 1 m from that centre (Aler: all six pass) |
+| P20 / N-171: two parallel possibilities, one permitted at a time (TOC) | No change; informational |
+| TIN numbers shown on their lines where space allows | As now (labels beside their lines) |
+| Siding after P17: TIN up to the shunt signal, the part outside KAVACH blank / white | New rule `DATA-SIDING-TIN`; the siding is already drawn white beyond its last tag (Aler: P17 / SH22 passes) |
