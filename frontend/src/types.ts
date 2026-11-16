@@ -195,6 +195,8 @@ export interface Element {
   signal_side?: string | null;     // signals: drawn Above / Below the line; blank = automatic
   siding_name?: string | null;     // points that lead to a siding: its name
   siding_shed?: string | null;     // ... and the shed on it
+  tin_a_no?: number | null;        // points: TIN on the A half (blank = the line TIN at the A-end)
+  tin_b_no?: number | null;        // points: TIN on the B half
 }
 
 /** Signal aspects (mirrors backend domain.default_aspects). R red, Y yellow, YY double
@@ -341,6 +343,7 @@ export interface ToCCrossValidation {
     routes_with_failures: string[];
     missing_tags: string[];
   };
+  turnout_tins?: { turnout: string; status: "PASS" | "WARN"; message: string }[];
 }
 
 export const ROLES = ["designer", "checker", "approver", "project_manager", "config_manager", "admin"] as const;

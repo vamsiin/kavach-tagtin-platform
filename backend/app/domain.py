@@ -435,6 +435,8 @@ class Element:
     signal_side: str | None = None   # signals: drawn "Above" / "Below" the line; None = by direction
     siding_name: str | None = None   # points that lead to a siding (no "leads to" line): its name on the layout
     siding_shed: str | None = None   # ... and the shed standing on it, if any (e.g. Tower wagon shed)
+    tin_a_no: int | None = None      # points: TIN on the A half, if it is not the TIN of the line at the A-end
+    tin_b_no: int | None = None      # points: TIN on the B half, if it is not the TIN of the line at the B-end
 
 
 @dataclass

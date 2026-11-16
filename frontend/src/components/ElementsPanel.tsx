@@ -89,6 +89,8 @@ function ElementForm({ tracks, initial, onSubmit, onCancel, submitting }: {
   const [bEnd, setBEnd] = useState(initial?.b_end_m != null ? String(initial.b_end_m) : "");
   const [sidingName, setSidingName] = useState(initial?.siding_name ?? "");
   const [sidingShed, setSidingShed] = useState(initial?.siding_shed ?? "");
+  const [tinA, setTinA] = useState(initial?.tin_a_no != null ? String(initial.tin_a_no) : "");
+  const [tinB, setTinB] = useState(initial?.tin_b_no != null ? String(initial.tin_b_no) : "");
   const isBoard = type === "BSLB Board" || type === "Stop Board/Buffer Stop";
   const id = (v: string) => (v ? parseInt(v) : null);
 
@@ -103,6 +105,8 @@ function ElementForm({ tracks, initial, onSubmit, onCancel, submitting }: {
         lc_manning: type === LC_GATE ? lcManning || null : null,
         aspects: isSignalType(type) ? aspects.trim() || null : null,
         signal_side: isSignalType(type) || isBoard ? side || null : null,
+        tin_a_no: type === POINTS && tinA.trim() ? Number(tinA) : null,
+        tin_b_no: type === POINTS && tinB.trim() ? Number(tinB) : null,
         siding_name: type === POINTS && !toTrack && sidingName.trim() ? sidingName.trim() : null,
         siding_shed: type === POINTS && !toTrack && sidingShed.trim() ? sidingShed.trim() : null,
         b_end_m: type === POINTS && bEnd.trim() ? parseFloat(bEnd) : null,
@@ -128,6 +132,14 @@ function ElementForm({ tracks, initial, onSubmit, onCancel, submitting }: {
       {type === POINTS && (
         <input type="number" step="0.001" placeholder="B-end ABS (m)" value={bEnd} onChange={(e) => setBEnd(e.target.value)}
                title="Points: B-end absolute location (m), where the turnout meets the line it leads to" style={{ width: 130 }} />
+      )}
+      {type === POINTS && (
+        <>
+          <input placeholder="TIN on A half" value={tinA} inputMode="numeric" onChange={(e) => setTinA(e.target.value.replace(/\D/g, ""))}
+                 style={{ width: 110 }} title="Optional. The TIN number on the half of the turnout nearer the A-end, when it is not the TIN of the line at the A-end (taken from the TIN register). Blank = the line's TIN." />
+          <input placeholder="TIN on B half" value={tinB} inputMode="numeric" onChange={(e) => setTinB(e.target.value.replace(/\D/g, ""))}
+                 style={{ width: 110 }} title="Optional. The TIN number on the half nearer the B-end, when it is not the TIN of the line at the B-end. Blank = the line's TIN." />
+        </>
       )}
       {type === POINTS && !toTrack && (
         <>

@@ -175,3 +175,70 @@ def test_turnout_t_tag_centre_single_tin_and_siding_tin():
     full = [TIN(186, "Station", 262907, 263116, track_id=3)]
     assert [x.status for x in check_siding_tin_to_shunt(st, [p17, sh22], short)] == ["WARN"]
     assert [x.status for x in check_siding_tin_to_shunt(st, [p17, sh22], full)] == ["PASS"]
+
+
+def test_turnout_half_tins_labels_piece_rows_close_turnouts_and_toc():
+    """R2 (TIN on A / B half), R3 (label only where a half differs from its line), R4 (turnout-piece rows accepted),
+    R7 (close turnouts offset), and the turnout TINs checked against the ToC routes."""
+    from app.drawing.layout import DTin
+    from app.domain import Element, Tag as DomTag, TIN as DomTIN
+    from app.toc.cross_validate import turnout_tins_from_toc
+    from app.toc.parser import Route, TagChainEntry
+    tracks = [DTrack(1, "DN MAIN", 259740, 265279, line_type="DN MAIN"),
+              DTrack(3, "COMMON LOOP", 262175, 263146, line_type="COMMON LOOP")]
+    tins = [DTin(171, 262910, 263152, 1, "Sky Blue"), DTin(186, 262907, 263116, 3, "Yellow")]
+    tag = DTag("R-836", "T", 262966, 3, 836)
+
+    def scene(p19):
+        els = [p19]
+        return build(aler(tracks=tracks, elements=els, tins=tins, tags=[tag], borders=[]))
+
+    def tin_labels(sc):
+        return [i.text for i in sc.items if isinstance(i, Text) and i.layer == "LABELS" and i.text.startswith("N-")]
+    base = DElement("P19", "Points / Turnout", 263009, 1, to_track_id=3, b_end_m=262922)
+    plain = tin_labels(scene(base))
+    assert plain.count("N-171") == 1 and plain.count("N-186") == 1               # the lines' own labels only (R3)
+    same_as_line = DElement("P19", "Points / Turnout", 263009, 1, to_track_id=3, b_end_m=262922, tin_a_no=171)
+    assert tin_labels(scene(same_as_line)).count("N-171") == 1                    # equal to its line: no extra label
+    differs = DElement("P19", "Points / Turnout", 263009, 1, to_track_id=3, b_end_m=262922, tin_a_no=186, tin_b_no=177)
+    labs = tin_labels(scene(differs))
+    assert labs.count("N-177") == 1 and labs.count("N-186") == 2                  # R2: B half N-177; A half N-186 labelled
+
+    # R7: two turnouts with centres under 30 m apart: the second one's labels flip to the other side
+    from app.drawing.layout import _flip_close_turnouts
+
+    class T:
+        def __init__(self, a, b):
+            self.a_m, self.b_m, self.tb = a, b, 3
+    t1, t2, t3 = T(100, 140), T(110, 150), T(400, 440)
+    _flip_close_turnouts([t1, t2, t3])
+    assert (t1.flip, t2.flip, t3.flip) == (False, True, False)
+
+    # ToC: routes over the T tag need N-186 and N-177 free; the A half on DN MAIN is N-171 -> flagged
+    el = [Element(1, "P19", "Points / Turnout", 263009, track_id=1, to_track_id=3, b_end_m=262922)]
+    tg = [DomTag(1, "R-836", "T", 262966, track_id=3, linked_element_id=1)]
+    dt = [DomTIN(171, "Station", 262910, 263152, track_id=1), DomTIN(186, "Station", 262907, 263116, track_id=3)]
+    route = Route("5", "S1", "S3", "Main", "DN", "Home", "R-1", [TagChainEntry("R-836", 10, 10)],
+                  tins_required_free="N-186, N-177")
+    res = turnout_tins_from_toc([route], el, tg, dt)
+    assert res[0]["status"] == "WARN" and "half A is TIN 171" in res[0]["message"]
+    el[0].tin_a_no = 186
+    assert turnout_tins_from_toc([route], el, tg, dt)[0]["status"] == "PASS"
+
+
+def test_api_half_tin_fields(client):
+    admin, des, chk = _make_admin_designer_checker(client)
+    sid = client.post("/stations", json={"name": "Aler", "kavach_station_id": "103", "centre_line_m": 262750}, headers=des).json()["id"]
+    main = client.post(f"/stations/{sid}/tracks", json={"name": "DN MAIN", "track_type": "Main", "start_m": 259740,
+                       "end_m": 265279}, headers=des).json()["id"]
+    loop = client.post(f"/stations/{sid}/tracks", json={"name": "COMMON LOOP", "track_type": "Loop", "start_m": 262175,
+                       "end_m": 263146}, headers=des).json()["id"]
+    r = client.post(f"/stations/{sid}/elements", json={"element_ref": "P19", "element_type": "Points / Turnout",
+                    "location_m": 263009, "track_id": main, "to_track_id": loop, "b_end_m": 262922, "tin_a_no": 186,
+                    "tin_b_no": 177}, headers=des)
+    assert r.status_code == 200 and (r.json()["tin_a_no"], r.json()["tin_b_no"]) == (186, 177), r.text
+    r = client.post(f"/stations/{sid}/elements", json={"element_ref": "SH1", "element_type": "Shunt Signal",
+                    "location_m": 262000, "track_id": main, "tin_a_no": 5}, headers=des).json()
+    assert r["tin_a_no"] is None                                                  # only points carry half TINs
+    assert client.post(f"/stations/{sid}/elements", json={"element_ref": "P2", "element_type": "Points / Turnout",
+                       "location_m": 262100, "track_id": main, "tin_a_no": 0}, headers=des).status_code == 422

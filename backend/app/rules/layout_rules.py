@@ -608,13 +608,17 @@ def check_tin_overlaps(station: Station, tins: list[TIN], tags: list[Tag], p: di
         shown = min([o for o in tins if o.track_id == r.track_id and ext(o)[0] - 1 <= mid <= ext(o)[1] + 1],
                     key=rank)
         reason = why(r)
+        piece = "ends at turnout tag" in reason
         out.append(CheckResult(
-            "DATA-TIN", title, "WARN",
+            "DATA-TIN", title, "PASS" if piece else "WARN",
             f"TIN {r.tin_no} ({r0 / 1000:.3f}-{r1 / 1000:.3f}) overlaps "
             f"{', '.join(sorted({f'TIN {o.tin_no}' for o in over}))} on {names.get(r.track_id, '?')}"
             + (f"; it looks like a turnout piece ({reason})" if reason else "")
-            + f". The drawing shows TIN {shown.tin_no} there. Turnouts take their colours from the lines' "
-              f"TINs -- delete this row.", subject_ref=f"TIN {r.tin_no}"))
+            + f". The drawing shows TIN {shown.tin_no} there. "
+            + ("The row is accepted as a turnout piece: it colours its half of the turnout and is not drawn on the line."
+               if piece else
+               "If it is a turnout piece, give the points' TIN on A / B half instead; if it is a mistake, delete the row."),
+            subject_ref=f"TIN {r.tin_no}"))
     return out
 
 

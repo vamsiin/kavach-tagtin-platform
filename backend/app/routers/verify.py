@@ -8,7 +8,7 @@ from .. import models, schemas
 from ..auth.deps import get_current_user
 from ..rules.engine import run_all_checks, MANUAL_CLAUSES
 from ..toc.parser import parse_toc_file, UnsupportedFormatError
-from ..toc.cross_validate import cross_validate_station, summarize
+from ..toc.cross_validate import cross_validate_station, summarize, turnout_tins_from_toc
 
 router = APIRouter(tags=["verification"])
 
@@ -79,7 +79,7 @@ async def verify_against_toc(station_id: int, toc_file: UploadFile = File(...),
             f"{', '.join(SUPPORTED_TOC_EXTENSIONS)}.",
         )
 
-    _, _, tags, _ = _load_domain_layout(station_id, db)
+    _, elements, tags, tins = _load_domain_layout(station_id, db)
 
     with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
         tmp.write(await toc_file.read())
@@ -94,4 +94,5 @@ async def verify_against_toc(station_id: int, toc_file: UploadFile = File(...),
     return schemas.ToCCrossValidationOut(
         results=[schemas.ChainCheckResultOut(**vars(r)) for r in results],
         summary=summarize(results),
+        turnout_tins=turnout_tins_from_toc(routes, elements, tags, tins),
     )

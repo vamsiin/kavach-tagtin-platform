@@ -120,6 +120,8 @@ class DElement:
     side_pref: str | None = None       # signals: "Above" / "Below" the line; None = by direction
     siding_name: str | None = None     # points to a siding: its name
     siding_shed: str | None = None     # points to a siding: the shed on it
+    tin_a_no: int | None = None        # points: TIN on the A half (overrides the line TIN)
+    tin_b_no: int | None = None        # points: TIN on the B half
 
 
 @dataclass
@@ -1300,6 +1302,7 @@ def _draw(s: Scene, d: DrawingData, order: list, plans: dict, turnouts: list, w:
     _line_ends(s, d, order, w)
 
     # turnouts first: the line bands are drawn over their ends
+    _flip_close_turnouts(turnouts)
     for to in turnouts:
         _turnout(s, d, to, plans)
 
@@ -1340,6 +1343,7 @@ def _draw(s: Scene, d: DrawingData, order: list, plans: dict, turnouts: list, w:
     # T tags on the turnouts (over the line bands), the ABS of each turnout end, and fouling marks
     for to in turnouts:
         _turnout_tag(s, to)
+        _turnout_tin_labels(s, d, to)
         _point_abs(s, to)
     _fouling_marks(s, d, plans)
     _sand_humps(s, d, plans)
@@ -1544,12 +1548,48 @@ def _split(to: _Turnout) -> float:
     return 0.5
 
 
+def _half_tins(d: DrawingData, to: _Turnout) -> tuple:
+    """The TIN on each half of a turnout: ((no, row, source), (no, row, source)) for the A half and the B half.
+    The designer's own entry (points: TIN on A / B half) wins; else a TIN row entered for the turnout piece (it ends
+    at the turnout's T tag, on one of its two lines, and runs out on that half's side); else the TIN of the line at
+    that end. `source` is "set", "row" or "line"."""
+    if getattr(to, "halves", None) is not None:
+        return to.halves
+    e = to.e
+    mid = (to.a_m + to.b_m) / 2
+    t_at = to.tag.location_m if to.tag is not None else mid
+    out = []
+    for half, over, track, m in (("A", e.tin_a_no, to.ta, to.a_m), ("B", e.tin_b_no, to.tb, to.b_m)):
+        line = _tin_near(d, track, m) if track is not None else None
+        if over is not None:
+            row = next((n for n in d.tins if n.tin_no == over and n.track_id in (to.ta, to.tb)), None) or \
+                next((n for n in d.tins if n.tin_no == over), None)
+            out.append((over, row, "set"))
+            continue
+        toward = 1 if m >= mid else -1            # which side of the centre this half lies on
+        piece = None
+        for n in d.tins:
+            if n.track_id not in (to.ta, to.tb) or not _is_piece(d, n):
+                continue
+            lo, hi = min(n.start_m, n.end_m), max(n.start_m, n.end_m)
+            if abs(lo - t_at) <= 2 and toward > 0 or abs(hi - t_at) <= 2 and toward < 0:
+                piece = n
+                break
+        if piece is not None and (line is None or piece.tin_no != line.tin_no):
+            out.append((piece.tin_no, piece, "row"))
+        else:
+            out.append((line.tin_no if line is not None else None, line, "line"))
+    to.halves = (out[0], out[1])
+    return to.halves
+
+
 def _turnout(s: Scene, d: DrawingData, to: _Turnout, plans: dict) -> None:
     """The turnout as a band from its A-end to its B-end, each half in the colour of
     the TIN at that end, split at the turnout tag (QFTL obs. 2); cranked like the
     manual layouts, with a tab alongside each line."""
-    ca = _tin_rgb(_tin_near(d, to.ta, to.a_m))
-    cb = _tin_rgb(_tin_near(d, to.tb, to.b_m)) if to.tb is not None else (255, 255, 255)
+    (_, ra, _), (_, rb, _) = _half_tins(d, to)
+    ca = _tin_rgb(ra)
+    cb = _tin_rgb(rb) if to.tb is not None else (255, 255, 255)
     (p0, p1, p2, p3) = to.path
     f = _split(to)
     pm = (p1[0] + (p2[0] - p1[0]) * f, p1[1] + (p2[1] - p1[1]) * f)
@@ -1697,6 +1737,62 @@ def _fouling_marks(s: Scene, d: DrawingData, plans: dict) -> None:
               Text(x + 1.9, y + BAND / 2 + 0.8, f"{e.location_m:.0f}", 1.5, "POINTS", angle=90, anchor="start", bold=True))
 
 
+def _flip_close_turnouts(turnouts: list, close_m: float = 30.0) -> None:
+    """Two turnouts whose centres are closer than 30 m: the second one's labels (T tag number and ABS, half TINs) go on
+    the other side of its diagonal, so the two sets never sit on top of each other."""
+    ts = sorted([t for t in turnouts if t.tb is not None], key=lambda t: (t.a_m + t.b_m) / 2)
+    for i, t in enumerate(ts):
+        t.flip = False
+        near = [u for u in ts[:i] if abs((u.a_m + u.b_m) / 2 - (t.a_m + t.b_m) / 2) < close_m]
+        if near:
+            t.flip = not any(u.flip for u in near)
+
+
+def _open_side(to: _Turnout) -> int:
+    side = 1 if (to.xb - to.xa) * (to.yb - to.ya) < 0 else -1      # the open side of the slope
+    return -side if getattr(to, "flip", False) else side
+
+
+def _turnout_tin_labels(s: Scene, d: DrawingData, to: _Turnout) -> None:
+    """The TIN number of a turnout half, written beside that half of the diagonal, only where it differs from the
+    TIN of the line it joins (a half that carries the line's TIN is named by the line's own label). Where both halves
+    carry the same TIN and it is not the line's, one label at the centre."""
+    if to.tb is None or getattr(to, "cont", 0):
+        return
+    (na, _, sa), (nb, _, sb) = _half_tins(d, to)
+    la, lb = _tin_near(d, to.ta, to.a_m), _tin_near(d, to.tb, to.b_m)
+    sa = "line" if na is None or (la is not None and la.tin_no == na) else sa      # same as the line's TIN: no label
+    sb = "line" if nb is None or (lb is not None and lb.tin_no == nb) else sb
+    (p0, p1, p2, p3) = to.path
+    ang = math.degrees(math.atan2(p2[1] - p1[1], p2[0] - p1[0]))
+    if ang > 90:
+        ang -= 180
+    if ang < -90:
+        ang += 180
+    r = math.radians(ang)
+    nx, ny = -math.sin(r), math.cos(r)
+    side = _open_side(to)
+    items = []
+    if na is not None and na == nb and (sa != "line" or sb != "line"):
+        items.append((0.5, na))
+    else:
+        if sa != "line" and na is not None:
+            items.append((0.22, na))
+        if sb != "line" and nb is not None:
+            items.append((0.78, nb))
+    for f, no in items:
+        x, y = p1[0] + (p2[0] - p1[0]) * f, p1[1] + (p2[1] - p1[1]) * f
+        txt = f"N-{no}"
+        bw_, bh_ = text_len(txt, 2.1) + 1.6, 2.1 + 1.2
+        sd_ = -side if f == 0.5 else side            # the centre label goes opposite the T tag's number and ABS
+        cx, cy = x + sd_ * nx * (BAND * 0.45 + bh_ / 2 + 1.0), y + sd_ * ny * (BAND * 0.45 + bh_ / 2 + 1.0)
+        tx, ty = math.cos(r), math.sin(r)
+        box = [(cx + a * tx * bw_ / 2 + b * nx * bh_ / 2, cy + a * ty * bw_ / 2 + b * ny * bh_ / 2)
+               for a, b in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+        s.add(Poly(box, "LABELS", stroke=RED, fill=(255, 255, 255), width=0.2),
+              Text(cx - nx * 2.1 * 0.36, cy - ny * 2.1 * 0.36, txt, 2.1, "LABELS", RED, angle=ang, anchor="middle", bold=True))
+
+
 def _turnout_tag(s: Scene, to: _Turnout) -> None:
     if to.tag is None:
         if to.tb is not None:          # flag it on the drawing rather than leave it silently blank
@@ -1722,7 +1818,7 @@ def _turnout_tag(s: Scene, to: _Turnout) -> None:
     r = math.radians(ang)
     tx, ty = math.cos(r), math.sin(r)             # along the band
     nx, ny = -math.sin(r), math.cos(r)            # up, perpendicular to it
-    side = 1 if (to.xb - to.xa) * (to.yb - to.ya) < 0 else -1   # the open side of the slope
+    side = _open_side(to)                                       # the open side of the slope
     bw_, bh_ = text_len(t.ref, LBL) + 1.8, LBL + 1.3
     d1 = TAG_W / 2 + 0.6 + bh_ / 2
     c1 = (xm + side * nx * d1, ym + side * ny * d1)

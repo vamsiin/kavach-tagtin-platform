@@ -46,6 +46,8 @@ _ALIASES = {
         "signal_side": ["signalside", "drawnside", "drawn", "drawnabovebelow"],
         "siding_name": ["sidingname", "siding"],
         "siding_shed": ["sidingshed", "shed"],
+        "tin_a_no": ["tinaa", "tina", "tinonahalf", "tinahalf", "tinaend"],
+        "tin_b_no": ["tinb", "tinonbhalf", "tinbhalf", "tinbend"],
         "remarks": ["remarks", "remark", "notes"],
     },
     "tags": {
@@ -429,6 +431,19 @@ def preview(db, station: models.StationORM, kind: str, rows: list[dict[str, str]
             if side_pref not in (None, "Above", "Below"):
                 errs.append(f"Drawn side '{rec.get('signal_side')}' must be Above or Below")
                 side_pref = None
+            half = {}
+            for f in ("tin_a_no", "tin_b_no"):
+                raw = re.sub(r"(?i)^N-?", "", (rec.get(f) or "").strip())
+                if not raw:
+                    half[f] = None
+                elif not raw.isdigit() or int(raw) < 1:
+                    errs.append(f"{f} '{rec.get(f)}' must be a TIN number")
+                    half[f] = None
+                elif etype != POINTS:
+                    warns.append(f"{f} ignored: {etype} is not points")
+                    half[f] = None
+                else:
+                    half[f] = int(raw)
             key = (ref.upper(), tid)
             if (key, loc) in seen:
                 errs.append(f"{ref} appears twice in the file on the same line at the same chainage")
@@ -439,6 +454,7 @@ def preview(db, station: models.StationORM, kind: str, rows: list[dict[str, str]
                                     lc_class=lc_class, lc_manning=lc_man, aspects=aspects, b_end_m=b_end, signal_side=side_pref,
                                     siding_name=((rec.get('siding_name') or '').strip() or None) if etype == POINTS and to is None else None,
                                     siding_shed=((rec.get('siding_shed') or '').strip() or None) if etype == POINTS and to is None else None,
+                                    tin_a_no=half["tin_a_no"], tin_b_no=half["tin_b_no"],
                                     remarks=(rec.get("remarks") or "").strip() or None))
             old = _match(existing.get(key, []), lambda e: e.location_m == loc, claimed)
             if old is not None:

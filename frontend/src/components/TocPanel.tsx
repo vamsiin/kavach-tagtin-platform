@@ -73,6 +73,24 @@ export function TocPanel({ stationId }: Props) {
               ))}
             </tbody>
           </table>
+          {(result.turnout_tins ?? []).length > 0 && (
+            <>
+              <h4>Turnout TINs against the routes over them</h4>
+              <p className="muted small">Each half of a turnout should carry a TIN that the routes over its T tag require free.</p>
+              <table className="register-table">
+                <thead><tr><th>Turnout</th><th>Status</th><th>Detail</th></tr></thead>
+                <tbody>
+                  {(result.turnout_tins ?? []).map((r, i) => (
+                    <tr key={i} className={`row-${r.status.toLowerCase()}`}>
+                      <td>{r.turnout}</td>
+                      <td><span className={`badge ${r.status.toLowerCase()}`}>{r.status}</span></td>
+                      <td>{r.message}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
         </>
       )}
     </div>

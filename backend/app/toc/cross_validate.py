@@ -120,3 +120,59 @@ def summarize(results: list[ChainCheckResult]) -> dict:
         "missing_tags": sorted({r.tag_ref for r in fails
                                  if r.tag_ref and "missing" in r.message}),
     }
+
+
+# ---------------------------------------------------------------------------
+# Turnout TINs from the ToC (QFTL, Nov 2026): which TINs a turnout carries depends on the routes that run over it,
+# the TINs each route needs free (and free in its overlap). For every turnout with a T tag, the routes whose tag
+# chain contains that T tag name the TINs required; each half of the turnout should carry one of them.
+# ---------------------------------------------------------------------------
+def _tin_numbers(text: str) -> set[int]:
+    import re
+    txt = text or ""
+    found = re.findall(r"N\s*-?\s*(\d+)", txt, flags=re.I) or re.findall(r"\b(\d{1,4})\b", txt)
+    return {int(x) for x in found}
+
+
+def turnout_tins_from_toc(routes: list[Route], elements: list, tags: list, tins: list) -> list[dict]:
+    from ..domain import POINTS
+
+    def line_tin(track_id, m):
+        nums = sorted({n.tin_no for n in tins if n.track_id == track_id
+                       and min(n.start_m, n.end_m) - 1 <= m <= max(n.start_m, n.end_m) + 1})
+        return nums
+
+    out = []
+    els = {e.id: e for e in elements}
+    for e in elements:
+        if e.element_type != POINTS or e.to_track_id is None or getattr(e, "b_end_m", None) is None:
+            continue
+        lo, hi = sorted((e.location_m, e.b_end_m))
+        t = next((x for x in tags if x.tag_type == "T" and (els.get(x.linked_element_id) is e or
+                                                           (x.linked_element_id is None and lo - 5 <= x.location_m <= hi + 5))), None)
+        if t is None:
+            continue                                     # no T tag: one TIN, no route dependence to check
+        through = [r for r in routes if t.tag_ref in r.tag_ids_in_order]
+        if not through:
+            continue
+        need = set()
+        for r in through:
+            need |= _tin_numbers(r.tins_required_free) | _tin_numbers(r.tins_required_free_overlap)
+        halves = []
+        for label, over, track, m in (("A", getattr(e, "tin_a_no", None), e.track_id, e.location_m),
+                                      ("B", getattr(e, "tin_b_no", None), e.to_track_id, e.b_end_m)):
+            nums = [over] if over is not None else line_tin(track, m)
+            halves.append((label, nums))
+        bad = [(lab, nums) for lab, nums in halves if nums and not (set(nums) & need)]
+        routes_txt = ", ".join(sorted({r.s_no for r in through}))
+        if bad:
+            what = "; ".join(f"half {lab} is TIN {'/'.join(map(str, nums))}" for lab, nums in bad)
+            out.append({"turnout": e.element_ref, "status": "WARN",
+                        "message": f"{e.element_ref}: routes {routes_txt} over {t.tag_ref} need TIN "
+                                   f"{', '.join(f'N-{n}' for n in sorted(need))} free, but {what}. Check the TIN rows, or "
+                                   f"set TIN on A / B half on the points"})
+        else:
+            out.append({"turnout": e.element_ref, "status": "PASS",
+                        "message": f"{e.element_ref}: both halves carry TINs the routes over {t.tag_ref} "
+                                   f"({routes_txt}) require free"})
+    return out

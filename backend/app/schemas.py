@@ -59,6 +59,8 @@ class ElementCreate(BaseModel):
     siding_name: str | None = Field(default=None, description="Points with no 'leads to' line only: the siding they "
                                                               "lead to, e.g. Siding for sub station & tower wagon")
     siding_shed: str | None = Field(default=None, description="Points to a siding only: the shed on it, e.g. Tower wagon shed")
+    tin_a_no: int | None = Field(default=None, description="Points only: TIN number on the A half of the turnout; blank = the TIN of the line at the A-end")
+    tin_b_no: int | None = Field(default=None, description="Points only: TIN number on the B half; blank = the TIN of the line at the B-end")
 
 
 
@@ -381,6 +383,7 @@ class ChainCheckResultOut(BaseModel):
 class ToCCrossValidationOut(BaseModel):
     results: list[ChainCheckResultOut]
     summary: dict
+    turnout_tins: list[dict] = []      # per turnout: do its half TINs match the TINs the routes over it need free?
 
 
 class UserCreate(BaseModel):

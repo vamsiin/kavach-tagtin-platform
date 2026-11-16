@@ -696,6 +696,13 @@ Each item below was compared with the approved layout (`docs/layout-review/nov6_
 | **Sand hump** | Elements > type *Sand Hump*, chainage at the end of the line, the line. (A *Feature* annotation named "sand hump" does the same.) | A half disc closing the nearer end of the line, a bar across the line a little inside it with a foot, and "SAND HUMP" beside it. |
 | **Siding** | Elements > *Points / Turnout* with **no** "Leads to line": the points lead to a siding outside KAVACH. Fill **Siding name** (e.g. *Siding for sub station & tower wagon*) and, if there is one, **Shed on it** (*Tower wagon shed*). The points should be within 300 m of the end of their line. | The line carries straight on in white past its last tag: the shed as a long box named over it, a buffer stop bar with "BS", and the siding's name with a leader. Points further than 300 m from a line end keep the older diagonal stub named SIDING. |
 
+### Turnout TINs (QFTL, Nov 2026)
+
+- **TIN on A half / B half** (Elements > Points; CSV columns `TIN on A half`, `TIN on B half`): optional. Blank = each half takes the TIN of the line at its end. Filled = that TIN colours the half and, where it differs from the line's TIN, its number is written beside that half of the diagonal (one label if both halves carry the same TIN).
+- A TIN row that describes a turnout piece (it ends at the turnout's T tag) is **accepted**: it colours its half, is not drawn on the loop, and the data check no longer asks for it to be deleted.
+- Two turnouts with centres less than 30 m apart: the second one's T tag labels and TIN labels go on the other side of its diagonal.
+- Verify tab (Table of Control upload) also lists, per turnout, whether each half's TIN is one the routes over its T tag need free.
+
 ### Route indicators (UG notes)
 
 Add to the signal's Aspects (Home signal or starter only; a rule warns elsewhere): `+RI` (junction type, the fork of lamps; speed above 15 km/h), `+RI:M:2` (multi-lamp type, shows 0-9 / A-Z; below 15 km/h, a lamp matrix round the character) or `+RI:S:B` (stencil type, a boxed letter, normally on starters).

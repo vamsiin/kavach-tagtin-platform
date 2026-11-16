@@ -184,6 +184,8 @@ class ElementORM(Base):
     signal_side = Column(String, nullable=True)    # signals: drawn "Above" / "Below" the line; blank = automatic
     siding_name = Column(String, nullable=True)    # points to a siding: its name
     siding_shed = Column(String, nullable=True)    # points to a siding: the shed on it
+    tin_a_no = Column(Integer, nullable=True)      # points: TIN on the A half (overrides the line TIN at the A-end)
+    tin_b_no = Column(Integer, nullable=True)      # points: TIN on the B half (overrides the line TIN at the B-end)
 
     station = relationship("StationORM", back_populates="elements")
 
@@ -194,7 +196,7 @@ class ElementORM(Base):
             remarks=self.remarks or "", track_id=self.track_id, to_track_id=self.to_track_id,
             lc_class=self.lc_class, lc_manning=self.lc_manning, aspects=self.aspects,
             b_end_m=self.b_end_m, signal_side=self.signal_side, siding_name=self.siding_name,
-            siding_shed=self.siding_shed,
+            siding_shed=self.siding_shed, tin_a_no=self.tin_a_no, tin_b_no=self.tin_b_no,
         )
 
 

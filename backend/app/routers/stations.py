@@ -148,7 +148,7 @@ def _validate_source_document(station_id: int, doc_id: int | None, db: Session) 
 
 # Fields added after the first clients shipped: only changed when the client sends
 # them, so an older client can't wipe them on every edit.
-_SEND_TO_CHANGE = ("source_document_id", "track_id", "to_track_id", "lc_class", "lc_manning", "abs2_m", "aspects", "b_end_m", "signal_side", "siding_name", "siding_shed")
+_SEND_TO_CHANGE = ("source_document_id", "track_id", "to_track_id", "lc_class", "lc_manning", "abs2_m", "aspects", "b_end_m", "signal_side", "siding_name", "siding_shed", "tin_a_no", "tin_b_no")
 
 
 def _update_fields(payload) -> dict:
@@ -212,6 +212,11 @@ def _clean_element(station_id: int, data: dict, el: "models.ElementORM | None", 
             data[f] = (data[f] or "").strip() or None
         if (etype != POINTS or data.get("to_track_id") is not None) and (f in data or (el is not None and getattr(el, f) is not None)):
             data[f] = None                 # only points that lead to no line (a siding) carry a siding name / shed
+    for f in ("tin_a_no", "tin_b_no"):
+        if etype != POINTS and (f in data or (el is not None and getattr(el, f) is not None)):
+            data[f] = None             # a half-TIN belongs to points only
+        elif data.get(f) is not None and data[f] < 1:
+            raise HTTPException(422, f"{f} must be a TIN number (1 or more)")
     side = (data.get("signal_side") or "").strip().capitalize() or None
     if side not in (None, "Above", "Below"):
         raise HTTPException(422, "signal_side must be Above or Below (blank = automatic)")
