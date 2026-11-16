@@ -51,6 +51,11 @@ def cross_validate_route(route: Route, tags_by_ref: dict[str, Tag],
 
     entry_m = entry_tag.location_m if entry_tag else None
     drawn_chain_ms: list[float] = []  # locations of tags actually found, in ToC chain order
+    # An adjustment (A) tag on the route re-bases the absolute location: from it onward the ToC distances include the
+    # jump from ABS-1 (physical) to ABS-2 (corrected), so the drawn chainages differ from the ToC distance by that
+    # amount (Aler route 11: R-862, 261.083 -> 261.144, +61 m). The jump is applied to the tags after the A tag.
+    jump_m = 0.0
+    jump_from = ""
 
     for entry in route.tag_chain:
         drawn = tags_by_ref.get(entry.tag_id)
@@ -65,21 +70,27 @@ def cross_validate_route(route: Route, tags_by_ref: dict[str, Tag],
 
         if entry_m is not None:
             actual_delta_m = abs(drawn.location_m - entry_m)
-            diff_m = abs(actual_delta_m - entry.cumulative_m)
+            expected_m = entry.cumulative_m - jump_m
+            diff_m = abs(actual_delta_m - expected_m)
+            note = (f", after the correction of {jump_m:+.0f}m at adjustment tag {jump_from}" if jump_m else "")
             if diff_m <= tolerance_m:
                 results.append(ChainCheckResult(
                     route.s_no, route.entry_signal, route.exit_signal, "PASS",
                     f"{entry.tag_id}: drawn at {actual_delta_m:.1f}m from entry tag "
-                    f"(ToC expects {entry.cumulative_m}m)",
+                    f"(ToC expects {entry.cumulative_m}m{note})",
                     tag_ref=entry.tag_id,
                 ))
             else:
                 results.append(ChainCheckResult(
                     route.s_no, route.entry_signal, route.exit_signal, "FAIL",
                     f"{entry.tag_id}: drawn {actual_delta_m:.1f}m from entry tag, but "
-                    f"ToC route expects {entry.cumulative_m}m (diff {diff_m:.1f}m)",
+                    f"ToC route expects {entry.cumulative_m}m{note} (diff {diff_m:.1f}m)",
                     tag_ref=entry.tag_id,
                 ))
+            if drawn.tag_type == "A" and getattr(drawn, "abs2_m", None) is not None:
+                sgn = 1 if drawn.location_m >= entry_m else -1
+                jump_m += -sgn * (drawn.abs2_m - drawn.location_m)
+                jump_from = entry.tag_id
 
         drawn_chain_ms.append(drawn.location_m)
 

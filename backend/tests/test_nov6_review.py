@@ -174,7 +174,10 @@ def test_turnout_t_tag_centre_single_tin_and_siding_tin():
     short = [TIN(186, "Station", 262907, 263060, track_id=3)]
     full = [TIN(186, "Station", 262907, 263116, track_id=3)]
     assert [x.status for x in check_siding_tin_to_shunt(st, [p17, sh22], short)] == ["WARN"]
-    assert [x.status for x in check_siding_tin_to_shunt(st, [p17, sh22], full)] == ["PASS"]
+    r = check_siding_tin_to_shunt(st, [p17, sh22], full)
+    assert [x.status for x in r] == ["WARN"] and "runs 50 m past the shunt signal" in r[0].message   # to R-839: too far
+    ends_at_signal = [TIN(186, "Station", 262907, 263066, track_id=3)]
+    assert [x.status for x in check_siding_tin_to_shunt(st, [p17, sh22], ends_at_signal)] == ["PASS"]
 
 
 def test_turnout_half_tins_labels_piece_rows_close_turnouts_and_toc():
@@ -242,3 +245,22 @@ def test_api_half_tin_fields(client):
     assert r["tin_a_no"] is None                                                  # only points carry half TINs
     assert client.post(f"/stations/{sid}/elements", json={"element_ref": "P2", "element_type": "Points / Turnout",
                        "location_m": 262100, "track_id": main, "tin_a_no": 0}, headers=des).status_code == 422
+
+
+def test_toc_distances_follow_the_absolute_location_correction_of_an_adjustment_tag():
+    """Aler route 11: R-862 is an adjustment tag, ABS-1 261.083 -> ABS-2 261.144 (+61 m); the ToC distances after it are
+    61 m longer than the drawn chainages. Without the A tag's ABS-2 they fail; with it they pass."""
+    from app.domain import Tag
+    from app.toc.cross_validate import cross_validate_station
+    from app.toc.parser import Route, parse_tag_chain
+    chain = parse_tag_chain("(0#R-802#0)#(100#R-860#0)#(641#R-862#0)#(75#R-864#0)#(75#R-866#0)")
+    route = Route("11", "S25", "S24D", "Absolute Block", "Up Main", "Advanced Starter", "R-802", chain)
+
+    def tags(abs2):
+        return [Tag(1, "R-802", "S", 261824), Tag(2, "R-860", "L", 261724), Tag(3, "R-862", "A", 261083, abs2_m=abs2),
+                Tag(4, "R-864", "N", 261069), Tag(5, "R-866", "N", 260994)]
+    bad = [r for r in cross_validate_station([route], tags(None)) if r.status == "FAIL"]
+    assert [r.tag_ref for r in bad] == ["R-864", "R-866"]                       # 61 m out, no correction known
+    res = cross_validate_station([route], tags(261144))
+    assert all(r.status == "PASS" for r in res)
+    assert any("correction of +61m at adjustment tag R-862" in r.message for r in res)

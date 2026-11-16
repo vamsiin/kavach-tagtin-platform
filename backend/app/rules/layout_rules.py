@@ -544,11 +544,17 @@ def check_siding_tin_to_shunt(station: Station, elements: list[Element], tins: l
         if not shunts:
             continue
         sh = max(shunts, key=lambda x: abs(x.location_m - e.location_m))
-        covered = any(n.track_id == tr.id and min(n.start_m, n.end_m) - 1 <= sh.location_m <= max(n.start_m, n.end_m) + 1
-                      for n in tins)
-        out.append(CheckResult("DATA-SIDING-TIN", title, "PASS" if covered else "WARN",
+        rows = [n for n in tins if n.track_id == tr.id and min(n.start_m, n.end_m) - 1 <= sh.location_m <= max(n.start_m, n.end_m) + 1]
+        covered = bool(rows)
+        # how far the TIN runs past the shunt signal towards the end of the line (that part is outside KAVACH: blank)
+        past = max((abs(max(n.start_m, n.end_m) - sh.location_m) if end > sh.location_m else
+                    abs(sh.location_m - min(n.start_m, n.end_m)) for n in rows), default=0.0)
+        over = covered and past > float(p.get("overrun_m", 10))
+        out.append(CheckResult("DATA-SIDING-TIN", title, "PASS" if covered and not over else "WARN",
                                f"{e.element_ref} siding on {tr.name}: " +
-                               (f"TIN reaches the shunt signal {sh.element_ref} at {sh.location_m / 1000:.3f}" if covered else
+                               (f"TIN runs {past:.0f} m past the shunt signal {sh.element_ref} at {sh.location_m / 1000:.3f} -- "
+                                f"end it at the signal; the part beyond, outside KAVACH, is blank" if over else
+                                f"TIN reaches the shunt signal {sh.element_ref} at {sh.location_m / 1000:.3f}" if covered else
                                 f"no TIN reaches the shunt signal {sh.element_ref} at {sh.location_m / 1000:.3f} -- extend "
                                 f"the TIN up to it (the part beyond, outside KAVACH, stays blank)"),
                                subject_ref=e.element_ref))

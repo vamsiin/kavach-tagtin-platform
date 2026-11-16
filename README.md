@@ -701,6 +701,7 @@ Each item below was compared with the approved layout (`docs/layout-review/nov6_
 - **TIN on A half / B half** (Elements > Points; CSV columns `TIN on A half`, `TIN on B half`): optional. Blank = each half takes the TIN of the line at its end. Filled = that TIN colours the half and, where it differs from the line's TIN, its number is written beside that half of the diagonal (one label if both halves carry the same TIN).
 - A TIN row that describes a turnout piece (it ends at the turnout's T tag) is **accepted**: it colours its half, is not drawn on the loop, and the data check no longer asks for it to be deleted.
 - Two turnouts with centres less than 30 m apart: the second one's T tag labels and TIN labels go on the other side of its diagonal.
+- Route distances in the Table of Control check follow an adjustment (A) tag on the route: from it onward the expected distance is corrected by the tag's ABS-2 minus ABS-1 (enter ABS-2 on the A tag; Aler R-862: 261.083 -> 261.144, +61 m).
 - Verify tab (Table of Control upload) also lists, per turnout, whether each half's TIN is one the routes over its T tag need free.
 
 ### Route indicators (UG notes)

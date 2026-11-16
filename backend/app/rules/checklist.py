@@ -175,7 +175,9 @@ def _register_builtins():
        lambda st, el, tg, tn, p: L.check_turnout_t_tags(tg, el, p, tn), severity="WARN")
     _b("siding_tin", "DATA-SIDING-TIN", "Siding TIN up to its shunt signal",
        "The TIN of a siding after points extends up to the shunt signal; the part outside KAVACH has no TIN (white line).",
-       {"max_distance_m": 300}, [P("max_distance_m", "number", "Shunt signal within (m) of the points", min=0)],
+       {"max_distance_m": 300, "overrun_m": 10},
+       [P("max_distance_m", "number", "Shunt signal within (m) of the points", min=0),
+        P("overrun_m", "number", "TIN may run past the shunt signal by (m)", min=0)],
        lambda st, el, tg, tn, p: L.check_siding_tin_to_shunt(st, el, tn, p), severity="WARN")
     _b("tin_overlaps", "DATA-TIN", "No two TINs overlap on one line",
        "Two different TINs on the same stretch of one line: usually a turnout piece entered as a TIN row "
