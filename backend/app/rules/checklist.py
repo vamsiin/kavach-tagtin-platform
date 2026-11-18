@@ -244,7 +244,7 @@ def _register_builtins():
        "Confirmed by QFTL 25.09.2026 (matches the Aler drawing; supersedes the BRD FR-004 wording).",
        {"parity_map": dict(E.DIRECTION_PARITY_MAP)},
        [P("parity_map", "parity_map", "Direction -> parity", options=["odd", "even"])],
-       lambda st, el, tg, tn, p: E.check_brd_fr004_direction_parity(tg, p, st))
+       lambda st, el, tg, tn, p: E.check_brd_fr004_direction_parity(tg, p, st, el))
     _b("br001", "BR-001", "Numbers within the allotment chart",
        "Tag and TIN numbers are in the station's allotment, or its adjacent sections', on the current chart.",
        {}, [], lambda st, el, tg, tn, p: E.check_br001_allotment(st, tg, tn))

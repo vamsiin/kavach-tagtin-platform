@@ -704,6 +704,13 @@ Each item below was compared with the approved layout (`docs/layout-review/nov6_
 - Route distances in the Table of Control check follow an adjustment (A) tag on the route: from it onward the expected distance is corrected by the tag's ABS-2 minus ABS-1 (enter ABS-2 on the A tag; Aler R-862: 261.083 -> 261.144, +61 m).
 - Verify tab (Table of Control upload) also lists, per turnout, whether each half's TIN is one the routes over its T tag need free.
 
+### Provisional track circuits and fouling marks (team answers, 18 Nov 2026)
+
+- Track circuit chainages are not in the SIP and are not surveyed. **Registers > Drawing annotations > Add provisional Home signal circuits** adds, for each Home signal, a circuit named after it (S1 -> 1AT, S29 -> 29AT) from about 195 m behind the signal to 4 m beyond it, marked "Provisional / indicative". API: `POST /stations/{id}/annotations/provisional-track-circuits` (also `berthing: [{track_id, prefix, start_m, end_m}]` divides a berthing circuit in three: DMT -> DMAT / DMBT / DMCT).
+- **Fouling marks** are entered in Registers > Elements as type *Fouling Mark*, on the line where the points' B-end is, at the chainage given (Aler: P12 262198, P13 262254, P19 262922, P18 262991). Drawn as the F/M box beside the points' B-end arrow.
+- Tag numbers follow the line (SCR: DN odd, UP even; ECR is the other way round, set by the workspace's DN direction). A T tag follows the line its points lead to, so R-843 (P13 -> UP LOOP) is flagged: it should be even unless the Railway agrees an odd number (record a deviation).
+- Route indicators: multi-lamp is drawn as the 7 x 5 lamp matrix (Type I) and is generally on Home signals; stencil (M / B / G) generally on starters; a rule warns otherwise.
+
 ### Route indicators (UG notes)
 
 Add to the signal's Aspects (Home signal or starter only; a rule warns elsewhere): `+RI` (junction type, the fork of lamps; speed above 15 km/h), `+RI:M:2` (multi-lamp type, shows 0-9 / A-Z; below 15 km/h, a lamp matrix round the character) or `+RI:S:B` (stencil type, a boxed letter, normally on starters).

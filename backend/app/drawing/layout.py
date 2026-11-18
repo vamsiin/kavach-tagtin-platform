@@ -1345,7 +1345,7 @@ def _draw(s: Scene, d: DrawingData, order: list, plans: dict, turnouts: list, w:
         _turnout_tag(s, to)
         _turnout_tin_labels(s, d, to)
         _point_abs(s, to)
-    _fouling_marks(s, d, plans)
+    _fouling_marks(s, d, plans, turnouts)
     _sand_humps(s, d, plans)
 
     # borders (H2.16): a red box round the border tag and its signal, and the
@@ -1722,19 +1722,30 @@ def _point_abs(s: Scene, to: _Turnout) -> None:
             ("" if to.b_given else "~") + f"{to.b_m:.0f}", INK if to.b_given else FAINT, names[1])
 
 
-def _fouling_marks(s: Scene, d: DrawingData, plans: dict) -> None:
-    """Fouling marks (as entered in the elements register): a small box with F over M beside the line,
-    and its ABS written vertically next to it."""
+def _fouling_marks(s: Scene, d: DrawingData, plans: dict, turnouts: list | None = None) -> None:
+    """Fouling marks (as entered in the elements register): a small box with F over M and its ABS written vertically
+    next to it. As on the approved layout, a fouling mark of points stands beside the points' B-end arrow, on the side
+    of the line the diagonal comes from, just outside the turnout (beyond the B-end, away from the A-end)."""
     ax = d._ax
     for e in d.elements:
         p = plans.get(e.track_id)
         if e.element_type != "Fouling Mark" or p is None:
             continue
         x, y = ax(e.location_m), p.y
-        s.add(Rect(x - 1.1, y + BAND / 2 + 0.6, 2.2, 4.6, "POINTS", stroke=INK, fill=(255, 255, 255), width=0.25),
-              Text(x, y + BAND / 2 + 3.4, "F", 1.5, "POINTS", anchor="middle", bold=True),
-              Text(x, y + BAND / 2 + 1.1, "M", 1.5, "POINTS", anchor="middle", bold=True),
-              Text(x + 1.9, y + BAND / 2 + 0.8, f"{e.location_m:.0f}", 1.5, "POINTS", angle=90, anchor="start", bold=True))
+        above, off = True, 0.0
+        for to in turnouts or []:
+            if to.tb is None:
+                continue
+            for mine, other, m, far in ((to.tb, to.ta, to.b_m, to.a_m), (to.ta, to.tb, to.a_m, to.b_m)):
+                if mine == e.track_id and abs(m - e.location_m) <= 6 and plans.get(other) is not None:
+                    above = plans[other].y > p.y
+                    off = 6.5 if m >= far else -5.0
+        x += off
+        yb = (y + BAND / 2 + 0.6) if above else (y - BAND / 2 - 0.6 - 4.6)
+        s.add(Rect(x - 1.1, yb, 2.2, 4.6, "POINTS", stroke=INK, fill=(255, 255, 255), width=0.25),
+              Text(x, yb + 2.8, "F", 1.5, "POINTS", anchor="middle", bold=True),
+              Text(x, yb + 0.5, "M", 1.5, "POINTS", anchor="middle", bold=True),
+              Text(x + 2.9, yb + 0.2, f"{e.location_m:.0f}", 1.5, "POINTS", angle=90, anchor="start", bold=True))
 
 
 def _flip_close_turnouts(turnouts: list, close_m: float = 30.0) -> None:
@@ -2084,11 +2095,12 @@ def _route_box(s: Scene, cur: float, ya: float, sd: int, tv: int, ri: str, char:
         s.add(Poly([(a + off, ya - 1.45 + off), (b - off, ya - 1.45 + off), (b - off, ya + 1.45 - off), (a + off, ya + 1.45 - off)],
                    "SIGNALS", fill=(255, 255, 255), width=w))
     mx = (a + b) / 2
-    if ri == "M":                                   # the lamp matrix: small dots round the character
+    if ri == "M":                                   # Type I: 35 lamps, 7 rows x 5 columns; the lit ones form the character
         for ix in range(5):
-            for iy in range(5):
-                if ix in (0, 4) or iy in (0, 4):
-                    s.add(Poly(_circle(a + 0.3 + ix * 0.6, ya - 1.2 + iy * 0.6, 0.12, 6), "SIGNALS", fill=(0, 0, 0), width=0.05))
+            for iy in range(7):
+                s.add(Poly(_circle(a + 0.35 + ix * 0.55, ya - 1.2 + iy * 0.4, 0.1, 6), "SIGNALS", fill=(0, 0, 0), width=0.04))
+        s.add(Text(mx, ya - 0.5, char or "?", 1.3, "SIGNALS", RED, anchor="middle", bold=True))
+        return
     s.add(Text(mx, ya - 0.5, char or "?", 1.3, "SIGNALS", anchor="middle", bold=True))
 
 

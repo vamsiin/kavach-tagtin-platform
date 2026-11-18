@@ -79,3 +79,36 @@ def delete_annotation(station_id: int, ann_id: int, db: Session = Depends(get_db
     _require_register_editor(user, st)
     db.delete(_get_or_404(station_id, ann_id, db))
     db.commit()
+
+
+@router.post("/{station_id}/annotations/provisional-track-circuits", response_model=list[schemas.AnnotationOut],
+             status_code=201)
+def provisional_track_circuits(station_id: int, payload: schemas.ProvisionalCircuits | None = None,
+                               db: Session = Depends(get_db), user: models.UserORM = Depends(get_current_user)):
+    """Add the track circuits the SIP does not give chainages for, by the team's method (Home signal circuit: ~195 m behind
+    the signal to ~4 m beyond; a berthing circuit divided in three). Circuits already entered (same name) are left alone;
+    everything added is marked provisional in its remarks."""
+    from ..track_circuits import home_signal_circuits, split_berthing_circuit
+    payload = payload or schemas.ProvisionalCircuits()
+    st = _get_station_or_404(station_id, db)
+    _require_editable(st)
+    _require_register_editor(user, st)
+    domain_station = st.to_domain()
+    elements = [e.to_domain() for e in db.query(models.ElementORM).filter_by(station_id=station_id).all()]
+    wanted = home_signal_circuits(domain_station, elements, payload.before_m, payload.beyond_m)
+    for b in payload.berthing:
+        _validate_track_ref(station_id, b.track_id, db)
+        wanted += split_berthing_circuit(b.prefix.strip().upper(), b.track_id, b.start_m, b.end_m)
+    have = {(a.label or "").upper() for a in st.annotations if a.kind == "Track circuit"}
+    added = []
+    for w in wanted:
+        if w["label"].upper() in have:
+            continue
+        have.add(w["label"].upper())
+        a = models.AnnotationORM(station_id=station_id, kind="Track circuit", **w)
+        db.add(a)
+        added.append(a)
+    db.commit()
+    for a in added:
+        db.refresh(a)
+    return added

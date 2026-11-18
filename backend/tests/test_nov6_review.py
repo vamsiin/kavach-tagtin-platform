@@ -139,7 +139,7 @@ def test_route_indicator_types_junction_multilamp_stencil():
     t_j, d_j, _ = texts_and_dots("R/Y/G+RI")
     t_m, d_m, _ = texts_and_dots("R/Y/G+RI:M:2")
     t_s, d_s, _ = texts_and_dots("R/Y+RI:S:B")
-    assert "2" in t_m and d_m == 16 and "2" not in t_j and d_j == 0     # multi-lamp: the character inside a lamp matrix
+    assert "2" in t_m and d_m == 35 and "2" not in t_j and d_j == 0     # multi-lamp: the character inside a lamp matrix
     assert "B" in t_s and d_s == 0                                      # stencil: the boxed letter
 
     def el(typ, asp):
@@ -264,3 +264,59 @@ def test_toc_distances_follow_the_absolute_location_correction_of_an_adjustment_
     res = cross_validate_station([route], tags(261144))
     assert all(r.status == "PASS" for r in res)
     assert any("correction of +61m at adjustment tag R-862" in r.message for r in res)
+
+
+def test_t_tag_parity_follows_the_line_its_points_lead_to_and_ri_type_hints():
+    """Team (18 Nov): tag numbers follow the line (SCR: UP even, DN odd), so R-843 on P13 (-> UP LOOP) should be even;
+    T tags of points leading to the common loop are not held to parity. Route indicators: stencil generally on
+    starters (M / B / G), multi-lamp generally on Home signals."""
+    from app.domain import Element, Station, Tag, Track
+    from app.rules.deck_rules import check_route_indicator_position
+    from app.rules.engine import check_brd_fr004_direction_parity as parity
+    st = Station(1, "Aler", "1", 262750, tracks=[Track(1, "DN MAIN", "Main", 0, 1, line_type="DN MAIN"),
+                                                 Track(2, "UP MAIN", "Main", 0, 1, line_type="UP MAIN"),
+                                                 Track(3, "COMMON LOOP", "Loop", 0, 1, line_type="COMMON LOOP"),
+                                                 Track(4, "UP LOOP", "Loop", 0, 1, line_type="UP LOOP")])
+    els = [Element(13, "P13", "Points / Turnout", 262150, track_id=2, to_track_id=4, b_end_m=262254),
+           Element(11, "P11", "Points / Turnout", 262067, track_id=1, to_track_id=2, b_end_m=261978),
+           Element(12, "P12", "Points / Turnout", 262103, track_id=1, to_track_id=3, b_end_m=262197)]
+    tags = [Tag(1, "R-843", "T", 262201, 843, "Nominal", linked_element_id=13, track_id=4),
+            Tag(2, "R-842", "T", 263039, 842, "Reverse", linked_element_id=13, track_id=4),
+            Tag(3, "R-838", "T", 262023, 838, "Reverse", linked_element_id=11, track_id=1),
+            Tag(4, "R-835", "T", 262150, 835, "Reverse", linked_element_id=12, track_id=3)]
+    res = {r.subject_ref: r for r in parity(tags, None, st, els)}
+    assert res["R-843"].status == "FAIL" and "follows the line its points lead to" in res["R-843"].message
+    assert res["R-842"].status == "PASS" and res["R-838"].status == "PASS"        # UP MAIN / UP LOOP: even
+    assert res["R-835"].status == "NA"                                              # leads to the common loop
+
+    def ri(typ, asp):
+        return check_route_indicator_position(st, [Element(1, "X1", typ, 100, aspects=asp)])[0]
+    assert ri("Mainline Starter", "R/Y/G+RI:S:B").status == "PASS"
+    assert ri("Mainline Starter", "R/Y/G+RI:M:2").status == "WARN"                  # multi-lamp: generally Home signals
+    assert ri("Main Home without Junction Route Indicator", "R/Y/G+RI:S:B").status == "WARN"
+    assert ri("Mainline Starter", "R/Y/G+RI:S:X").status == "WARN"                  # stencil: M, B or G
+
+
+def test_provisional_track_circuits_by_the_team_method(client):
+    """Home signal circuit: ~195 m behind the signal to ~4 m beyond; a berthing circuit split in three; nothing is
+    added twice; all marked provisional."""
+    from app.track_circuits import split_berthing_circuit
+    admin, des, chk = _make_admin_designer_checker(client)
+    sid = client.post("/stations", json={"name": "Aler", "kavach_station_id": "103", "centre_line_m": 262750}, headers=des).json()["id"]
+    dn = client.post(f"/stations/{sid}/tracks", json={"name": "DN MAIN", "track_type": "Main", "start_m": 259740,
+                     "end_m": 265279, "line_type": "DN MAIN"}, headers=des).json()["id"]
+    up = client.post(f"/stations/{sid}/tracks", json={"name": "UP MAIN", "track_type": "Main", "start_m": 258024,
+                     "end_m": 266417, "line_type": "UP MAIN"}, headers=des).json()["id"]
+    for ref, loc, tr in (("S1", 261789, dn), ("S29", 263325, up)):
+        assert client.post(f"/stations/{sid}/elements", json={"element_ref": ref, "element_type": "Main Home without Junction "
+                           "Route Indicator", "location_m": loc, "track_id": tr}, headers=des).status_code == 200
+    client.post(f"/stations/{sid}/elements", json={"element_ref": "S3", "element_type": "Mainline Starter",
+                "location_m": 262910, "track_id": dn}, headers=des)
+    r = client.post(f"/stations/{sid}/annotations/provisional-track-circuits", json={}, headers=des)
+    assert r.status_code == 201, r.text
+    got = {a["label"]: (a["start_m"], a["end_m"]) for a in r.json()}
+    assert got == {"1AT": (261594.0, 261793.0), "29AT": (263321.0, 263520.0)}       # DN: behind = lower; UP (Reverse): behind = higher
+    assert all("Provisional" in a["remarks"] for a in r.json())
+    assert client.post(f"/stations/{sid}/annotations/provisional-track-circuits", json={}, headers=des).json() == []
+    parts = split_berthing_circuit("DM", dn, 262197, 262922)
+    assert [p["label"] for p in parts] == ["DMAT", "DMBT", "DMCT"] and parts[0]["start_m"] == 262197 and parts[2]["end_m"] == 262922

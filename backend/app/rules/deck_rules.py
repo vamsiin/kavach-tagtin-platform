@@ -271,6 +271,19 @@ def check_route_indicator_position(station: Station, elements: list[Element], p:
             out.append(CheckResult("DECK-RI", title, "FAIL",
                                    f"{e.element_ref} ({e.element_type}): a route indicator is fixed on the first stop "
                                    f"(Home) signal or a starter, not on this signal", subject_ref=e.element_ref))
+        elif ri == "S" and "home" in (e.element_type or "").lower():
+            out.append(CheckResult("DECK-RI", title, "WARN",
+                                   f"{e.element_ref}: a stencil route indicator is generally fixed on starters (poor visibility, "
+                                   f"used where trains stop and start); a Home signal normally has a multi-lamp or junction one",
+                                   subject_ref=e.element_ref))
+        elif ri == "M" and "starter" in (e.element_type or "").lower():
+            out.append(CheckResult("DECK-RI", title, "WARN",
+                                   f"{e.element_ref}: a multi-lamp route indicator is generally fixed on Home signals; starters "
+                                   f"normally have a stencil one", subject_ref=e.element_ref))
+        elif ri == "S" and ch not in ("M", "B", "G") and not ch.isdigit():
+            out.append(CheckResult("DECK-RI", title, "WARN",
+                                   f"{e.element_ref}: a stencil indicator generally shows M (main), B (branch) or G (goods); "
+                                   f"'{ch}' is not one of them", subject_ref=e.element_ref))
         elif ri in ("M", "S") and not ch:
             out.append(CheckResult("DECK-RI", title, "FAIL",
                                    f"{e.element_ref}: a {RI_TYPES[ri]} route indicator must state the character it shows",

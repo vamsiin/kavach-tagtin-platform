@@ -38,6 +38,16 @@ export function AnnotationsPanel({ stationId, tracks, readOnly, lockReason }: {
   return (
     <>
       {error && <p className="error">{error}</p>}
+      {!readOnly && (
+        <p className="muted small">
+          Track circuit chainages are not in the SIP and are not surveyed. <button type="button" onClick={async () => {
+            try { const added = await api.addProvisionalTrackCircuits(stationId); await reload();
+                  setError(added.length ? null : "Nothing to add: every Home signal's circuit is already entered."); }
+            catch (e) { setError(String(e).replace(/^Error: /, "")); }
+          }} title="Adds 1AT, 29AT ... for each Home signal: about 195 m behind the signal to 4 m beyond it, marked provisional (the team's method). Circuits already entered are left alone.">
+            Add provisional Home signal circuits</button>
+        </p>
+      )}
       <RegisterTable
         title="Drawing annotations (track circuits, section notes, site features)"
         rows={rows}

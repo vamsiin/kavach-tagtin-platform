@@ -1115,6 +1115,19 @@ class AnnotationCreate(BaseModel):
     remarks: str | None = None
 
 
+class BerthingSplit(BaseModel):
+    track_id: int
+    prefix: str = Field(description='Circuit prefix, e.g. "DM" for DMT -> DMAT / DMBT / DMCT')
+    start_m: float
+    end_m: float
+
+
+class ProvisionalCircuits(BaseModel):
+    before_m: float = Field(default=195.0, ge=0, description="Home signal circuit starts this far behind the signal (190-200 m)")
+    beyond_m: float = Field(default=4.0, ge=0, description="... and ends this far beyond it (3-5 m)")
+    berthing: list[BerthingSplit] = Field(default_factory=list, description="Berthing circuits to divide in three")
+
+
 class AnnotationOut(AnnotationCreate):
     id: int
 

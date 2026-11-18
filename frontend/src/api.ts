@@ -176,6 +176,8 @@ export const api = {
     request<Annotation>(`/stations/${stationId}/annotations`, { method: "POST", body: JSON.stringify(payload) }),
   updateAnnotation: (stationId: number, id: number, payload: Partial<Annotation>) =>
     request<Annotation>(`/stations/${stationId}/annotations/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  addProvisionalTrackCircuits: (stationId: number) =>
+    request<Annotation[]>(`/stations/${stationId}/annotations/provisional-track-circuits`, { method: "POST", body: JSON.stringify({}) }),
   deleteAnnotation: (stationId: number, id: number) =>
     request<void>(`/stations/${stationId}/annotations/${id}`, { method: "DELETE" }),
   listTowers: (stationId: number) => request<Tower[]>(`/stations/${stationId}/towers`),

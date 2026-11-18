@@ -520,12 +520,15 @@ DIRECTION_PARITY_MAP = {
 
 
 def check_brd_fr004_direction_parity(tags: list[Tag], p: dict | None = None,
-                                     station: Station | None = None) -> list[CheckResult]:
+                                     station: Station | None = None, elements: list | None = None) -> list[CheckResult]:
     """Odd / even numbering. The number follows the LINE the tag is on: a DN line takes the DN parity
     and an UP line the UP parity, whichever way the tag itself is programmed -- on the approved Aler
     layout R-785 (a BSLB tag pointing Reverse on DN MAIN) is odd and R-792 (a stop-board tag pointing
     Nominal on UP MAIN) is even. A COMMON LOOP carries both directions, so no parity is enforced there.
-    A tag on a line of no known kind (or with no line) is judged by its own direction, as before."""
+    A turnout (T) tag follows the line its points lead to (SCR, team answer 18 Nov 2026: UP line even, DN line odd, so
+    R-843 on P13 -> UP LOOP should be even; an odd number is accepted only after the Railway agrees -- record it as a
+    deviation). A tag on a line of no known kind (or with no line) is judged by its own direction, as before.
+    ECR numbers the other way round: that comes from the workspace's DN direction (SIP "Down" = Reverse)."""
     parity_map = _params("fr004_parity", p)["parity_map"]
     dn_dir = getattr(station, "dn_direction", "Nominal") if station is not None else "Nominal"
     up_dir = "Reverse" if dn_dir == "Nominal" else "Nominal"
@@ -535,9 +538,10 @@ def check_brd_fr004_direction_parity(tags: list[Tag], p: dict | None = None,
         if t.tag_number is None:
             continue
         tr = lines.get(t.track_id)
-        lt = getattr(tr, "line_type", "") if tr is not None else ""
         if t.tag_type == "T":
-            lt = ""                    # a turnout tag stands between two lines: judged by its own direction
+            pts = next((e for e in (elements or []) if e.id == t.linked_element_id and e.to_track_id is not None), None)
+            tr = lines.get(pts.to_track_id) if pts is not None else None       # the line the points lead to
+        lt = getattr(tr, "line_type", "") if tr is not None else ""
         if lt == "COMMON LOOP":
             results.append(CheckResult(
                 "FR-004", "Tag number parity matches direction", "NA",
@@ -564,7 +568,8 @@ def check_brd_fr004_direction_parity(tags: list[Tag], p: dict | None = None,
         ok = actual_parity == expected_parity
         results.append(CheckResult(
             "FR-004", "Tag number parity matches direction", "PASS" if ok else "FAIL",
-            f"{t.tag_ref}: number {t.tag_number} is {actual_parity}, {where} expects {expected_parity}",
+            f"{t.tag_ref}: number {t.tag_number} is {actual_parity}, {where} expects {expected_parity}"
+            + ("" if ok or t.tag_type != "T" else " (a T tag follows the line its points lead to)"),
             subject_ref=t.tag_ref))
     return results
 
