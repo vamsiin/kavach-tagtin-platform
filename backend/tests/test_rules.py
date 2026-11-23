@@ -208,14 +208,13 @@ def test_h2_9_fail_under_600m():
     assert results[0].status == "FAIL"
 
 
-def test_h2_9_pass_at_850m_would_have_failed_old_excel_rule():
-    """Regression guard: the OLD Excel tool (550-850m range, sourced from the deck)
-    would have flagged this as a FAIL for exceeding 850m. The Annexure-H text has no
-    upper bound, only a >=600m minimum -- this must PASS under the corrected rule."""
+def test_h2_9_default_is_the_tan_550_to_850_range():
+    """QFTL 23 Nov 2026: the latest TAN RDSO guideline gives 550-850 m for the G tag (it varies with train speed and
+    auto-whistling: 605, 607, 610, 654 m ...). The earlier 600 m minimum with no upper limit is no longer the default."""
     elements = [mk_element(1, "LC Gate", 50.000)]
-    tags = [mk_tag(1, "G", 49.100, linked_element_id=1)]  # 900m before
-    results = check_h2_9_gate_tag_distance(tags, elements)
-    assert results[0].status == "PASS"
+    for gap, want in ((0.605, "PASS"), (0.654, "PASS"), (0.850, "PASS"), (0.900, "FAIL"), (0.540, "FAIL")):
+        tags = [mk_tag(1, "G", 50.000 - gap, linked_element_id=1)]
+        assert check_h2_9_gate_tag_distance(tags, elements)[0].status == want, gap
 
 
 # ---------------------------------------------------------------------------

@@ -320,3 +320,32 @@ def test_provisional_track_circuits_by_the_team_method(client):
     assert client.post(f"/stations/{sid}/annotations/provisional-track-circuits", json={}, headers=des).json() == []
     parts = split_berthing_circuit("DM", dn, 262197, 262922)
     assert [p["label"] for p in parts] == ["DMAT", "DMBT", "DMCT"] and parts[0]["start_m"] == 262197 and parts[2]["end_m"] == 262922
+
+
+def test_nov23_siding_tin_to_first_exit_tag_border_route_tags_and_two_character_indicators():
+    """Team (23 Nov): the siding TIN is extended up to the first exit tag; tags past the border on a border route belong
+    to the neighbouring station; a multi-lamp indicator can show up to 99 routes."""
+    from app.domain import Element, Station, Tag, TIN, Track, normalise_aspects, split_route_indicator
+    from app.rules.layout_rules import check_siding_tin_to_shunt
+    from app.toc.cross_validate import cross_validate_station, summarize
+    from app.toc.parser import Route, parse_tag_chain
+
+    st = Station(1, "Aler", "1", 262750, tracks=[Track(3, "COMMON LOOP", "Loop", 262175, 263146)])
+    p17 = Element(2, "P17", "Points / Turnout", 263050, track_id=3)
+    sh22 = Element(3, "SH22", "Shunt Signal", 263066, track_id=3)
+    tn = [TIN(186, "Station", 262907, 263116, track_id=3)]
+    x1 = Tag(1, "R-839", "X", 263116, track_id=3)
+    assert [r.status for r in check_siding_tin_to_shunt(st, [p17, sh22], tn, None, [x1])] == ["PASS"]   # to the first X tag
+    assert [r.status for r in check_siding_tin_to_shunt(st, [p17, sh22], tn)] == ["WARN"]               # no exit tag known
+    far = [TIN(186, "Station", 262907, 263140, track_id=3)]
+    assert [r.status for r in check_siding_tin_to_shunt(st, [p17, sh22], far, None, [x1])] == ["WARN"]  # past the first X tag
+
+    chain = parse_tag_chain("(0#R-797#0)#(100#R-881#0)#(1904#R-903#0)#(835#R-905#0)#(200#R-907#0)")
+    route = Route("10", "S6", "S7D of PBP IB", "Absolute Block", "Down Main", "Advance Starter", "R-797", chain)
+    tags = [Tag(1, "R-797", "S", 263275), Tag(2, "R-881", "L", 263375), Tag(3, "R-903", "S", 265279, is_border_tag=True)]
+    res = cross_validate_station([route], tags)
+    assert summarize(res)["fail_count"] == 0 and sum("neighbouring station" in r.message for r in res) == 2
+    missing_inside = Route("9", "S1", "S3", "Station section", "Down Main", "Home", "R-797", parse_tag_chain("(0#R-797#0)#(50#R-999#0)#(50#R-881#0)"))
+    assert summarize(cross_validate_station([missing_inside], tags))["fail_count"] == 1                  # a tag in the middle is a real gap
+
+    assert normalise_aspects("R/Y/G+RI:M:12") == "R/Y/G+RI:M:12" and split_route_indicator("R/Y/G+RI:M:99") == ("R/Y/G", "M", "99")

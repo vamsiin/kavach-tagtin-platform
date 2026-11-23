@@ -57,8 +57,21 @@ def cross_validate_route(route: Route, tags_by_ref: dict[str, Tag],
     jump_m = 0.0
     jump_from = ""
 
-    for entry in route.tag_chain:
+    # A border route (SVK to SVK) runs on past the station's border: the tags after the last one this station holds
+    # belong to the neighbouring station's register, and are not expected here (QFTL 23 Nov 2026).
+    present = [i for i, e in enumerate(route.tag_chain) if e.tag_id in tags_by_ref]
+    last = present[-1] if present else -1
+    border_route = "absolute block" in (route.section_type or "").lower() or         (last >= 0 and getattr(tags_by_ref[route.tag_chain[last].tag_id], "is_border_tag", False))
+    neighbour_from = last + 1 if border_route and last >= 0 else len(route.tag_chain)
+    for idx, entry in enumerate(route.tag_chain):
         drawn = tags_by_ref.get(entry.tag_id)
+        if not drawn and idx >= neighbour_from:
+            results.append(ChainCheckResult(
+                route.s_no, route.entry_signal, route.exit_signal, "PASS",
+                f"Tag '{entry.tag_id}' is beyond the station border: it belongs to the neighbouring station's register",
+                tag_ref=entry.tag_id,
+            ))
+            continue
         if not drawn:
             results.append(ChainCheckResult(
                 route.s_no, route.entry_signal, route.exit_signal, "FAIL",

@@ -524,7 +524,7 @@ def check_turnout_t_tags(tags: list[Tag], elements: list[Element], p: dict | Non
 
 
 def check_siding_tin_to_shunt(station: Station, elements: list[Element], tins: list[TIN],
-                              p: dict | None = None) -> list[CheckResult]:
+                              p: dict | None = None, tags: list[Tag] | None = None) -> list[CheckResult]:
     """QFTL: the TIN of a siding (points that lead off the KAVACH lines) is extended up to its shunt signal; what lies
     beyond, outside KAVACH, has no TIN and is drawn as a white line."""
     p = _params("siding_tin", p)
@@ -549,11 +549,15 @@ def check_siding_tin_to_shunt(station: Station, elements: list[Element], tins: l
         # how far the TIN runs past the shunt signal towards the end of the line (that part is outside KAVACH: blank)
         past = max((abs(max(n.start_m, n.end_m) - sh.location_m) if end > sh.location_m else
                     abs(sh.location_m - min(n.start_m, n.end_m)) for n in rows), default=0.0)
-        over = covered and past > float(p.get("overrun_m", 10))
+        # QFTL 23 Nov: the TIN is extended up to the first exit (X) tag beyond the shunt signal
+        xs = [abs(t.location_m - sh.location_m) for t in (tags or []) if t.tag_type == "X" and t.track_id == tr.id
+              and lo <= t.location_m <= hi and (t.location_m - sh.location_m) * (end - sh.location_m) > 0]
+        allowed = max(float(p.get("overrun_m", 10)), min(xs, default=0.0) + 1)
+        over = covered and past > allowed
         out.append(CheckResult("DATA-SIDING-TIN", title, "PASS" if covered and not over else "WARN",
                                f"{e.element_ref} siding on {tr.name}: " +
                                (f"TIN runs {past:.0f} m past the shunt signal {sh.element_ref} at {sh.location_m / 1000:.3f} -- "
-                                f"end it at the signal; the part beyond, outside KAVACH, is blank" if over else
+                                f"end it at the shunt signal or the first exit tag; the part beyond, outside KAVACH, is blank" if over else
                                 f"TIN reaches the shunt signal {sh.element_ref} at {sh.location_m / 1000:.3f}" if covered else
                                 f"no TIN reaches the shunt signal {sh.element_ref} at {sh.location_m / 1000:.3f} -- extend "
                                 f"the TIN up to it (the part beyond, outside KAVACH, stays blank)"),

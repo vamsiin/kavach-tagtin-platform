@@ -100,7 +100,7 @@ def split_route_indicator(text: str | None) -> tuple[str, str | None, str]:
     """'R/Y/G+RI:M:2' -> ('R/Y/G', 'M', '2'); 'R/Y/G+RI' -> ('R/Y/G', 'J', ''); no indicator -> (text, None, '')."""
     import re
     raw = (text or "").upper()
-    m = re.search(r"\+\s*(?:J?RI|ROUTE\w*)(?:\s*:\s*(J|M|S)(?:\s*:\s*([0-9A-Z]))?)?", raw)
+    m = re.search(r"\+\s*(?:J?RI|ROUTE\w*)(?:\s*:\s*(J|M|S)(?:\s*:\s*([0-9A-Z]{1,2}))?)?", raw)
     if not m:
         return raw, None, ""
     return (raw[:m.start()] + raw[m.end():]).strip(), (m.group(1) or "J"), (m.group(2) or "")

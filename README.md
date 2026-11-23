@@ -711,6 +711,13 @@ Each item below was compared with the approved layout (`docs/layout-review/nov6_
 - Tag numbers follow the line (SCR: DN odd, UP even; ECR is the other way round, set by the workspace's DN direction). A T tag follows the line its points lead to, so R-843 (P13 -> UP LOOP) is flagged: it should be even unless the Railway agrees an odd number (record a deviation).
 - Route indicators: multi-lamp is drawn as the 7 x 5 lamp matrix (Type I) and is generally on Home signals; stencil (M / B / G) generally on starters; a rule warns otherwise.
 
+### Team decisions of 23 Nov 2026 (rules and data)
+
+- **G tag distance from the LC gate: 550-850 m** (latest TAN RDSO guideline; it depends on train speed and auto-whistling, so 605, 610, 654 m ... are normal). The earlier "minimum 600 m, no maximum" is no longer the default; it can still be set per workspace (Checklist > H2.9).
+- **Siding TIN** (after P17): extended up to the **first exit (X) tag** beyond the shunt signal (first exit tag: communication towards entry only; second: none). TIN 186 therefore ends at R-839 (263116), not at SH22.
+- **Table of Control:** tags past the border on a border route (Absolute Block, e.g. routes 10 and 11) belong to the neighbouring station's register and are no longer reported missing. Use the approved ToC in Word format.
+- **Route indicator characters:** a multi-lamp indicator can show up to 99 routes (`+RI:M:12`); a stencil one a number or letter.
+
 ### Route indicators (UG notes)
 
 Add to the signal's Aspects (Home signal or starter only; a rule warns elsewhere): `+RI` (junction type, the fork of lamps; speed above 15 km/h), `+RI:M:2` (multi-lamp type, shows 0-9 / A-Z; below 15 km/h, a lamp matrix round the character) or `+RI:S:B` (stencil type, a boxed letter, normally on starters).

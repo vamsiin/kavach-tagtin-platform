@@ -184,8 +184,8 @@ def test_config_manager_checklist_and_reopen(client, h):
     rid = next(r for r in client.get("/checklist", headers=h["cora"]).json()["rules"]
                if r["key"] == "builtin.h2_9")["id"]
     assert client.get("/checklist", headers=h["cora"]).json()["can_edit"] is True
-    r = client.put(f"/checklist/rules/{rid}", json={"params": {"min_m": 550, "max_m": 850},
-                   "reason": "BR-008"}, headers=h["cora"])
+    r = client.put(f"/checklist/rules/{rid}", json={"params": {"min_m": 600, "max_m": None},
+                   "reason": "Annexure-H"}, headers=h["cora"])
     assert r.status_code == 200
     sid = _station(client, h)
     _approve(client, h, sid)

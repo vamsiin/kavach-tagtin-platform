@@ -92,8 +92,8 @@ def _register_builtins():
         P("whole_metres", "bool", "Distance must be an exact multiple of 1 m", required=False)],
        lambda st, el, tg, tn, p: E.check_h2_7_approach_tag_distance(tg, el, p))
     _b("h2_9", "H2.9", "Gate tag distance from LC gate",
-       "G tag distance from its LC gate. Annexure-H text: minimum 600 m; BRD BR-008: 550-850 m.",
-       {"min_m": 600, "max_m": None, "wl_board_alternative": True, "wl_reach_m": 1000},
+       "G tag distance from its LC gate: 550-850 m (latest TAN RDSO guidelines, QFTL 23 Nov 2026; the actual distance depends on train speed and auto-whistling, e.g. 605, 610, 654 m). Earlier Annexure-H text: minimum 600 m.",
+       {"min_m": 550, "max_m": 850, "wl_board_alternative": True, "wl_reach_m": 1000},
        [P("min_m", "number", "Minimum (m)", min=0),
         P("max_m", "number", "Maximum (m) - blank for no upper limit", required=False, min=0, nullable=True),
         P("wl_board_alternative", "bool", "Accept a W/L board on the approach instead", required=False),
@@ -173,12 +173,13 @@ def _register_builtins():
        [P("tolerance_m", "number", "Tolerance beyond the ends (m)", min=0),
         P("centre_tolerance_m", "number", "T tag within (m) of the point centre", min=0)],
        lambda st, el, tg, tn, p: L.check_turnout_t_tags(tg, el, p, tn), severity="WARN")
-    _b("siding_tin", "DATA-SIDING-TIN", "Siding TIN up to its shunt signal",
-       "The TIN of a siding after points extends up to the shunt signal; the part outside KAVACH has no TIN (white line).",
+    _b("siding_tin", "DATA-SIDING-TIN", "Siding TIN up to its shunt signal / first exit tag",
+       "The TIN of a siding after points extends up to the shunt signal, and up to the first exit (X) tag beyond it (its "
+       "communication is towards entry only; the second exit tag has none); the part outside KAVACH has no TIN (white line).",
        {"max_distance_m": 300, "overrun_m": 10},
        [P("max_distance_m", "number", "Shunt signal within (m) of the points", min=0),
         P("overrun_m", "number", "TIN may run past the shunt signal by (m)", min=0)],
-       lambda st, el, tg, tn, p: L.check_siding_tin_to_shunt(st, el, tn, p), severity="WARN")
+       lambda st, el, tg, tn, p: L.check_siding_tin_to_shunt(st, el, tn, p, tg), severity="WARN")
     _b("tin_overlaps", "DATA-TIN", "No two TINs overlap on one line",
        "Two different TINs on the same stretch of one line: usually a turnout piece entered as a TIN row "
        "on a loop. Names the likely stray row (ends at a turnout tag, or the TIN belongs to another line).",

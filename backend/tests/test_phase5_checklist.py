@@ -39,14 +39,14 @@ def test_defaults_equal_legacy_behaviour():
 def test_gate_distance_configurable_resolves_br008():
     """BR-008 (550-850 m) vs Annexure-H (>= 600 m) is now a setting."""
     el = Element(id=1, element_ref="LC-1", element_type="LC Gate", location_m=50000)
-    tags = [Tag(id=1, tag_ref="G-1", tag_type="G", location_m=50000 - 580, linked_element_id=1)]
+    tags = [Tag(id=1, tag_ref="G-1", tag_type="G", location_m=50000 - 540, linked_element_id=1)]
     default = [x for x in run_all_checks(ST, [el], tags, []).results if x.clause == "H2.9"]
-    assert default[0].status == "FAIL"  # 580 < 600
+    assert default[0].status == "FAIL"  # 540 < 550
     rules = ck.default_rules()
     r = next(x for x in rules if x.key == "builtin.h2_9")
-    r.params = ck.validate_params("builtin", "h2_9", {"min_m": 550, "max_m": 850})
+    r.params = ck.validate_params("builtin", "h2_9", {"min_m": 500, "max_m": 850})
     res = [x for x in run_all_checks(ST, [el], tags, [], rules=rules).results if x.clause == "H2.9"]
-    assert res[0].status == "PASS" and "550-850m" in res[0].title
+    assert res[0].status == "PASS" and "500-850m" in res[0].title
 
 
 def test_parity_map_configurable():
@@ -160,7 +160,7 @@ def test_seeded_checklist_and_permissions(client, h):
     assert "builtin.h2_9" in keys and "manual.h2_19" in keys
     assert body["can_edit"] is False and body["config_version"] == len(keys)  # one 'seed' change each
     h29 = next(r for r in body["rules"] if r["key"] == "builtin.h2_9")
-    assert h29["params"] == {"min_m": 600, "max_m": None, "wl_board_alternative": True, "wl_reach_m": 1000} and h29["is_builtin"]
+    assert h29["params"] == {"min_m": 550, "max_m": 850, "wl_board_alternative": True, "wl_reach_m": 1000} and h29["is_builtin"]
     assert {p["name"] for p in h29["param_schema"]} == {"min_m", "max_m", "wl_board_alternative", "wl_reach_m"}
     r = client.put(f"/checklist/rules/{h29['id']}", json={"params": {"min_m": 550}, "reason": "x"},
                    headers=h["dana"])
@@ -179,28 +179,29 @@ def test_admin_edit_is_audited_and_changes_verification(client, h):
     client.post(f"/stations/{sid}/tags", json={"tag_ref": "G-1", "tag_type": "G", "location_m": 49420,
                 "linked_element_id": el["id"]}, headers=h["dana"])
     v0 = client.get(f"/stations/{sid}/verify", headers=h["dana"]).json()
-    assert "H2.9" in v0["summary"]["clauses_failing"]
+    assert "H2.9" not in v0["summary"]["clauses_failing"]          # 580 m: inside the TAN 550-850 m default
 
     rid = _rules(client, h)["builtin.h2_9"]["id"]
-    assert client.put(f"/checklist/rules/{rid}", json={"params": {"min_m": 550, "max_m": 850}, "reason": ""},
+    strict = {"min_m": 600, "max_m": None}
+    assert client.put(f"/checklist/rules/{rid}", json={"params": strict, "reason": ""},
                       headers=h["admin"]).status_code == 422  # reason mandatory
-    r = client.put(f"/checklist/rules/{rid}", json={"params": {"min_m": 550, "max_m": 850},
-                   "reason": "BR-008: QFTL policy 550-850 m confirmed"}, headers=h["admin"])
-    assert r.status_code == 200 and r.json()["params"] == {"min_m": 550.0, "max_m": 850.0, "wl_board_alternative": True, "wl_reach_m": 1000}
+    r = client.put(f"/checklist/rules/{rid}", json={"params": strict,
+                   "reason": "Annexure-H wording: minimum 600 m for this railway"}, headers=h["admin"])
+    assert r.status_code == 200 and r.json()["params"] == {"min_m": 600.0, "max_m": None, "wl_board_alternative": True, "wl_reach_m": 1000}
     v1 = client.get(f"/stations/{sid}/verify", headers=h["dana"]).json()
-    assert "H2.9" not in v1["summary"]["clauses_failing"]
+    assert "H2.9" in v1["summary"]["clauses_failing"]
     assert v1["checklist_version"] == v0["checklist_version"] + 1
 
     ch = client.get("/checklist/changes", headers=h["dana"]).json()[0]
     assert ch["action"] == "update" and ch["changed_by"] == "admin"
-    assert ch["before"]["params"]["min_m"] == 600 and ch["after"]["params"]["max_m"] == 850
-    assert "BR-008" in ch["reason"]
+    assert ch["before"]["params"]["min_m"] == 550 and ch["after"]["params"]["max_m"] is None
+    assert "Annexure-H" in ch["reason"]
 
     # no-op edits rejected; reset restores defaults
-    assert client.put(f"/checklist/rules/{rid}", json={"params": {"min_m": 550, "max_m": 850}, "reason": "again"},
+    assert client.put(f"/checklist/rules/{rid}", json={"params": strict, "reason": "again"},
                       headers=h["admin"]).status_code == 422
-    r = client.post(f"/checklist/rules/{rid}/reset", json={"reason": "back to Annexure-H"}, headers=h["admin"])
-    assert r.json()["params"] == {"min_m": 600, "max_m": None, "wl_board_alternative": True, "wl_reach_m": 1000}
+    r = client.post(f"/checklist/rules/{rid}/reset", json={"reason": "back to the TAN default"}, headers=h["admin"])
+    assert r.json()["params"] == {"min_m": 550, "max_m": 850, "wl_board_alternative": True, "wl_reach_m": 1000}
 
 
 def test_disable_builtin_reported_and_cannot_delete(client, h):

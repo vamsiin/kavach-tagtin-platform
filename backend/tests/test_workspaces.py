@@ -160,18 +160,18 @@ def test_zone_overrides(client, h):
     assert client.put(f"/workspaces/{ecr['id']}/overrides/{h29}", json={"params": {"min_m": -1}, "reason": "x"},
                       headers=h["cora"]).status_code == 422
     r = client.put(f"/workspaces/{ecr['id']}/overrides/{h29}",
-                   json={"params": {"min_m": 550, "max_m": 850}, "reason": "ECR follows BR-008"}, headers=h["cora"])
-    assert r.status_code == 200 and r.json()["override"]["params"]["min_m"] == 550
+                   json={"params": {"min_m": 600, "max_m": None}, "reason": "ECR follows Annexure-H"}, headers=h["cora"])
+    assert r.status_code == 200 and r.json()["override"]["params"]["min_m"] == 600
 
     def h29_status(sid, hd):
         v = client.get(f"/stations/{sid}/verify", headers=hd).json()
         return [x["status"] for x in v["results"] if x["clause"] == "H2.9"]
-    assert h29_status(a["id"], h["dana"]) == ["FAIL"]      # SCR: standard >= 600 m, gate tag at 580 m
-    assert h29_status(e["id"], h["eddie"]) == ["PASS"]     # ECR: 550-850 m
+    assert h29_status(a["id"], h["dana"]) == ["PASS"]      # SCR: standard 550-850 m, gate tag at 580 m
+    assert h29_status(e["id"], h["eddie"]) == ["FAIL"]     # ECR override: >= 600 m
     cl = {r["key"]: r for r in client.get("/checklist", params={"workspace_id": ecr["id"]},
                                           headers=h["eddie"]).json()["rules"]}
-    assert cl["builtin.h2_9"]["override"]["reason"] == "ECR follows BR-008"
-    assert cl["builtin.h2_9"]["effective"]["params"]["min_m"] == 550 and cl["builtin.h2_9"]["params"]["min_m"] == 600
+    assert cl["builtin.h2_9"]["override"]["reason"] == "ECR follows Annexure-H"
+    assert cl["builtin.h2_9"]["effective"]["params"]["min_m"] == 600 and cl["builtin.h2_9"]["params"]["min_m"] == 550
     assert cl["builtin.h2_5"]["override"] is None
     # disable a rule for one zone only
     client.put(f"/workspaces/{ecr['id']}/overrides/{rules['builtin.h2_26']['id']}",
@@ -183,7 +183,7 @@ def test_zone_overrides(client, h):
     assert any(c["action"] == "override" and c["reason"].startswith("[ECR]") for c in ch)
     r = client.request("DELETE", f"/workspaces/{ecr['id']}/overrides/{h29}", json={"reason": "back to standard"},
                        headers=h["cora"])
-    assert r.status_code == 200 and h29_status(e["id"], h["eddie"]) == ["FAIL"]
+    assert r.status_code == 200 and h29_status(e["id"], h["eddie"]) == ["PASS"]
 
 
 def test_allotment_charts_are_per_zone(client, h):
